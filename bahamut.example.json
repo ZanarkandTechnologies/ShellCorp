@@ -1,0 +1,37 @@
+{
+  "workspaceDir": "./workspace",
+  "dataDir": "~/.bahamut",
+  "brainAgentId": "brain",
+  "heartbeat": {
+    "enabled": true,
+    "intervalMinutes": 30,
+    "promptPath": "HEARTBEAT.md"
+  },
+  "channels": {
+    "telegram": {
+      "enabled": false,
+      "botToken": "$TELEGRAM_BOT_TOKEN",
+      "allowFrom": ["*"]
+    },
+    "discord": {
+      "enabled": false,
+      "token": "$DISCORD_BOT_TOKEN",
+      "allowFrom": []
+    },
+    "slack": {
+      "enabled": false,
+      "botToken": "$SLACK_BOT_TOKEN",
+      "appToken": "$SLACK_APP_TOKEN",
+      "allowFrom": []
+    },
+    "whatsapp": {
+      "enabled": false,
+      "allowFrom": []
+    }
+  },
+  "skills": [
+    { "path": "./workspace/skills/github" },
+    { "path": "./workspace/skills/notion" }
+  ],
+  "logSink": "file"
+}
