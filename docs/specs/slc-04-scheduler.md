@@ -14,7 +14,7 @@ Use local cron scheduling (`croner`) with a persistent JSON job store plus a ded
 
 ## Success Criteria
 
-- [ ] SC-1: Jobs persist in `~/.bahamut/cron-jobs.json` and restore on startup
+- [ ] SC-1: Jobs persist in `~/.fahrenheit/cron-jobs.json` and restore on startup
 - [ ] SC-2: Scheduler executes interval and cron-expression jobs reliably
 - [ ] SC-3: Heartbeat runs every configured interval and supports suppressed `HEARTBEAT_OK`
 

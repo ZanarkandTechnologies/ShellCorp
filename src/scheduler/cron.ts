@@ -21,7 +21,7 @@ export class CronManager {
   constructor(
     private readonly brain: BrainRuntime,
     private readonly logSink: LogSink,
-    private readonly storePath = path.join(os.homedir(), ".bahamut", "cron-jobs.json"),
+    private readonly storePath = path.join(os.homedir(), ".fahrenheit", "cron-jobs.json"),
   ) {}
 
   async loadAndStart(): Promise<void> {

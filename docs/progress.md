@@ -1,4 +1,4 @@
-# Bahamut SLC-1 Ticket Plan
+# Fahrenheit SLC-1 Ticket Plan
 
 **Status**: Draft
 **Scope**: SLC-1 only

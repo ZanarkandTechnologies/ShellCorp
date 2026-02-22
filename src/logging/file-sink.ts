@@ -11,7 +11,7 @@ function datePart(ts: number): string {
 
 function resolveAuditDir(baseDir?: string): string {
   if (baseDir) return baseDir;
-  return path.join(os.homedir(), ".bahamut", "audit");
+  return path.join(os.homedir(), ".fahrenheit", "audit");
 }
 
 export class FileLogSink implements LogSink {

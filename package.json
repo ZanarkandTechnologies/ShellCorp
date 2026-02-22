@@ -1,8 +1,8 @@
 {
-  "name": "bahamut",
+  "name": "fahrenheit",
   "version": "0.1.0",
   "private": true,
-  "description": "Bahamut - single-brain, multi-hand AI operating system",
+  "description": "Fahrenheit - single-brain, multi-hand AI operating system",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -13,22 +13,33 @@
     "dev": "tsx src/cli/index.ts",
     "gateway": "tsx src/cli/index.ts gateway",
     "agent": "tsx src/cli/index.ts agent --message \"health check\"",
-    "status": "tsx src/cli/index.ts status"
+    "status": "tsx src/cli/index.ts status",
+    "test": "vitest",
+    "test:once": "vitest run",
+    "test:debug": "vitest --inspect-brk --no-file-parallelism",
+    "test:coverage": "vitest run --coverage --coverage.reporter=text"
   },
   "dependencies": {
     "@mariozechner/pi-agent-core": "latest",
     "@mariozechner/pi-ai": "latest",
     "@mariozechner/pi-coding-agent": "latest",
     "@slack/bolt": "latest",
+    "@whiskeysockets/baileys": "^6.17.16",
     "commander": "latest",
+    "convex": "^1.32.0",
     "croner": "latest",
     "discord.js": "latest",
     "grammy": "latest",
+    "qrcode-terminal": "^0.12.0",
     "zod": "latest"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
     "@types/node": "latest",
+    "@types/qrcode-terminal": "^0.12.2",
+    "convex-test": "^0.0.41",
     "tsx": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vitest": "^3.2.4"
   }
 }

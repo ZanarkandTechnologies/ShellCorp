@@ -1,15 +1,18 @@
 import type { ChannelId, InboundEnvelope } from "../types.js";
-import type { BahamutConfig } from "../config/schema.js";
+import type { FahrenheitConfig } from "../config/schema.js";
 
-function listForChannel(config: BahamutConfig, channelId: ChannelId): string[] {
-  if (channelId === "telegram") return config.channels.telegram.allowFrom;
-  if (channelId === "discord") return config.channels.discord.allowFrom;
-  if (channelId === "slack") return config.channels.slack.allowFrom;
-  if (channelId === "whatsapp") return config.channels.whatsapp.allowFrom;
+function listForChannel(config: FahrenheitConfig, channelId: ChannelId): string[] {
+  const knownChannels = config.channels as Record<string, { allowFrom?: string[] }>;
+  const known = knownChannels[channelId];
+  if (known?.allowFrom) return known.allowFrom;
+
+  const provider = config.providers[channelId];
+  if (provider?.allowFrom) return provider.allowFrom;
+
   return [];
 }
 
-export function isSenderAllowed(config: BahamutConfig, envelope: InboundEnvelope): boolean {
+export function isSenderAllowed(config: FahrenheitConfig, envelope: InboundEnvelope): boolean {
   const allowFrom = listForChannel(config, envelope.channelId);
   if (allowFrom.length === 0) return true;
   if (allowFrom.includes("*")) return true;

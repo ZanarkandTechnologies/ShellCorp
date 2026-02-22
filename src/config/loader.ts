@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-import { bahamutConfigSchema, type BahamutConfig } from "./schema.js";
+import { fahrenheitConfigSchema, type FahrenheitConfig } from "./schema.js";
 import { resolveSecretValue } from "../security/secrets.js";
 
 function expandHome(p: string): string {
@@ -11,7 +11,8 @@ function expandHome(p: string): string {
 }
 
 export function defaultConfigPath(): string {
-  return path.join(os.homedir(), ".bahamut", "bahamut.json");
+  // MEM-0003 decision: Fahrenheit runtime/config defaults live under ~/.fahrenheit.
+  return path.join(os.homedir(), ".fahrenheit", "fahrenheit.json");
 }
 
 async function resolveSecretStrings(obj: unknown): Promise<unknown> {
@@ -33,7 +34,7 @@ async function resolveSecretStrings(obj: unknown): Promise<unknown> {
   return obj;
 }
 
-export async function loadConfig(configPath = defaultConfigPath()): Promise<BahamutConfig> {
+export async function loadConfig(configPath = defaultConfigPath()): Promise<FahrenheitConfig> {
   const absolutePath = expandHome(configPath);
   if (!existsSync(absolutePath)) {
     await mkdir(path.dirname(absolutePath), { recursive: true });
@@ -42,7 +43,7 @@ export async function loadConfig(configPath = defaultConfigPath()): Promise<Baha
   const raw = await readFile(absolutePath, "utf8");
   const parsed = raw.trim() ? JSON.parse(raw) : {};
   const resolved = await resolveSecretStrings(parsed);
-  const config = bahamutConfigSchema.parse(resolved);
+  const config = fahrenheitConfigSchema.parse(resolved);
   return {
     ...config,
     workspaceDir: expandHome(config.workspaceDir),

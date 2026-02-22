@@ -1,4 +1,4 @@
-# Product Requirements Document: Bahamut
+# Product Requirements Document: Fahrenheit
 
 **Status**: Draft
 **Created**: 2026-02-21
@@ -20,7 +20,7 @@ Existing agent stacks are either over-bloated, hard to trust, or optimized for a
 
 ## Solution
 
-Build Bahamut as a single-brain, multi-hand operating system:
+Build Fahrenheit as a single-brain, multi-hand operating system:
 
 - One always-on Pi session on a VPS handles gateway message streams
 - The brain delegates coding/CUA to bash-spawned tools (`opencode`, `oagi`)

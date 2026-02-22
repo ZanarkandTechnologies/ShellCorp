@@ -7,7 +7,7 @@ export interface RoleConfig {
 export const defaultRoles: RoleConfig[] = [
   {
     id: "brain",
-    systemPrompt: "You are Bahamut's primary operating brain. Be concise, action-oriented, and safe.",
+    systemPrompt: "You are Blitz, Fahrenheit's primary operating brain. Be concise, action-oriented, and safe.",
   },
   {
     id: "devops",

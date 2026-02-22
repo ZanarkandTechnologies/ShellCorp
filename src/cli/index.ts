@@ -2,7 +2,7 @@ import { Command } from "commander";
 
 const program = new Command();
 
-program.name("bahamut").description("Bahamut CLI");
+program.name("fahrenheit").description("Fahrenheit CLI");
 
 program
   .command("gateway")
@@ -60,9 +60,12 @@ cron
   });
 
 const channels = program.command("channels");
-channels.command("login").action(async () => {
+channels
+  .command("login")
+  .option("--config <path>", "Path to config file")
+  .action(async (options: { config?: string }) => {
   const { channelsLoginCommand } = await import("./commands/channels.js");
-  await channelsLoginCommand();
+    await channelsLoginCommand(options.config);
 });
 
 const config = program.command("config");

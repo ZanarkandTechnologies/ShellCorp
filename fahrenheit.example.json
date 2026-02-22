@@ -1,6 +1,6 @@
 {
   "workspaceDir": "./workspace",
-  "dataDir": "~/.bahamut",
+  "dataDir": "~/.fahrenheit",
   "brainAgentId": "brain",
   "heartbeat": {
     "enabled": true,
@@ -26,8 +26,32 @@
     },
     "whatsapp": {
       "enabled": false,
-      "allowFrom": []
+      "allowFrom": [],
+      "authDir": "~/.fahrenheit/credentials/whatsapp",
+      "printQr": true
     }
+  },
+  "providers": {
+    "notion-comments": {
+      "enabled": true,
+      "mode": "observational",
+      "allowFrom": ["*"]
+    },
+    "discord-comments": {
+      "enabled": true,
+      "mode": "observational",
+      "allowFrom": ["*"]
+    }
+  },
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 8787,
+    "ingestToken": "$FAHRENHEIT_INGEST_TOKEN"
+  },
+  "convex": {
+    "enabled": true,
+    "deploymentUrl": "$CONVEX_URL",
+    "authToken": "$CONVEX_AUTH_TOKEN"
   },
   "skills": [
     { "path": "./workspace/skills/github" },

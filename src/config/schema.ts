@@ -10,9 +10,15 @@ const channelCommonSchema = z.object({
   agentId: z.string().optional(),
 });
 
-export const bahamutConfigSchema = z.object({
+const providerSchema = z.object({
+  enabled: z.boolean().default(true),
+  allowFrom: z.array(z.string()).default([]),
+  mode: z.enum(["conversational", "observational"]).default("observational"),
+});
+
+export const fahrenheitConfigSchema = z.object({
   workspaceDir: z.string().default("./workspace"),
-  dataDir: z.string().default("~/.bahamut"),
+  dataDir: z.string().default("~/.fahrenheit"),
   brainAgentId: z.string().default("brain"),
   heartbeat: z
     .object({
@@ -43,16 +49,41 @@ export const bahamutConfigSchema = z.object({
           appToken: z.string().optional(),
         })
         .default({ enabled: false, allowFrom: [] }),
-      whatsapp: channelCommonSchema.default({ enabled: false, allowFrom: [] }),
+      whatsapp: channelCommonSchema
+        .extend({
+          authDir: z.string().optional(),
+          printQr: z.boolean().default(true),
+        })
+        .default({ enabled: false, allowFrom: [], printQr: true }),
     })
     .default({
       telegram: { enabled: false, allowFrom: [] },
       discord: { enabled: false, allowFrom: [] },
       slack: { enabled: false, allowFrom: [] },
-      whatsapp: { enabled: false, allowFrom: [] },
+      whatsapp: { enabled: false, allowFrom: [], printQr: true },
+    }),
+  providers: z.record(z.string(), providerSchema).default({}),
+  gateway: z
+    .object({
+      host: z.string().default("127.0.0.1"),
+      port: z.number().int().positive().default(8787),
+      ingestToken: z.string().optional(),
+    })
+    .default({
+      host: "127.0.0.1",
+      port: 8787,
+    }),
+  convex: z
+    .object({
+      enabled: z.boolean().default(false),
+      deploymentUrl: z.string().optional(),
+      authToken: z.string().optional(),
+    })
+    .default({
+      enabled: false,
     }),
   skills: z.array(skillConfigSchema).default([]),
   logSink: z.enum(["file", "console", "convex"]).default("file"),
 });
 
-export type BahamutConfig = z.infer<typeof bahamutConfigSchema>;
+export type FahrenheitConfig = z.infer<typeof fahrenheitConfigSchema>;

@@ -15,7 +15,7 @@ Introduce a provider-swappable `LogSink` with local file logging in SLC-1 and Co
 ## Success Criteria
 
 - [ ] SC-1: Gateway writes structured events for agent, channel, and cron activity
-- [ ] SC-2: File log sink persists daily JSONL logs under `~/.bahamut/audit/`
+- [ ] SC-2: File log sink persists daily JSONL logs under `~/.fahrenheit/audit/`
 - [ ] SC-3: Switching to `ConvexLogSink` requires no caller changes
 
 ## Out of Scope

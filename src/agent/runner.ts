@@ -39,7 +39,7 @@ export class PiBrainRuntime implements BrainRuntime {
 
   async handleMessage(sessionKey: string, message: string): Promise<string> {
     const run = async () => {
-      const session = await this.getOrCreateSession(sessionKey, "You are Bahamut's operating brain.");
+      const session = await this.getOrCreateSession(sessionKey, "You are Blitz, Fahrenheit's operating brain.");
       await this.opts.logSink.logAgentAction({
         ts: Date.now(),
         sessionKey,
@@ -105,5 +105,6 @@ export class PiBrainRuntime implements BrainRuntime {
 }
 
 export function defaultDataDir(): string {
-  return path.join(os.homedir(), ".bahamut");
+  // MEM-0003 decision: runtime state defaults to ~/.fahrenheit.
+  return path.join(os.homedir(), ".fahrenheit");
 }

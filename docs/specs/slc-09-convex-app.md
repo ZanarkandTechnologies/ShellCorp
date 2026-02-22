@@ -13,7 +13,7 @@ The system needs one place to expose logs and control APIs for programmatic inte
 Use one self-hosted Convex app with three modules:
 
 1. Log ingestion/query
-2. Programmatic API wrapper over Bahamut operations
+2. Programmatic API wrapper over Fahrenheit operations
 3. Dashboard data model for visualization
 
 ## Success Criteria
