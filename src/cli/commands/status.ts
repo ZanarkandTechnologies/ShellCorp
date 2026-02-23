@@ -5,19 +5,19 @@ import { loadConfig } from "../../config/loader.js";
 
 export async function statusCommand(configPath?: string): Promise<void> {
   const config = await loadConfig(configPath);
-  const sessionDir = path.join(config.dataDir, "sessions");
-  const cronPath = path.join(config.dataDir, "cron-jobs.json");
-  const auditDir = path.join(config.dataDir, "audit");
+  const sessionDir = path.join(config.runtime.dataDir, "sessions");
+  const cronPath = config.runtime.cron.storePath ?? path.join(config.runtime.dataDir, "cron-jobs.json");
+  const auditDir = path.join(config.runtime.dataDir, "audit");
 
   console.log(
     JSON.stringify(
       {
-        workspaceDir: path.resolve(config.workspaceDir),
-        dataDir: config.dataDir,
+        workspaceDir: path.resolve(config.runtime.workspaceDir),
+        dataDir: config.runtime.dataDir,
         sessionDirExists: existsSync(sessionDir),
         cronStoreExists: existsSync(cronPath),
         auditDirExists: existsSync(auditDir),
-        enabledChannels: Object.entries(config.channels)
+        enabledChannels: Object.entries(config.gateway.channels)
           .filter(([, value]) => value.enabled)
           .map(([name]) => name),
       },

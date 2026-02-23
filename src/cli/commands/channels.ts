@@ -90,7 +90,7 @@ This folder contains generated assets to wire providers into Fahrenheit's gatewa
 ## Recommended path (no node builder required)
 
 1. Run native providers with config/tokens (Telegram/Discord/Slack)
-2. Use bridge mode providers by POSTing to \`${gatewayUrl}/ingest\` (Notion comments/WhatsApp/custom)
+2. Use bridge providers by POSTing to \`${gatewayUrl}/ingest\` (Notion/custom event feeds)
 3. Start gateway and verify:
    - \`GET ${gatewayUrl}/status\`
    - \`GET ${gatewayUrl}/providers\`
@@ -104,7 +104,7 @@ This folder contains generated assets to wire providers into Fahrenheit's gatewa
 - Discord: implemented
 - Slack: implemented
 - WhatsApp: native Baileys QR pairing implemented
-- Notion comments: bridge/poller mode via provider webhook push
+- Bridges (example: Notion events): push normalized events to /ingest
 
 ## Optional n8n path
 
@@ -150,7 +150,7 @@ done
 const SEND_TEST_SCRIPT = `#!/usr/bin/env bash
 set -euo pipefail
 
-provider="\${1:-notion-comments}"
+provider="\${1:-notion}"
 gateway_url="\${FAHRENHEIT_GATEWAY_URL:-http://127.0.0.1:8787}"
 token="\${FAHRENHEIT_INGEST_TOKEN:-}"
 
@@ -167,8 +167,8 @@ curl -sS -X POST "$gateway_url/providers/$provider/test" \
 
 export async function channelsLoginCommand(configPath?: string): Promise<void> {
   const config = await loadConfig(configPath);
-  const gatewayUrl = `http://${config.gateway.host}:${config.gateway.port}`;
-  const providersDir = path.join(config.workspaceDir, "providers");
+  const gatewayUrl = `http://${config.gateway.server.host}:${config.gateway.server.port}`;
+  const providersDir = path.join(config.runtime.workspaceDir, "providers");
   const n8nDir = path.join(providersDir, "n8n");
   const scriptsDir = path.join(providersDir, "scripts");
 
@@ -191,10 +191,12 @@ export async function channelsLoginCommand(configPath?: string): Promise<void> {
   console.log(`- ${sendTestScriptPath}`);
   console.log("");
   console.log("Native adapters:");
-  console.log(`- Telegram enabled: ${Boolean(config.channels.telegram.enabled && config.channels.telegram.botToken)}`);
-  console.log(`- Discord enabled: ${Boolean(config.channels.discord.enabled && config.channels.discord.token)}`);
   console.log(
-    `- Slack enabled: ${Boolean(config.channels.slack.enabled && config.channels.slack.botToken && config.channels.slack.appToken)}`,
+    `- Telegram enabled: ${Boolean(config.gateway.channels.telegram.enabled && config.gateway.channels.telegram.botToken)}`,
   );
-  console.log(`- WhatsApp enabled: ${Boolean(config.channels.whatsapp.enabled)} (native QR pairing)`);
+  console.log(`- Discord enabled: ${Boolean(config.gateway.channels.discord.enabled && config.gateway.channels.discord.token)}`);
+  console.log(
+    `- Slack enabled: ${Boolean(config.gateway.channels.slack.enabled && config.gateway.channels.slack.botToken && config.gateway.channels.slack.appToken)}`,
+  );
+  console.log(`- WhatsApp enabled: ${Boolean(config.gateway.channels.whatsapp.enabled)} (native QR pairing)`);
 }

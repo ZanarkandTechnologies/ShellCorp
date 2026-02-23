@@ -22,6 +22,7 @@ export const gatewayMessageSchema = z.object({
   direction: gatewayDirectionSchema,
   mode: gatewayModeSchema,
   threadId: z.string().optional(),
+  correlationId: z.string().optional(),
   callbackUrl: z.string().url().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
@@ -43,6 +44,7 @@ export function inboundToMessage(envelope: InboundEnvelope): GatewayMessage {
     direction: "inbound",
     mode: envelope.mode ?? "conversational",
     threadId: envelope.threadId,
+    correlationId: envelope.correlationId,
     // Raw payloads are wrapped in metadata to preserve debugging context
     // without coupling the canonical schema to provider-specific formats.
     metadata: envelope.raw ? { raw: envelope.raw } : undefined,
@@ -65,5 +67,6 @@ export function outboundToMessage(
     // Outbound records are always conversational because they represent replies.
     mode: "conversational",
     threadId: envelope.threadId,
+    correlationId: envelope.correlationId,
   };
 }

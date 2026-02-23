@@ -22,6 +22,15 @@ program
   });
 
 program
+  .command("tui")
+  .option("--config <path>", "Path to config file")
+  .option("--session <key>", "Override personal session key")
+  .action(async (options: { config?: string; session?: string }) => {
+    const { tuiCommand } = await import("./commands/tui.js");
+    await tuiCommand(options.config, options.session);
+  });
+
+program
   .command("status")
   .option("--config <path>", "Path to config file")
   .action(async (options: { config?: string }) => {
@@ -57,6 +66,43 @@ cron
   .action(async (options: { id: string; config?: string }) => {
     const { cronRemove } = await import("./commands/cron.js");
     await cronRemove(options.id, options.config);
+  });
+cron
+  .command("update")
+  .requiredOption("--id <id>", "Job id")
+  .option("--schedule <cron>", "Cron expression")
+  .option("--prompt <text>", "Prompt")
+  .option("--session <key>", "Session key")
+  .option("--config <path>", "Path to config file")
+  .action(
+    async (options: { id: string; schedule?: string; prompt?: string; session?: string; config?: string }) => {
+      const { cronUpdate } = await import("./commands/cron.js");
+      await cronUpdate(
+        options.id,
+        {
+          schedule: options.schedule,
+          prompt: options.prompt,
+          sessionKey: options.session,
+        },
+        options.config,
+      );
+    },
+  );
+cron
+  .command("enable")
+  .requiredOption("--id <id>", "Job id")
+  .option("--config <path>", "Path to config file")
+  .action(async (options: { id: string; config?: string }) => {
+    const { cronEnable } = await import("./commands/cron.js");
+    await cronEnable(options.id, true, options.config);
+  });
+cron
+  .command("disable")
+  .requiredOption("--id <id>", "Job id")
+  .option("--config <path>", "Path to config file")
+  .action(async (options: { id: string; config?: string }) => {
+    const { cronEnable } = await import("./commands/cron.js");
+    await cronEnable(options.id, false, options.config);
   });
 
 const channels = program.command("channels");
