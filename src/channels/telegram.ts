@@ -3,6 +3,7 @@ import { Bot } from "grammy";
 import type { BaseChannel } from "./base.js";
 import type { InboundEnvelope, OutboundEnvelope } from "../types.js";
 import type { ProviderSetupSpec, ProviderStatus } from "./base.js";
+import { formatLogLine, sanitizeInline } from "../logging/pretty.js";
 
 export interface TelegramInboundInput {
   chatId: string;
@@ -46,6 +47,14 @@ export class TelegramChannel implements BaseChannel {
     try {
       this.bot.on("message:text", async (ctx) => {
         if (!this.inboundHandler) return;
+        console.info(
+          formatLogLine("telegram", "inbound", {
+            sourceId: String(ctx.chat.id),
+            senderId: String(ctx.from?.id ?? "unknown"),
+            isGroup: ctx.chat.type.endsWith("group"),
+            content: sanitizeInline(ctx.message.text),
+          }),
+        );
         await this.inboundHandler(
           normalizeTelegramInbound({
             chatId: String(ctx.chat.id),
@@ -58,7 +67,11 @@ export class TelegramChannel implements BaseChannel {
           }),
         );
       });
-      await this.bot.start();
+      // grammY long-polling blocks indefinitely; start without awaiting startup loop.
+      void this.bot.start().catch((error) => {
+        this.connected = false;
+        this.lastError = error instanceof Error ? error.message : "telegram_start_failed";
+      });
       this.connected = true;
       this.lastError = undefined;
     } catch (error) {
@@ -83,8 +96,8 @@ export class TelegramChannel implements BaseChannel {
       title: "Telegram Bot",
       summary: "Connect a Telegram bot token and allow Fahrenheit to receive/send messages.",
       fields: [
-        { key: "channels.telegram.enabled", label: "Enable channel", required: true, example: "true" },
-        { key: "channels.telegram.botToken", label: "Bot token", required: true, secret: true },
+        { key: "gateway.channels.telegram.enabled", label: "Enable channel", required: true, example: "true" },
+        { key: "gateway.channels.telegram.botToken", label: "Bot token", required: true, secret: true },
       ],
       docsUrl: "https://core.telegram.org/bots/tutorial",
     };

@@ -20,6 +20,18 @@ import qrcode from "qrcode-terminal";
 import type { BaseChannel } from "./base.js";
 import type { InboundEnvelope, OutboundEnvelope } from "../types.js";
 import type { ProviderSetupSpec, ProviderStatus } from "./base.js";
+import { formatLogLine, sanitizeInline } from "../logging/pretty.js";
+
+type BaileysLogger = {
+  level: string;
+  child: () => BaileysLogger;
+  trace: (...args: unknown[]) => void;
+  debug: (...args: unknown[]) => void;
+  info: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
+  fatal: (...args: unknown[]) => void;
+};
 
 function getMessageText(message: WAMessage): string {
   const payload = message.message;
@@ -39,6 +51,7 @@ export class WhatsAppChannel implements BaseChannel {
   private lastError: string | undefined;
   private shouldRun = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private qrAscii: string | undefined;
 
   constructor(
     private readonly authDir = path.join(process.cwd(), ".fahrenheit", "credentials", "whatsapp"),
@@ -80,9 +93,9 @@ export class WhatsAppChannel implements BaseChannel {
       title: "WhatsApp (Baileys QR pairing)",
       summary: "Pair with WhatsApp by scanning a terminal QR code; credentials persist on disk.",
       fields: [
-        { key: "channels.whatsapp.enabled", label: "Enable channel", required: true, example: "true" },
-        { key: "channels.whatsapp.authDir", label: "Auth directory", required: false, example: "~/.fahrenheit/credentials/whatsapp" },
-        { key: "channels.whatsapp.printQr", label: "Print QR in terminal", required: false, example: "true" },
+        { key: "gateway.channels.whatsapp.enabled", label: "Enable channel", required: true, example: "true" },
+        { key: "gateway.channels.whatsapp.authDir", label: "Auth directory", required: false, example: "~/.fahrenheit/credentials/whatsapp" },
+        { key: "gateway.channels.whatsapp.printQr", label: "Print QR in terminal", required: false, example: "true" },
       ],
       docsUrl: "https://deepwiki.com/openclaw/openclaw",
     };
@@ -95,6 +108,7 @@ export class WhatsAppChannel implements BaseChannel {
       connected: this.connected,
       mode: "native",
       lastError: this.lastError,
+      qrAscii: this.qrAscii,
     };
   }
 
@@ -108,6 +122,7 @@ export class WhatsAppChannel implements BaseChannel {
       version,
       printQRInTerminal: false,
       syncFullHistory: false,
+      logger: this.createBaileysLogger() as any,
     });
     this.socket = socket;
 
@@ -115,11 +130,18 @@ export class WhatsAppChannel implements BaseChannel {
     socket.ev.on("connection.update", (update: any) => {
       const { connection, lastDisconnect, qr } = update;
       if (qr && this.printQr) {
-        qrcode.generate(qr, { small: true });
+        qrcode.generate(qr, { small: true }, (ascii) => {
+          this.qrAscii = ascii;
+          this.lastError = "whatsapp_qr_scan_required";
+          console.info(formatLogLine("whatsapp", "qr_required", { reason: this.lastError }));
+          console.log(ascii);
+        });
       }
       if (connection === "open") {
         this.connected = true;
         this.lastError = undefined;
+        this.qrAscii = undefined;
+        console.info(formatLogLine("whatsapp", "connection_open", {}));
       }
       if (connection === "close") {
         this.connected = false;
@@ -127,10 +149,12 @@ export class WhatsAppChannel implements BaseChannel {
           ?.statusCode;
         if (statusCode === DisconnectReason.loggedOut) {
           this.lastError = "whatsapp_logged_out_repair_required";
+          console.info(formatLogLine("whatsapp", "connection_closed", { reason: this.lastError, statusCode }));
           return;
         }
         if (this.shouldRun) {
           this.lastError = "whatsapp_disconnected_reconnecting";
+          console.info(formatLogLine("whatsapp", "connection_closed", { reason: this.lastError, statusCode }));
           this.reconnectTimer = setTimeout(() => {
             void this.connect();
           }, 2000);
@@ -146,6 +170,14 @@ export class WhatsAppChannel implements BaseChannel {
         if (!content.trim()) continue;
         const sourceId = message.key.remoteJid ?? "unknown";
         const senderId = message.key.participant ?? sourceId;
+        console.info(
+          formatLogLine("whatsapp", "inbound", {
+            sourceId,
+            senderId,
+            isGroup: sourceId.endsWith("@g.us"),
+            content: sanitizeInline(content),
+          }),
+        );
         await this.inboundHandler({
           channelId: "whatsapp",
           sourceId,
@@ -164,5 +196,36 @@ export class WhatsAppChannel implements BaseChannel {
         });
       }
     });
+  }
+
+  private createBaileysLogger(): BaileysLogger {
+    const writer = (level: "trace" | "debug" | "info" | "warn" | "error" | "fatal") =>
+      (...args: unknown[]): void => {
+        const entry = args.find((value) => typeof value === "string") ?? args[0];
+        const line = formatLogLine("whatsapp", `baileys_${level}`, {
+          details: sanitizeInline(entry),
+        });
+        if (level === "warn") {
+          console.warn(line);
+          return;
+        }
+        if (level === "error" || level === "fatal") {
+          console.error(line);
+          return;
+        }
+        console.info(line);
+      };
+
+    const logger: BaileysLogger = {
+      level: "info",
+      child: () => logger,
+      trace: writer("trace"),
+      debug: writer("debug"),
+      info: writer("info"),
+      warn: writer("warn"),
+      error: writer("error"),
+      fatal: writer("fatal"),
+    };
+    return logger;
   }
 }
