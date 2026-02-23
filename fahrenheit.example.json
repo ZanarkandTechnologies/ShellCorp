@@ -1,61 +1,210 @@
 {
-  "workspaceDir": "./workspace",
-  "dataDir": "~/.fahrenheit",
-  "brainAgentId": "brain",
-  "heartbeat": {
-    "enabled": true,
-    "intervalMinutes": 30,
-    "promptPath": "HEARTBEAT.md"
-  },
-  "channels": {
-    "telegram": {
-      "enabled": false,
-      "botToken": "$TELEGRAM_BOT_TOKEN",
-      "allowFrom": ["*"]
-    },
-    "discord": {
-      "enabled": false,
-      "token": "$DISCORD_BOT_TOKEN",
-      "allowFrom": []
-    },
-    "slack": {
-      "enabled": false,
-      "botToken": "$SLACK_BOT_TOKEN",
-      "appToken": "$SLACK_APP_TOKEN",
-      "allowFrom": []
-    },
-    "whatsapp": {
-      "enabled": false,
-      "allowFrom": [],
-      "authDir": "~/.fahrenheit/credentials/whatsapp",
-      "printQr": true
-    }
-  },
-  "providers": {
-    "notion-comments": {
+  "runtime": {
+    "workspaceDir": "./workspace",
+    "dataDir": "~/.fahrenheit",
+    "ai": {
       "enabled": true,
-      "mode": "observational",
-      "allowFrom": ["*"]
+      "defaultModel": "moonshotai/kimi-k2.5",
+      "providers": {
+        "anthropic": {
+          "apiKey": "$ANTHROPIC_API_KEY"
+        },
+        "openai": {
+          "apiKey": "$OPENAI_API_KEY"
+        },
+        "openrouter": {
+          "apiKey": "$OPENROUTER_API_KEY"
+        },
+        "groq": {
+          "apiKey": "$GROQ_API_KEY"
+        },
+        "gemini": {
+          "apiKey": "$GEMINI_API_KEY"
+        }
+      }
     },
-    "discord-comments": {
+    "agent": {
+      "maxTokens": 8192,
+      "temperature": 0.7,
+      "maxToolIterations": 20,
+      "memoryWindow": 50,
+      "mockReply": "pong"
+    },
+    "heartbeat": {
       "enabled": true,
-      "mode": "observational",
-      "allowFrom": ["*"]
+      "intervalMinutes": 30,
+      "promptPath": "HEARTBEAT.md",
+      "sessionKey": "runtime:main"
+    },
+    "cron": {},
+    "memory": {
+      "autoPromoteTrust": [
+        "trusted",
+        "system"
+      ],
+      "compression": {
+        "maxLines": 2000,
+        "maxBytes": 2000000,
+        "minAgeMinutes": 60,
+        "keepLastLines": 400,
+        "snapshotDir": ".memory/history-snapshots"
+      }
     }
   },
   "gateway": {
-    "host": "127.0.0.1",
-    "port": 8787,
-    "ingestToken": "$FAHRENHEIT_INGEST_TOKEN"
+    "server": {
+      "host": "127.0.0.1",
+      "bind": "loopback",
+      "port": 8787,
+      "ingestToken": "$FAHRENHEIT_INGEST_TOKEN"
+    },
+    "tools": {
+      "allow": [],
+      "deny": [
+        "cron.remove"
+      ]
+    },
+    "channels": {
+      "telegram": {
+        "enabled": true,
+        "botToken": "$TELEGRAM_BOT_TOKEN"
+      },
+      "discord": {
+        "enabled": true,
+        "token": "$DISCORD_BOT_TOKEN"
+      },
+      "slack": {
+        "enabled": true,
+        "botToken": "$SLACK_BOT_TOKEN",
+        "appToken": "$SLACK_APP_TOKEN"
+      },
+      "whatsapp": {
+        "enabled": true,
+        "authDir": "~/.fahrenheit/credentials/whatsapp",
+        "printQr": true
+      },
+      "notion": {
+        "enabled": true,
+        "apiKey": "$NOTION_API_KEY",
+        "pageIds": [],
+        "pollIntervalMs": 30000,
+        "webhookEnabled": true,
+        "webhookPath": "/webhooks/notion",
+        "approveWebhookPath": "/webhook/notion/approve",
+        "webhookVerificationToken": "",
+        "requireWakeWord": true,
+        "wakeWords": [
+          "@fahrenheit"
+        ]
+      },
+      "custom": {
+        "enabled": true,
+        "ingestPath": "/ingest"
+      }
+    },
+    "groups": {
+      "personal": {
+        "description": "Personal inbox across providers",
+        "allowFrom": [
+          "*"
+        ],
+        "mode": "conversational",
+        "sources": [
+          {
+            "channel": "slack",
+            "scope": "dm"
+          },
+          {
+            "channel": "telegram",
+            "scope": "dm"
+          },
+          {
+            "channel": "whatsapp",
+            "scope": "dm"
+          },
+          {
+            "channel": "discord",
+            "scope": "dm"
+          },
+          {
+            "channel": "notion",
+            "scope": "comments"
+          },
+          {
+            "channel": "custom",
+            "scope": "all"
+          }
+        ]
+      },
+      "project-alpha": {
+        "description": "Project Alpha channels",
+        "allowFrom": [
+          "*"
+        ],
+        "mode": "conversational",
+        "sources": [
+          {
+            "channel": "slack",
+            "channelIds": [
+              "C_ALPHA_GEN",
+              "C_ALPHA_DEV"
+            ]
+          },
+          {
+            "channel": "discord",
+            "channelIds": [
+              "ALPHA_CHAN_ID"
+            ]
+          }
+        ]
+      }
+    },
+    "sink": {
+      "type": "convex",
+      "memoryMaxEntries": 10000,
+      "convex": {
+        "deploymentUrl": "$CONVEX_URL"
+      }
+    },
+    "logSink": "file"
   },
-  "convex": {
+  "ontology": {
     "enabled": true,
-    "deploymentUrl": "$CONVEX_URL",
-    "authToken": "$CONVEX_AUTH_TOKEN"
-  },
-  "skills": [
-    { "path": "./workspace/skills/github" },
-    { "path": "./workspace/skills/notion" }
-  ],
-  "logSink": "file"
+    "writeMinConfidence": 0.85,
+    "connectors": {
+      "notion": {
+        "enabled": true,
+        "workspaceName": "default",
+        "description": "Tasks are in Notion tasks database. Projects are in roadmap database. Goals are in goals database. CRM records are in CRM pipeline database.",
+        "projectTags": [
+          "ops"
+        ],
+        "roleTags": [
+          "founder"
+        ],
+        "trustClass": "trusted",
+        "apiKey": "$NOTION_API_KEY",
+        "entities": {
+          "task": {
+            "accessInstructions": "Use the Notion Tasks DB. Title field is Name, status is Status, owner is Owner, due date is Due."
+          },
+          "project": {
+            "accessInstructions": "Use the Notion Projects/Roadmap DB. Group by status and owner."
+          },
+          "goal": {
+            "accessInstructions": "Use the Notion Goals DB. Track status and numeric target/value."
+          },
+          "crmRecord": {
+            "accessInstructions": "Use the Notion CRM DB. Stage is pipeline state; value is deal amount."
+          }
+        },
+        "polling": {
+          "enabled": false,
+          "schedule": "0 9 * * *",
+          "prompt": "Pull latest updates from this source and extract observational memory.",
+          "sessionKey": "runtime:main"
+        }
+      }
+    }
+  }
 }
