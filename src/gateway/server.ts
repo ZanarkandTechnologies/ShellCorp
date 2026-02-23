@@ -10,6 +10,7 @@
 import path from "node:path";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 
 import { loadConfig, loadRawConfig, saveRawConfig } from "../config/loader.js";
 import { fahrenheitConfigSchema, sensitiveConfigPaths, type FahrenheitConfig } from "../config/schema.js";
@@ -135,6 +136,65 @@ function redactRawConfig(raw: Record<string, unknown>, sensitivePaths: string[])
     }
   }
   return copy;
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}...(truncated)`;
+}
+
+function extractApproveFields(payload: Record<string, unknown>): { url: string; id: string; title: string; status: string } {
+  const out = { url: "", id: "", title: "", status: "" };
+  const seen = new Set<unknown>();
+  const notionUrlRegex = /https:\/\/www\.notion\.so\/[^\s"'`]+/i;
+
+  const pushFromKey = (key: string, value: unknown): void => {
+    if (typeof value !== "string") return;
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!out.url && ["url", "pageurl", "notionurl"].includes(normalizedKey)) out.url = value;
+    if (!out.id && ["id", "pageid", "notionid", "blockid"].includes(normalizedKey)) out.id = value;
+    if (!out.title && ["title", "name", "pagetitle"].includes(normalizedKey)) out.title = value;
+    if (!out.status && ["status", "state", "ticketstatus"].includes(normalizedKey)) out.status = value;
+    if (!out.url) {
+      const urlMatch = value.match(notionUrlRegex);
+      if (urlMatch?.[0]) out.url = urlMatch[0];
+    }
+  };
+
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== "object") {
+      if (typeof value === "string" && !out.url) {
+        const urlMatch = value.match(notionUrlRegex);
+        if (urlMatch?.[0]) out.url = urlMatch[0];
+      }
+      return;
+    }
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      pushFromKey(key, nested);
+      visit(nested);
+    }
+  };
+
+  visit(payload);
+
+  if (!out.id && out.url) {
+    const compact = out.url.replace(/-/g, "").match(/[0-9a-fA-F]{32}/)?.[0];
+    if (compact) out.id = compact.toLowerCase();
+  }
+
+  return out;
+}
+
+function applyApproveTemplate(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(url|id|title|status|source|json)\}/g, (_match, key: string) => values[key] ?? "");
 }
 
 export class GatewayServer {
@@ -661,6 +721,16 @@ export class GatewayServer {
     return header.slice(7) === expected;
   }
 
+  private tokenAllowedWithQuery(req: IncomingMessage, queryToken?: string | null): boolean {
+    const expected = this.config?.gateway.server.ingestToken;
+    if (!expected) return true;
+    const header = req.headers.authorization;
+    if (header && header.startsWith("Bearer ") && header.slice(7) === expected) {
+      return true;
+    }
+    return Boolean(queryToken && queryToken === expected);
+  }
+
   private async handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (!this.config || !this.router || !this.messageStore) {
       this.writeJson(res, 503, { error: "gateway_not_ready" });
@@ -894,29 +964,55 @@ export class GatewayServer {
     }
 
     const notionApprovePath = this.config.gateway.channels.notion.approveWebhookPath || "/webhook/notion/approve";
-    if (req.method === "POST" && parsedUrl.pathname === notionApprovePath) {
+    if (req.method === "POST" && (parsedUrl.pathname === notionApprovePath || parsedUrl.pathname === "/approve")) {
+      const queryToken = parsedUrl.searchParams.get("token");
+      if (!this.tokenAllowedWithQuery(req, queryToken)) {
+        this.unauthorized(res);
+        return;
+      }
       try {
         const body = (await this.readJsonBody(req)) as Record<string, unknown>;
-        const contentCandidate = [body.prompt, body.message, body.content].find(
-          (entry) => typeof entry === "string" && entry.trim().length > 0,
-        );
-        if (typeof contentCandidate !== "string") {
-          this.writeJson(res, 400, { error: "prompt_or_message_or_content_required" });
-          return;
-        }
+        const extracted = extractApproveFields(body);
+        const finalSource =
+          (typeof req.headers["x-approval-source"] === "string" ? req.headers["x-approval-source"] : undefined) ??
+          parsedUrl.searchParams.get("source") ??
+          "webhook";
+        const promptTemplate =
+          (typeof req.headers["x-nanobot-prompt"] === "string" ? req.headers["x-nanobot-prompt"] : undefined) ??
+          parsedUrl.searchParams.get("prompt") ??
+          (
+            "Go work on ticket {url}. It has been approved.\n" +
+            "Status: {status}\n" +
+            "Source: {source}\n" +
+            "NotionPageId: {id}\n" +
+            "Title: {title}\n\n" +
+            "Here is the raw webhook payload (JSON). Use it as needed:\n" +
+            "```json\n{json}\n```\n"
+          );
+        const jsonString = truncateText(JSON.stringify(body), 4000);
+        const message = applyApproveTemplate(promptTemplate, {
+          url: extracted.url,
+          id: extracted.id,
+          title: extracted.title,
+          status: extracted.status,
+          source: finalSource,
+          json: jsonString,
+        });
+
+        const requestId = randomUUID();
         const metadataFromBody =
           typeof body.metadata === "object" && body.metadata ? (body.metadata as Record<string, unknown>) : {};
         const sourceId = typeof body.sourceId === "string"
           ? body.sourceId
           : typeof body.pageId === "string"
             ? body.pageId
-            : "notion:approve";
+            : extracted.id || `approve:${requestId}`;
         const payload: GatewayMessage = {
           channelId: typeof body.channelId === "string" ? body.channelId : "notion",
           sourceId,
-          senderId: typeof body.senderId === "string" ? body.senderId : "notion-approve",
+          senderId: typeof body.senderId === "string" ? body.senderId : `notion-approve:${requestId}`,
           senderName: typeof body.senderName === "string" ? body.senderName : "Notion Approve Button",
-          content: contentCandidate,
+          content: message,
           timestamp: Date.now(),
           direction: "inbound",
           mode: body.mode === "observational" ? "observational" : "conversational",
@@ -925,16 +1021,28 @@ export class GatewayServer {
           metadata: {
             ...metadataFromBody,
             notionApprove: true,
-            isGroup: typeof body.isGroup === "boolean" ? body.isGroup : true,
+            approvalSource: finalSource,
+            approvalUrl: extracted.url,
+            approvalId: extracted.id,
+            approvalTitle: extracted.title,
+            approvalStatus: extracted.status,
+            isGroup: typeof body.isGroup === "boolean" ? body.isGroup : false,
           },
         };
         const outbound = await this.processInboundMessage(payload);
         this.writeJson(res, 200, { accepted: true, outbound, stateVersion: this.nextStateVersion() });
         console.info(
           formatLogLine("notion-approve", "accepted", {
+            requestId,
             sourceId: payload.sourceId,
             senderId: payload.senderId,
             channelId: payload.channelId,
+            approvalSource: finalSource,
+            url: truncateText(extracted.url, 200),
+            id: truncateText(extracted.id, 80),
+            title: truncateText(extracted.title, 120),
+            status: truncateText(extracted.status, 80),
+            messagePreview: truncateText(message, 500),
           }),
         );
       } catch (error) {
