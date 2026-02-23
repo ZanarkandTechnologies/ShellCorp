@@ -5,15 +5,18 @@
   "description": "Fahrenheit - single-brain, multi-hand AI operating system",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "dev": "tsx src/cli/index.ts",
     "gateway": "tsx src/cli/index.ts gateway",
+    "gateway:with-ui": "concurrently -k \"GATEWAY_UI_URL=http://127.0.0.1:5173 pnpm run gateway\" \"pnpm run ui\"",
     "agent": "tsx src/cli/index.ts agent --message \"health check\"",
     "status": "tsx src/cli/index.ts status",
+    "ui": "vite --config ui/vite.config.ts",
+    "ui:build": "vite build --config ui/vite.config.ts",
     "test": "vitest",
     "test:once": "vitest run",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
@@ -23,23 +26,35 @@
     "@mariozechner/pi-agent-core": "latest",
     "@mariozechner/pi-ai": "latest",
     "@mariozechner/pi-coding-agent": "latest",
+    "@notionhq/client": "^5.9.0",
     "@slack/bolt": "latest",
     "@whiskeysockets/baileys": "^6.17.16",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "commander": "latest",
     "convex": "^1.32.0",
     "croner": "latest",
     "discord.js": "latest",
     "grammy": "latest",
+    "lucide-react": "^0.575.0",
     "qrcode-terminal": "^0.12.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tailwind-merge": "^3.5.0",
     "zod": "latest"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
     "@types/node": "latest",
     "@types/qrcode-terminal": "^0.12.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "concurrently": "^9.2.1",
     "convex-test": "^0.0.41",
     "tsx": "latest",
     "typescript": "latest",
+    "vite": "^7.3.1",
     "vitest": "^3.2.4"
   }
 }

@@ -4,3 +4,5 @@ dist/
 *.log
 .bahamut/
 .fahrenheit/
+
+.env.local
