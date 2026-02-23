@@ -1,74 +1,68 @@
-# Fahrenheit SLC-1 Ticket Plan
+# Fahrenheit Observational Memory Slice Board
 
-**Status**: Draft
-**Scope**: SLC-1 only
-**Date**: 2026-02-21
+**Status**: In progress
+**Scope**: SLC-03 observational memory (Notion + Slack MVP)
+**Date**: 2026-02-24
 
-## Ticket Board
+This slice establishes structured observational memory for workflow deltas across Notion and Slack, adds trust-gated promotion into durable memory, and enables heartbeat-driven compression with replay snapshots.
+
+## Ticket Board (Active Slice: SLC-03)
 
 | ID | Title | Depends On | Status |
-|---|---|---|---|
-| BAH-001 | Scaffold TypeScript project and workspace templates | - | pending |
-| BAH-002 | Implement config schema/loader with secret resolution | BAH-001 | pending |
-| BAH-003 | Implement logging foundation (LogSink + file/console sinks) | BAH-001 | pending |
-| BAH-004 | Implement security foundation (auth + policy hooks) | BAH-002, BAH-003 | pending |
-| BAH-005 | Implement gateway event bus and core router contracts | BAH-001 | pending |
-| BAH-006 | Implement memory store/search (HISTORY.md + MEMORY.md) | BAH-001 | pending |
-| BAH-007 | Implement skill manager and env injection | BAH-002, BAH-006 | pending |
-| BAH-008 | Implement brain runtime/session management and prompt builder | BAH-002, BAH-004, BAH-005, BAH-006, BAH-007 | pending |
-| BAH-009 | Implement scheduler (cron jobs + heartbeat) | BAH-002, BAH-005, BAH-008 | pending |
-| BAH-010 | Implement Telegram channel adapter end-to-end | BAH-002, BAH-005, BAH-008 | pending |
-| BAH-011 | Implement CLI commands (`gateway`, `agent`, `cron`, `status`) | BAH-002, BAH-005, BAH-008, BAH-009, BAH-010 | pending |
-| BAH-012 | Implement basic role-session and delegation launcher (`opencode`, `oagi`) | BAH-008, BAH-011 | pending |
-| BAH-013 | Implement Discord adapter (stretch) | BAH-010 | pending |
+| --- | --- | --- | --- |
+| OM-001 | Define observation event contract and project/role partitions | - | completed |
+| OM-002 | Implement structured history append + provenance/trust metadata | OM-001 | completed |
+| OM-003 | Add trust-gated promotion engine (`informational`, `operational`, `warning`) | OM-001, OM-002 | completed |
+| OM-004 | Implement combined-threshold compression with snapshot before truncate | OM-002 | completed |
+| OM-005 | Wire Notion/Slack polling and observational ingress into memory intake | OM-001, OM-002, OM-003 | completed |
+| OM-006 | Add first-pass insight extraction (blocker/risk/upsell/improvement) | OM-001, OM-002 | completed |
+| OM-007 | Add tests, runbook evidence, and backpressure checks | OM-001..OM-006 | completed |
 
-## Acceptance Criteria by Ticket
+## Implemented Evidence (SLC-03)
 
-### BAH-001
-- Project builds with `tsc --noEmit`
-- Base directories and workspace template files exist
+- Observation contracts and promotion types added in `src/types.ts`.
+- Structured observation parsing/derivation added in `src/memory/observations.ts`.
+- `MemoryStore` now supports:
+  - structured observation append to `HISTORY.md`
+  - trust-gated auto-promotion to `MEMORY.md`
+  - replay-safe compression with snapshots
+  - structured observation listing
+- New memory pipeline adapter in `src/memory/pipeline.ts` handles:
+  - observational gateway ingress writes
+  - cron polling run ingestion for provider sources
+  - heartbeat compression hook
+- Gateway integration updates:
+  - `src/gateway/router.ts` emits observational payloads to memory intake callback
+  - `src/gateway/server.ts` wires memory pipeline to router, cron, and heartbeat
+  - new RPC write endpoint: `memory.observation.append` (auth-gated)
+- Scheduler integration updates:
+  - `src/scheduler/cron.ts` supports optional observation metadata per job and run-complete callback
+  - `src/scheduler/heartbeat.ts` supports pre-prompt maintenance callback
+- Config and examples updated:
+  - `src/config/schema.ts` (`runtime.memory.*`, ontology connector partition/trust metadata)
+  - `src/config/loader.ts` (`runtime.memory.compression.snapshotDir` expansion)
+  - `fahrenheit.example.json` (memory config and connector tags/trust)
+- Memory module scaffolding added:
+  - `src/memory/AGENTS.md`
+  - `src/memory/README.md`
 
-### BAH-002
-- Config loads from path and validates with Zod
-- `$ENV_VAR` and `!command` secret references resolve
+## Acceptance Criteria (SLC-03)
 
-### BAH-003
-- `FileLogSink` writes JSONL to audit directory
-- `ConsoleLogSink` prints structured logs
+- [x] Cron/observer flows can append structured entries to `HISTORY.md`.
+- [x] Promotion writes trusted/system entries to `MEMORY.md`, untrusted entries stay gated.
+- [x] Compression uses combined threshold and snapshots before truncate.
+- [x] Memory events preserve provenance/trust metadata.
+- [x] Blocker/risk/upsell/improvement signals are captured as typed observations.
+- [x] Brain prompt continues to include durable `MEMORY.md` context each turn.
 
-### BAH-004
-- Unauthorized sender checks are enforceable
-- Tool policy hooks are available for session role checks
+## Required Backpressure Evidence
 
-### BAH-005
-- Router accepts normalized inbound envelope
-- Bus events emitted for inbound, outbound, cron, heartbeat
+- Focused tests passed:
+  - `npx vitest run src/memory/store.test.ts src/memory/pipeline.test.ts src/scheduler/cron.test.ts src/gateway/routing.test.ts`
+- Full `npm run test:once` currently fails due existing Convex test environment gap (`_generated` missing) unrelated to SLC-03 changes.
+- `npm run typecheck` / `npm run build` currently fail due pre-existing type errors in `src/channels/discord.ts` and `src/channels/whatsapp.ts`, unrelated to SLC-03.
 
-### BAH-006
-- History append and memory write functions work
-- Search returns matching snippets
+## Next Slice Handoff
 
-### BAH-007
-- Skills discovered from `workspace/skills/*`
-- Skill env injected for bash command execution
-
-### BAH-008
-- Brain session persists and reloads
-- Prompt assembly includes memory and skills index
-
-### BAH-009
-- Cron jobs persist/reload from JSON store
-- Heartbeat runs at configured interval
-
-### BAH-010
-- Telegram inbound/outbound messages flow through router + brain
-
-### BAH-011
-- CLI can start gateway, send one-shot prompt, inspect status, manage cron
-
-### BAH-012
-- Delegation launcher can invoke configured `opencode`/`oagi` commands
-- Run metadata is logged and queryable via status
-
-### BAH-013 (stretch)
-- Discord inbound/outbound path mirrors Telegram architecture
+- SLC-11 can consume `ObservationEvent` contracts for richer extractor models and confidence policying.
+- SLC-05 can use observation provenance/tags to scaffold generated skill manifests and sessionized tool calls.

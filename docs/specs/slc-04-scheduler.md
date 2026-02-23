@@ -17,6 +17,8 @@ Use local cron scheduling (`croner`) with a persistent JSON job store plus a ded
 - [ ] SC-1: Jobs persist in `~/.fahrenheit/cron-jobs.json` and restore on startup
 - [ ] SC-2: Scheduler executes interval and cron-expression jobs reliably
 - [ ] SC-3: Heartbeat runs every configured interval and supports suppressed `HEARTBEAT_OK`
+- [ ] SC-4: Scheduler persists run history for audit/replay (`~/.fahrenheit/cron-runs.jsonl`)
+- [ ] SC-5: Gateway RPC exposes cron list/add/remove/runs operations with predictable contracts
 
 ## Out of Scope
 
@@ -26,7 +28,7 @@ Use local cron scheduling (`croner`) with a persistent JSON job store plus a ded
 ## Technical Approach
 
 - **Engine**: `croner` + in-memory runtime registry
-- **Persistence**: JSON store with validation and migration version
+- **Persistence**: JSON definitions store plus JSONL run history with bounded query API
 - **Agent hook**: Job execution prompts target sessions
 
 ## Open Questions

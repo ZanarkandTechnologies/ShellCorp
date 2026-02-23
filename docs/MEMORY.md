@@ -1,4 +1,13 @@
+# MEMORY
+
 2026-02-22 17:37 +0800 | decision | MEM-0001 | docs-state,invariant | Canonical project planning/memory state lives under docs/: prd.md, specs/*, progress.md, HISTORY.md, MEMORY.md.
 2026-02-22 17:37 +0800 | decision | MEM-0002 | brand,invariant | Product name is Fahrenheit; agent persona is Blitz; company/legal name remains Zanarkand Technologies.
 2026-02-22 17:37 +0800 | decision | MEM-0003 | runtime,invariant | Default runtime/config storage root is ~/.fahrenheit and provider ingest env vars use the FAHRENHEIT_* prefix.
-
+2026-02-23 02:19 +0800 | decision | MEM-0004 | ontology,invariant | Canonical ontology is the product abstraction boundary: providers map into Task/Project/Goal/CrmRecord contracts and text-defined mappings must produce a transparent artifact with confidence-gated writes.
+2026-02-23 02:29 +0800 | decision | MEM-0005 | security,invariant | All layers enforce secure-by-default behavior: restricted gateway exposure, trusted-skill defaults, memory trust labels, and approval-gated external writes under low confidence or high impact.
+2026-02-23 02:35 +0800 | decision | MEM-0006 | architecture,invariant | System architecture separates engagement and observational memory pipelines; both flows consume one unified ontology/context RPC so agent responsiveness and long-horizon memory quality can evolve independently.
+2026-02-23 15:10 +0800 | decision | MEM-0007 | routing,invariant | Routing/session behavior is binding-driven and agent-namespaced with legacy fallback; ingress uses idempotency and state-version metadata, and scheduler persistence includes both job definitions and run history.
+2026-02-24 05:20 +0800 | decision | MEM-0010 | memory,invariant | Observational memory persists workflow/event deltas (not source-system clones) as structured entries carrying provenance (`source`, `sourceRef`) plus partition tags (`projectTags`, `roleTags`) and trust class for least-privilege retrieval.
+2026-02-24 05:20 +0800 | decision | MEM-0011 | memory,safety,invariant | Default auto-promotion allows only trusted/system sources into `MEMORY.md`; untrusted observations remain history-only pending explicit approval, and compression must snapshot `HISTORY.md` before truncation.
+2026-02-24 04:00 +0800 | decision | MEM-0008 | runtime,invariant | Session busy handling is explicit policy (`queue` default, `steer` opt-in) resolved per routing group and enforced by runtime per session key.
+2026-02-24 04:00 +0800 | decision | MEM-0009 | observability,invariant | Correlation IDs are propagated across inbound routing, runtime actions, outbound responses, and scheduler/heartbeat logs for replay-safe tracing.

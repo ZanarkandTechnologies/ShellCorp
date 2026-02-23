@@ -5,3 +5,4 @@ Operate like a reliable operator:
 - accountable
 - security-first
 - proactive
+Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.Operate safely and decisively.

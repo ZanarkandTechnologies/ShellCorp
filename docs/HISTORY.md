@@ -1,4 +1,13 @@
+# HISTORY
+
 2026-02-22 17:37 +0800 | refactor | MEM-0001 | structure,docs,init-project | Migrated project-state files to canonical docs layout: docs/prd.md, docs/specs/*, docs/progress.md, docs/HISTORY.md, docs/MEMORY.md.
 2026-02-22 17:37 +0800 | decision | MEM-0002 | branding,product,persona | Rebranded product identity to Fahrenheit and set runtime persona to Blitz while retaining legal/company identity as Zanarkand Technologies.
 2026-02-22 17:37 +0800 | refactor | MEM-0003 | config,paths,env | Renamed defaults and contracts from Bahamut to Fahrenheit: ~/.fahrenheit paths, FAHRENHEIT_* env prefixes, fahrenheit.example.json, and FahrenheitConfig schema/types.
-
+2026-02-23 02:19 +0800 | decision | MEM-0004 | ontology,notion,contract | Canonical ontology operations (list/get/create/update/search) are provider-agnostic contracts; company-specific tool structure is defined in natural language and compiled into a mapping artifact with confidence-gated writes.
+2026-02-23 02:29 +0800 | decision | MEM-0005 | security,invariants,specs | Security is now specified as secure-by-default and cross-layer: loopback/private gateway defaults, trusted-skill defaults, source trust labeling for memory, and confidence/approval gates for external writes.
+2026-02-23 02:35 +0800 | decision | MEM-0006 | architecture,pipelines,invariant | Fahrenheit architecture is defined as dual-pipeline: real-time engagement and asynchronous observational memory are separate flows that both consume a unified ontology/context RPC over provider adapters.
+2026-02-23 15:10 +0800 | decision | MEM-0007 | routing,compatibility,invariant | Gateway routing now follows OpenClaw-style bindings/session conventions with a backward-compatible legacy fallback; security defaults include bind/auth enforcement, redacted logging, idempotent ingest responses, and cron run-history persistence.
+2026-02-24 04:00 +0800 | feature | MEM-0008 | runtime,session,brain | Added per-group busy-session policy (`queue`/`steer`) with runtime enforcement so active PI sessions can be steered instead of only queued.
+2026-02-24 04:00 +0800 | feature | MEM-0009 | tracing,scheduler,gateway | Added correlation ID propagation across gateway ingress/egress, runtime agent logs, cron jobs, and heartbeat runs; expanded cron controls and added `fahrenheit tui` interactive command.
+2026-02-24 05:20 +0800 | feature | MEM-0010 | memory,observational,contracts | Implemented structured observational memory contracts with project/role partition tags, trust metadata, derived blocker/risk/upsell/improvement signals, and trust-gated promotion into durable memory.
+2026-02-24 05:20 +0800 | decision | MEM-0011 | memory,compression,safety | Observational memory compression now uses combined threshold policy (time + size/lines) and snapshots history before truncate to preserve forensic replay safety.
