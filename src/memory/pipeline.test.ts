@@ -30,6 +30,9 @@ describe("ObservationalMemoryPipeline", () => {
         correlationId: "cron:notion",
       },
       {
+        projectId: "project-alpha",
+        groupId: "alpha",
+        sessionKey: "group:alpha:main",
         source: "notion",
         sourceRef: "ontology.connectors.notion",
         summary: "Blocked task waiting on legal review",
@@ -47,6 +50,9 @@ describe("ObservationalMemoryPipeline", () => {
         correlationId: "cron:slack",
       },
       {
+        projectId: "project-alpha",
+        groupId: "alpha",
+        sessionKey: "group:alpha:main",
         source: "slack",
         sourceRef: "ontology.connectors.slack",
         summary: "Customer thread suggests upsell opportunity",

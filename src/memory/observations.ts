@@ -20,6 +20,7 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  ObservationCategory,
   MemoryPromotionClass,
   ObservationEvent,
   ObservationSignal,
@@ -72,6 +73,9 @@ export function deriveSignals(summary: string, baselineConfidence: number): Obse
 
 export interface NormalizeObservationInput {
   id?: string;
+  projectId: string;
+  groupId: string;
+  sessionKey: string;
   eventType: string;
   source: string;
   sourceRef: string;
@@ -83,16 +87,41 @@ export interface NormalizeObservationInput {
   summary: string;
   confidence?: number;
   trustClass: ObservationTrustClass;
+  status?: "accepted" | "pending_review";
+  category?: ObservationCategory;
+  rationale?: string;
+  provenanceRefs?: string[];
   signals?: ObservationSignal[];
   metadata?: Record<string, unknown>;
+}
+
+function inferCategory(summary: string, signals: ObservationSignal[]): ObservationCategory {
+  const normalized = summary.toLowerCase();
+  if (normalized.includes("decision") || normalized.includes("decided")) return "decision";
+  if (normalized.includes("commitment") || normalized.includes("promised") || normalized.includes("deadline")) return "commitment_shift";
+  if (signals.some((signal) => signal.type === "blocker" || signal.type === "risk")) return "blocker_risk";
+  if (signals.some((signal) => signal.type === "upsell" || signal.type === "improvement")) return "opportunity";
+  return "progress_delta";
 }
 
 export function normalizeObservation(input: NormalizeObservationInput): ObservationEvent {
   const confidence = clampConfidence(input.confidence ?? 0.75);
   const summary = input.summary.trim();
+  const projectId = input.projectId.trim();
+  const groupId = input.groupId.trim();
+  const sessionKey = input.sessionKey.trim();
+  if (!projectId) throw new Error("observation_project_id_required");
+  if (!groupId) throw new Error("observation_group_id_required");
+  if (!sessionKey) throw new Error("observation_session_key_required");
   const baseSignals = input.signals ?? deriveSignals(summary, confidence);
+  const category = input.category ?? inferCategory(summary, baseSignals);
+  const rationale = (input.rationale?.trim() || `Derived from ${category} heuristics and source summary.`).slice(0, 300);
+  const provenanceRefs = [...new Set((input.provenanceRefs ?? [input.sourceRef]).map((entry) => entry.trim()).filter(Boolean))];
   return {
     id: input.id ?? randomUUID(),
+    projectId,
+    groupId,
+    sessionKey,
     eventType: input.eventType.trim() || "workflow.delta",
     source: input.source.trim(),
     sourceRef: input.sourceRef.trim(),
@@ -104,6 +133,10 @@ export function normalizeObservation(input: NormalizeObservationInput): Observat
     summary,
     confidence,
     trustClass: input.trustClass,
+    status: input.status ?? "accepted",
+    category,
+    rationale,
+    provenanceRefs,
     signals: baseSignals.map((signal) => ({
       ...signal,
       confidence: clampConfidence(signal.confidence),
@@ -143,6 +176,9 @@ export function formatMemoryEntry(event: ObservationEvent, promotionClass: Memor
   const roleScope = event.roleTags.length > 0 ? event.roleTags.join(",") : "unscoped";
   return [
     `${event.occurredAt} | ${promotionClass} | source=${event.source}`,
+    `projectId=${event.projectId}`,
+    `group=${event.groupId}`,
+    `session=${event.sessionKey}`,
     `trust=${event.trustClass}`,
     `project=${projectScope}`,
     `role=${roleScope}`,

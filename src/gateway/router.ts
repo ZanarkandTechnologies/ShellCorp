@@ -81,7 +81,8 @@ export class GatewayRouter {
     inboundMessage.metadata = {
       ...(inboundMessage.metadata ?? {}),
       groupId: route.groupId,
-      sessionKey: route.sessionKey,
+      sessionKey: route.mainSessionKey,
+      threadSessionKey: route.sessionKey,
       correlationId,
     };
     await this.store.ingest(inboundMessage);
@@ -102,8 +103,9 @@ export class GatewayRouter {
       if (this.onObservationalEvent) {
         await this.onObservationalEvent({
           envelope,
+          projectId: route.groupId,
           groupId: route.groupId,
-          sessionKey: route.sessionKey,
+          sessionKey: route.mainSessionKey,
           correlationId,
         });
       }
@@ -114,7 +116,7 @@ export class GatewayRouter {
     const mockReply = this.config.runtime.agent.mockReply.trim();
     const response = mockReply
       ? mockReply
-      : await this.brain.handleMessage(route.sessionKey, promptInput, {
+      : await this.brain.handleMessage(route.mainSessionKey, promptInput, {
           busyPolicy: route.busyPolicy,
           correlationId,
         });
@@ -132,7 +134,8 @@ export class GatewayRouter {
     outboundMessage.metadata = {
       ...(outboundMessage.metadata ?? {}),
       groupId: route.groupId,
-      sessionKey: route.sessionKey,
+      sessionKey: route.mainSessionKey,
+      threadSessionKey: route.sessionKey,
       correlationId,
     };
     await this.store.ingest(outboundMessage);

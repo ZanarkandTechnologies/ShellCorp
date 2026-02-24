@@ -12,6 +12,9 @@ describe("MemoryStore observational pipeline", () => {
     const store = new MemoryStore(workspace);
 
     const first = await store.appendObservation({
+      projectId: "project-alpha",
+      groupId: "alpha",
+      sessionKey: "group:alpha:main",
       eventType: "workflow.delta",
       source: "notion",
       sourceRef: "page:123",
@@ -21,6 +24,9 @@ describe("MemoryStore observational pipeline", () => {
       roleTags: ["Ops"],
     });
     const second = await store.appendObservation({
+      projectId: "project-alpha",
+      groupId: "alpha",
+      sessionKey: "group:alpha:main",
       eventType: "workflow.delta",
       source: "slack",
       sourceRef: "channel:C1",
@@ -53,6 +59,9 @@ describe("MemoryStore observational pipeline", () => {
 
     const result = await store.appendObservation(
       {
+        projectId: "project-beta",
+        groupId: "beta",
+        sessionKey: "group:beta:main",
         eventType: "workflow.delta",
         source: "slack",
         sourceRef: "channel:C2",
@@ -75,6 +84,9 @@ describe("MemoryStore observational pipeline", () => {
 
     for (let i = 0; i < 12; i += 1) {
       await store.appendObservation({
+        projectId: "project-alpha",
+        groupId: "alpha",
+        sessionKey: "group:alpha:main",
         eventType: "workflow.delta",
         source: "notion",
         sourceRef: `page:${i}`,
@@ -105,5 +117,33 @@ describe("MemoryStore observational pipeline", () => {
 
     const remaining = (await store.readHistory()).split(/\r?\n/).filter(Boolean);
     expect(remaining.length).toBeLessThanOrEqual(5);
+  });
+
+  it("supports dual-key isolation by project and group", async () => {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), "fahrenheit-memory-partition-"));
+    const store = new MemoryStore(workspace);
+    await store.appendObservation({
+      projectId: "project-a",
+      groupId: "ops",
+      sessionKey: "group:ops:main",
+      eventType: "workflow.delta",
+      source: "slack",
+      sourceRef: "source:1",
+      summary: "Ops decision update",
+      trustClass: "trusted",
+    });
+    await store.appendObservation({
+      projectId: "project-b",
+      groupId: "ops",
+      sessionKey: "group:ops:main",
+      eventType: "workflow.delta",
+      source: "slack",
+      sourceRef: "source:2",
+      summary: "Another project update",
+      trustClass: "trusted",
+    });
+    const scoped = await store.listObservations(10, { projectId: "project-a", groupId: "ops" });
+    expect(scoped).toHaveLength(1);
+    expect(scoped[0]?.projectId).toBe("project-a");
   });
 });

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Provide file-backed observational memory with trust-gated promotion and safe compression.
+Provide DB-first (Convex) or file-backed observational memory with trust-gated promotion and safe compression.
 
 ## Public API / Entrypoints
 
@@ -15,6 +15,9 @@ Provide file-backed observational memory with trust-gated promotion and safe com
 ```ts
 const store = new MemoryStore("./workspace");
 await store.appendObservation({
+  projectId: "proj-ops",
+  groupId: "ops",
+  sessionKey: "group:ops:main",
   eventType: "workflow.delta",
   source: "notion",
   sourceRef: "page:123",

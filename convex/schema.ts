@@ -23,4 +23,24 @@ export default defineSchema({
     kind: v.union(v.literal("agent"), v.literal("cron"), v.literal("channel")),
     payload: v.any(),
   }).index("by_ts", ["ts"]),
+  observations: defineTable({
+    event: v.any(),
+    historyLine: v.string(),
+    memoryLine: v.optional(v.string()),
+    promotion: v.object({
+      promoted: v.boolean(),
+      reason: v.string(),
+      promotionClass: v.optional(v.union(v.literal("informational"), v.literal("operational"), v.literal("warning"))),
+    }),
+    projectId: v.string(),
+    groupId: v.string(),
+    sessionKey: v.string(),
+    source: v.string(),
+    createdAtMs: v.number(),
+  })
+    .index("by_project_ts", ["projectId", "createdAtMs"])
+    .index("by_group_ts", ["groupId", "createdAtMs"])
+    .index("by_session_ts", ["sessionKey", "createdAtMs"])
+    .index("by_source_ts", ["source", "createdAtMs"])
+    .index("by_ts", ["createdAtMs"]),
 });

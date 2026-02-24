@@ -141,6 +141,7 @@ export interface OntologyQueryResult {
 export type ObservationTrustClass = "trusted" | "untrusted" | "system";
 export type ObservationSignalType = "blocker" | "risk" | "upsell" | "improvement";
 export type MemoryPromotionClass = "informational" | "operational" | "warning";
+export type ObservationCategory = "decision" | "blocker_risk" | "progress_delta" | "commitment_shift" | "opportunity";
 
 export interface ObservationSignal {
   type: ObservationSignalType;
@@ -151,6 +152,9 @@ export interface ObservationSignal {
 
 export interface ObservationEvent {
   id: string;
+  projectId: string;
+  groupId: string;
+  sessionKey: string;
   eventType: string;
   source: string;
   sourceRef: string;
@@ -162,6 +166,10 @@ export interface ObservationEvent {
   summary: string;
   confidence: number;
   trustClass: ObservationTrustClass;
+  status: "accepted" | "pending_review";
+  category: ObservationCategory;
+  rationale: string;
+  provenanceRefs: string[];
   signals: ObservationSignal[];
   metadata?: Record<string, unknown>;
 }
@@ -170,4 +178,24 @@ export interface ObservationPromotionResult {
   promoted: boolean;
   reason: string;
   promotionClass?: MemoryPromotionClass;
+}
+
+export type GatewayControlMethod =
+  | "config.get"
+  | "config.channels.get"
+  | "config.groups.get"
+  | "config.apply"
+  | "config.reload"
+  | "cron.list"
+  | "cron.runs"
+  | "cron.add"
+  | "cron.update"
+  | "cron.enable"
+  | "cron.disable"
+  | "cron.remove";
+
+export interface GatewayControlRequest {
+  method: GatewayControlMethod;
+  params?: Record<string, unknown>;
+  confirmWrite?: boolean;
 }

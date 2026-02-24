@@ -25,12 +25,16 @@ import { MemoryStore } from "./store.js";
 
 export interface ObservationIngestPayload {
   envelope: InboundEnvelope;
+  projectId: string;
   groupId: string;
   sessionKey: string;
   correlationId: string;
 }
 
 export interface PollingObservationPayload {
+  projectId: string;
+  groupId: string;
+  sessionKey: string;
   source: string;
   sourceRef: string;
   summary: string;
@@ -39,6 +43,9 @@ export interface PollingObservationPayload {
   trustClass?: ObservationTrustClass;
   confidence?: number;
   metadata?: Record<string, unknown>;
+  category?: "decision" | "blocker_risk" | "progress_delta" | "commitment_shift" | "opportunity";
+  rationale?: string;
+  provenanceRefs?: string[];
 }
 
 export interface ObservationalMemoryConfig {
@@ -70,6 +77,9 @@ export class ObservationalMemoryPipeline {
 
     await this.memoryStore.appendObservation(
       {
+        projectId: payload.projectId,
+        groupId: payload.groupId,
+        sessionKey: payload.sessionKey,
         eventType: "workflow.delta",
         source: payload.envelope.channelId,
         sourceRef: payload.envelope.threadId ?? payload.envelope.sourceId,
@@ -81,19 +91,32 @@ export class ObservationalMemoryPipeline {
         summary: payload.envelope.content,
         confidence,
         trustClass,
+        category: typeof metadata.category === "string" ? metadata.category as PollingObservationPayload["category"] : undefined,
+        rationale: typeof metadata.rationale === "string" ? metadata.rationale : undefined,
+        provenanceRefs: Array.isArray(metadata.provenanceRefs)
+          ? metadata.provenanceRefs.filter((entry): entry is string => typeof entry === "string")
+          : undefined,
         metadata: {
           correlationId: payload.correlationId,
           senderId: payload.envelope.senderId,
-          sessionKey: payload.sessionKey,
         },
       },
-      this.config.promotion,
+      {
+        ...this.config.promotion,
+        minConfidenceAutoPromote: 0.7,
+      },
     );
   }
 
   async recordPollingRun(run: CronRunLog & { elapsedMs?: number }, payload: PollingObservationPayload): Promise<void> {
+    if (!payload.projectId.trim()) throw new Error("polling_project_id_required");
+    if (!payload.groupId.trim()) throw new Error("polling_group_id_required");
+    if (!payload.sessionKey.trim()) throw new Error("polling_session_key_required");
     await this.memoryStore.appendObservation(
       {
+        projectId: payload.projectId,
+        groupId: payload.groupId,
+        sessionKey: payload.sessionKey,
         eventType: "polling.delta",
         source: payload.source,
         sourceRef: payload.sourceRef,
@@ -104,6 +127,9 @@ export class ObservationalMemoryPipeline {
         summary: payload.summary,
         confidence: payload.confidence ?? 0.8,
         trustClass: payload.trustClass ?? "system",
+        category: payload.category,
+        rationale: payload.rationale,
+        provenanceRefs: payload.provenanceRefs,
         metadata: {
           ...(payload.metadata ?? {}),
           jobId: run.jobId,
@@ -112,7 +138,10 @@ export class ObservationalMemoryPipeline {
           elapsedMs: run.elapsedMs,
         },
       },
-      this.config.promotion,
+      {
+        ...this.config.promotion,
+        minConfidenceAutoPromote: 0.7,
+      },
     );
   }
 
