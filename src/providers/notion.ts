@@ -82,6 +82,27 @@ function propertyAsString(value: unknown): string | undefined {
   return undefined;
 }
 
+function extractSourceTitle(result: Record<string, unknown>): string {
+  const titleItems = Array.isArray(result.title) ? result.title : [];
+  const title = titleItems
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const plainText = (item as { plain_text?: unknown }).plain_text;
+      return typeof plainText === "string" ? plainText : "";
+    })
+    .join("")
+    .trim();
+  return title || "Untitled source";
+}
+
+export interface NotionDiscoveredSource {
+  id: string;
+  title: string;
+  url?: string;
+  objectType: string;
+  lastEditedTime?: string;
+}
+
 function toCanonicalEntity(entityType: OntologyEntityType, page: PageObjectResponse, context: ProviderOperationContext): CanonicalEntity {
   const mapping = context.mapping;
   const properties = page.properties as Record<string, unknown>;
@@ -244,6 +265,27 @@ export class NotionOntologyAdapter implements OntologyProviderAdapter {
       const content = [record.title, record.summary, record.status, record.owner].filter(Boolean).join(" ").toLowerCase();
       return content.includes(needle);
     });
+  }
+
+  async discoverDataSources(): Promise<NotionDiscoveredSource[]> {
+    const response = await this.client.search({
+      page_size: 100,
+      filter: {
+        property: "object",
+        value: "data_source",
+      },
+    } as never);
+    const rows = response.results
+      .map((result) => result as unknown as Record<string, unknown>)
+      .filter((result) => typeof result.id === "string")
+      .map((result) => ({
+        id: String(result.id),
+        title: extractSourceTitle(result),
+        url: typeof result.url === "string" ? result.url : undefined,
+        objectType: typeof result.object === "string" ? result.object : "data_source",
+        lastEditedTime: typeof result.last_edited_time === "string" ? result.last_edited_time : undefined,
+      }));
+    return rows.sort((a, b) => a.title.localeCompare(b.title));
   }
 
   private requireDatabase(context: ProviderOperationContext): string {

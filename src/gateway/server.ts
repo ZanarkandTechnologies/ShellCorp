@@ -37,12 +37,22 @@ import { inboundToMessage, parseGatewayMessage } from "./schema.js";
 import { createMessageStore, type MessageStore } from "./message-store.js";
 import { renderGatewayUi } from "./ui.js";
 import { OntologyService } from "../ontology/service.js";
-import { NotionOntologyAdapter } from "../providers/notion.js";
+import { getOntologyProviderAdapter } from "../providers/registry.js";
 import { collectSensitiveValues } from "../security/redact.js";
-import { isGatewayToolAllowed } from "../security/policy.js";
+import { gatewayRpcMethodToToolName, isGatewayToolAllowed } from "../security/policy.js";
 import { MemoryStore } from "../memory/store.js";
 import { ObservationalMemoryPipeline } from "../memory/pipeline.js";
+import { searchMemory } from "../memory/search.js";
 import { formatLogLine } from "../logging/pretty.js";
+import { SkillManager } from "../skills/manager.js";
+import {
+  commitProofToMemory,
+  discoverConnectorSources,
+  proposeConnectorOnboarding,
+  runConnectorProof,
+  type ConnectorProofResult,
+} from "../skills/bootstrap.js";
+import type { ObservationEvent, ObservationSignalType, ObservationTrustClass } from "../types.js";
 
 interface NotionWebhookCapableChannel extends BaseChannel {
   handleWebhook: (
@@ -92,6 +102,11 @@ function createLogSink(config: FahrenheitConfig): LogSink {
     );
   }
   return new RedactingLogSink(new FileLogSink(), sensitiveValues);
+}
+
+function controlRpcUrlForConfig(config: FahrenheitConfig): string {
+  const host = config.gateway.server.host === "0.0.0.0" ? "127.0.0.1" : config.gateway.server.host;
+  return `http://${host}:${config.gateway.server.port}/rpc`;
 }
 
 function deepClone<T>(value: T): T {
@@ -197,6 +212,133 @@ function applyApproveTemplate(template: string, values: Record<string, string>):
   return template.replace(/\{(url|id|title|status|source|json)\}/g, (_match, key: string) => values[key] ?? "");
 }
 
+export interface MemoryObservationFilters {
+  projectId?: string;
+  groupId?: string;
+  sessionKey?: string;
+  source?: string;
+  projectTag?: string;
+  trustClass?: ObservationTrustClass;
+  signalType?: ObservationSignalType;
+  status?: "accepted" | "pending_review";
+}
+
+export interface MemoryStats {
+  totalObservations: number;
+  pendingReview: number;
+  byTrustClass: Record<ObservationTrustClass, number>;
+  bySignalType: Record<ObservationSignalType, number>;
+  recentActivity: {
+    last24h: number;
+    last7d: number;
+  };
+}
+
+export function filterObservations(
+  observations: ObservationEvent[],
+  filters: MemoryObservationFilters,
+): ObservationEvent[] {
+  return observations.filter((event) => {
+    if (filters.projectId && event.projectId !== filters.projectId) return false;
+    if (filters.groupId && event.groupId !== filters.groupId) return false;
+    if (filters.sessionKey && event.sessionKey !== filters.sessionKey) return false;
+    if (filters.source && event.source !== filters.source) return false;
+    if (filters.projectTag && !event.projectTags.includes(filters.projectTag)) return false;
+    if (filters.trustClass && event.trustClass !== filters.trustClass) return false;
+    if (filters.signalType && !event.signals.some((signal) => signal.type === filters.signalType)) return false;
+    if (filters.status && event.status !== filters.status) return false;
+    return true;
+  });
+}
+
+export function buildMemoryStats(observations: ObservationEvent[], nowMs = Date.now()): MemoryStats {
+  const byTrustClass: Record<ObservationTrustClass, number> = {
+    trusted: 0,
+    untrusted: 0,
+    system: 0,
+  };
+  const bySignalType: Record<ObservationSignalType, number> = {
+    blocker: 0,
+    risk: 0,
+    upsell: 0,
+    improvement: 0,
+  };
+  let last24h = 0;
+  let last7d = 0;
+  let pendingReview = 0;
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const sevenDayMs = 7 * oneDayMs;
+  for (const event of observations) {
+    byTrustClass[event.trustClass] += 1;
+    if (event.status === "pending_review") pendingReview += 1;
+    for (const signal of event.signals) {
+      bySignalType[signal.type] += 1;
+    }
+    const ageMs = nowMs - Date.parse(event.occurredAt);
+    if (Number.isFinite(ageMs) && ageMs <= sevenDayMs) {
+      last7d += 1;
+      if (ageMs <= oneDayMs) {
+        last24h += 1;
+      }
+    }
+  }
+  return {
+    totalObservations: observations.length,
+    pendingReview,
+    byTrustClass,
+    bySignalType,
+    recentActivity: {
+      last24h,
+      last7d,
+    },
+  };
+}
+
+export function groupIdFromSessionKey(sessionKey: string): string | null {
+  const trimmed = sessionKey.trim();
+  if (!trimmed.startsWith("group:")) return null;
+  const parts = trimmed.split(":");
+  return parts.length >= 2 ? parts[1] ?? null : null;
+}
+
+export function groupRollupJobId(groupId: string): string {
+  return `group:${groupId}:daily-rollup`;
+}
+
+export function isGroupRollupJob(jobId: string): boolean {
+  return /^group:[^:]+:daily-rollup$/.test(jobId);
+}
+
+export function groupIdFromRollupJobId(jobId: string): string | null {
+  if (!isGroupRollupJob(jobId)) return null;
+  const parts = jobId.split(":");
+  return parts[1] ?? null;
+}
+
+export function buildGroupRollupPrompt(groupId: string, channels: string[]): string {
+  const sourceList = channels.join(", ") || "no configured sources";
+  return [
+    `Run end-of-day rollup for group ${groupId}.`,
+    "1) Fetch delta from all configured group sources for the past 24h.",
+    "2) Correlate cross-source workflow events, blockers, risks, upsell and improvements.",
+    "3) Append observations with required groupId and sessionKey partition metadata.",
+    `Sources: ${sourceList}.`,
+  ].join(" ");
+}
+
+function readPartitionQueryParams(parsedUrl: URL): {
+  projectId?: string;
+  groupId?: string;
+  sessionKey?: string;
+  allowPartitionOverride: boolean;
+} {
+  const projectId = parsedUrl.searchParams.get("projectId") ?? undefined;
+  const groupId = parsedUrl.searchParams.get("groupId") ?? undefined;
+  const sessionKey = parsedUrl.searchParams.get("sessionKey") ?? undefined;
+  const allowPartitionOverride = parsedUrl.searchParams.get("allowPartitionOverride") === "1";
+  return { projectId, groupId, sessionKey, allowPartitionOverride };
+}
+
 export class GatewayServer {
   private channels: BaseChannel[] = [];
   private channelById = new Map<string, BaseChannel>();
@@ -213,6 +355,8 @@ export class GatewayServer {
   private logSink: LogSink | null = null;
   private memoryStore: MemoryStore | null = null;
   private observationalMemory: ObservationalMemoryPipeline | null = null;
+  private skillManager: SkillManager | null = null;
+  private readonly connectorProofCache = new Map<string, ConnectorProofResult>();
   private stateVersion = 0;
   private readonly idempotencyCache = new Map<string, { expiresAt: number; payload: unknown }>();
 
@@ -221,7 +365,16 @@ export class GatewayServer {
     this.config = await loadConfig(configPath);
     const workspaceDir = path.resolve(this.config.runtime.workspaceDir);
     await ensureWorkspaceTemplate(workspaceDir);
-    this.memoryStore = new MemoryStore(workspaceDir);
+    this.memoryStore = new MemoryStore(workspaceDir, {
+      convex:
+        this.config.runtime.memory.storage === "convex" && this.config.gateway.sink.convex?.deploymentUrl
+          ? {
+              deploymentUrl: this.config.gateway.sink.convex.deploymentUrl,
+              authToken: this.config.gateway.sink.convex.authToken,
+            }
+          : undefined,
+    });
+    this.skillManager = new SkillManager(path.join(workspaceDir, "skills"));
     this.observationalMemory = new ObservationalMemoryPipeline(this.memoryStore, {
       promotion: { autoPromoteTrust: this.config.runtime.memory.autoPromoteTrust },
       compression: this.config.runtime.memory.compression,
@@ -238,6 +391,11 @@ export class GatewayServer {
           logSink,
           ai: this.config.runtime.ai,
           agent: this.config.runtime.agent,
+          gatewayControl: {
+            rpcUrl: controlRpcUrlForConfig(this.config),
+            ingestToken: this.config.gateway.server.ingestToken,
+            toolsPolicy: this.config.gateway.tools,
+          },
         })
       : new DisabledBrainRuntime();
 
@@ -264,9 +422,15 @@ export class GatewayServer {
     const cronRunsPath = this.config.runtime.cron.runsPath
       ? path.resolve(this.config.runtime.cron.runsPath)
       : path.join(this.config.runtime.dataDir, "cron-runs.jsonl");
-    this.cronManager = new CronManager(this.runtime, logSink, cronStorePath, cronRunsPath);
+    this.cronManager = new CronManager(
+      this.runtime,
+      logSink,
+      cronStorePath,
+      cronRunsPath,
+      async (run, def) => this.handleCronRunComplete(run, def),
+    );
     await this.cronManager.loadAndStart();
-    await this.syncOntologyPollingJobs();
+    await this.syncGroupRollupJobs();
 
     this.heartbeat = new HeartbeatRunner(
       this.runtime,
@@ -323,7 +487,15 @@ export class GatewayServer {
     const nextConfig = await loadConfig(this.configPath);
     const workspaceDir = path.resolve(nextConfig.runtime.workspaceDir);
     await ensureWorkspaceTemplate(workspaceDir);
-    this.memoryStore = new MemoryStore(workspaceDir);
+    this.memoryStore = new MemoryStore(workspaceDir, {
+      convex:
+        nextConfig.runtime.memory.storage === "convex" && nextConfig.gateway.sink.convex?.deploymentUrl
+          ? {
+              deploymentUrl: nextConfig.gateway.sink.convex.deploymentUrl,
+              authToken: nextConfig.gateway.sink.convex.authToken,
+            }
+          : undefined,
+    });
     this.observationalMemory = new ObservationalMemoryPipeline(this.memoryStore, {
       promotion: { autoPromoteTrust: nextConfig.runtime.memory.autoPromoteTrust },
       compression: nextConfig.runtime.memory.compression,
@@ -339,6 +511,11 @@ export class GatewayServer {
           logSink,
           ai: nextConfig.runtime.ai,
           agent: nextConfig.runtime.agent,
+          gatewayControl: {
+            rpcUrl: controlRpcUrlForConfig(nextConfig),
+            ingestToken: nextConfig.gateway.server.ingestToken,
+            toolsPolicy: nextConfig.gateway.tools,
+          },
         })
       : new DisabledBrainRuntime();
     this.router = new GatewayRouter(
@@ -372,9 +549,15 @@ export class GatewayServer {
     const cronRunsPath = nextConfig.runtime.cron.runsPath
       ? path.resolve(nextConfig.runtime.cron.runsPath)
       : path.join(nextConfig.runtime.dataDir, "cron-runs.jsonl");
-    this.cronManager = new CronManager(this.runtime, logSink, cronStorePath, cronRunsPath);
+    this.cronManager = new CronManager(
+      this.runtime,
+      logSink,
+      cronStorePath,
+      cronRunsPath,
+      async (run, def) => this.handleCronRunComplete(run, def),
+    );
     await this.cronManager.loadAndStart();
-    await this.syncOntologyPollingJobs();
+    await this.syncGroupRollupJobs();
 
     this.heartbeat = new HeartbeatRunner(
       this.runtime,
@@ -460,10 +643,20 @@ export class GatewayServer {
   }
 
   private sanitizeConfigRead(raw: Record<string, unknown>): Record<string, unknown> {
-    return redactRawConfig(raw, sensitiveConfigPaths);
+    const connectorPaths = Object.keys(this.config?.ontology.connectors ?? {}).map(
+      (connectorId) => `ontology.connectors.${connectorId}.apiKey`,
+    );
+    return redactRawConfig(raw, [...sensitiveConfigPaths, ...connectorPaths]);
   }
 
-  private getConfigSection(raw: Record<string, unknown>, section: "channels" | "groups"): Record<string, unknown> {
+  private getConfigSection(raw: Record<string, unknown>, section: "channels" | "groups" | "ontology"): Record<string, unknown> {
+    if (section === "ontology") {
+      const ontology = raw.ontology;
+      if (typeof ontology === "object" && ontology) {
+        return ontology as Record<string, unknown>;
+      }
+      return {};
+    }
     const gateway = typeof raw.gateway === "object" && raw.gateway ? (raw.gateway as Record<string, unknown>) : {};
     const value = gateway[section];
     if (typeof value === "object" && value) {
@@ -636,39 +829,157 @@ export class GatewayServer {
 
   private buildOntologyService(config: FahrenheitConfig): OntologyService | null {
     if (!config.ontology.enabled) return null;
-    const notionSource = config.ontology.connectors.notion;
-    if (!notionSource?.enabled) return null;
-    if (!notionSource.apiKey) {
-      throw new Error("ontology.connectors.notion.apiKey is required when ontology.connectors.notion.enabled is true");
+    for (const [connectorId, connector] of Object.entries(config.ontology.connectors)) {
+      if (!connector.enabled) continue;
+      const adapter = getOntologyProviderAdapter({ connectorId, connector });
+      return new OntologyService(config, adapter, connectorId);
     }
-
-    const adapter = new NotionOntologyAdapter(notionSource.apiKey);
-    return new OntologyService(config, adapter);
+    return null;
   }
 
-  private async syncOntologyPollingJobs(): Promise<void> {
+  private async syncGroupRollupJobs(): Promise<void> {
     if (!this.cronManager || !this.config) return;
-    if (!this.config.ontology.enabled) return;
-
-    for (const [sourceId, source] of Object.entries(this.config.ontology.connectors)) {
-      if (!source.enabled || !source.polling.enabled) continue;
-      const prompt = source.polling.prompt.trim() || `Pull updates from ${sourceId} and extract observational memory.`;
+    const schedule = this.config.runtime.memory.groupRollup.schedule;
+    const expected = new Set<string>();
+    for (const [groupId, group] of Object.entries(this.config.gateway.groups)) {
+      const id = groupRollupJobId(groupId);
+      expected.add(id);
+      const channels = [...new Set(group.sources.map((source) => source.channel))];
       await this.cronManager.addJob({
-        id: `ontology-poll:${sourceId}`,
-        schedule: source.polling.schedule,
-        prompt,
-        sessionKey: source.polling.sessionKey,
+        id,
+        schedule,
+        prompt: buildGroupRollupPrompt(groupId, channels),
+        sessionKey: `group:${groupId}:main`,
         enabled: true,
         observation: {
-          source: sourceId,
-          sourceRef: `ontology.connectors.${sourceId}`,
-          projectTags: source.projectTags,
-          roleTags: source.roleTags,
-          trustClass: source.trustClass,
-          confidence: 0.8,
+          source: "group-rollup",
+          sourceRef: `gateway.groups.${groupId}`,
+          projectTags: [groupId],
+          trustClass: "system",
+          confidence: 0.85,
         },
       });
     }
+    const definitions = await this.cronManager.listDefinitions();
+    await Promise.all(
+      definitions
+        .filter((def) => isGroupRollupJob(def.id) && !expected.has(def.id))
+        .map((def) => this.cronManager?.removeJob(def.id)),
+    );
+  }
+
+  private async handleCronRunComplete(
+    run: { ts: number; jobId: string; correlationId?: string; status: "ok" | "error"; detail: string; elapsedMs?: number },
+    def: {
+      id: string;
+      schedule: string;
+      prompt: string;
+      sessionKey: string;
+      enabled: boolean;
+      observation?: {
+        source: string;
+        sourceRef: string;
+        projectTags?: string[];
+        roleTags?: string[];
+        trustClass?: ObservationTrustClass;
+        confidence?: number;
+      };
+    },
+  ): Promise<void> {
+    if (!this.observationalMemory || !this.config || !this.messageStore) return;
+    if (!isGroupRollupJob(def.id)) return;
+    const groupId = groupIdFromSessionKey(def.sessionKey);
+    if (!groupId) return;
+    const group = this.config.gateway.groups[groupId];
+    if (!group) return;
+
+    const maxWrites = Math.max(1, this.config.runtime.memory.groupRollup.maxWrites);
+    const lowConfidenceThreshold = this.config.runtime.memory.groupRollup.lowConfidenceThreshold;
+    const dedupeBucketMinutes = Math.max(1, this.config.runtime.memory.groupRollup.dedupeBucketMinutes);
+    const aggregate = await this.collectGroupDailyDelta(groupId);
+
+    const dedupe = new Set<string>();
+    const summaries = [...aggregate.entries.entries()]
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, maxWrites);
+    for (const [key, value] of summaries) {
+      const [source] = key.split(":");
+      const bucket = Math.floor(value.latestTs / (dedupeBucketMinutes * 60 * 1000));
+      const dedupeKey = `${groupId}:${source}:${value.sourceRef}:${bucket}`;
+      if (dedupe.has(dedupeKey)) continue;
+      dedupe.add(dedupeKey);
+      const confidence = Math.min(0.95, 0.55 + Math.min(value.count, 40) / 100);
+      await this.observationalMemory.recordPollingRun(run, {
+        projectId: groupId,
+        groupId,
+        sessionKey: def.sessionKey,
+        source,
+        sourceRef: value.sourceRef,
+        summary: `Nightly group rollup captured ${value.count} updates from ${source} for ${groupId}. Sample: ${truncateText(value.sample, 180)}`,
+        projectTags: [groupId],
+        roleTags: ["operator"],
+        trustClass: "system",
+        confidence,
+        category: confidence < lowConfidenceThreshold ? "blocker_risk" : "progress_delta",
+        rationale: `Rollup aggregation from ${source} with ${value.count} observed updates in the lookback window.`,
+        provenanceRefs: [value.sourceRef],
+        metadata: {
+          rollup: true,
+          pendingReview: confidence < lowConfidenceThreshold,
+          inputCount: value.count,
+          totalInputs: aggregate.totalInputs,
+        },
+      });
+    }
+  }
+
+  private async collectGroupDailyDelta(groupId: string): Promise<{
+    entries: Map<string, { count: number; latestTs: number; sample: string; sourceRef: string }>;
+    totalInputs: number;
+  }> {
+    if (!this.config || !this.messageStore) {
+      return { entries: new Map(), totalInputs: 0 };
+    }
+    const group = this.config.gateway.groups[groupId];
+    if (!group) return { entries: new Map(), totalInputs: 0 };
+    const now = Date.now();
+    const lookbackMs = Math.max(1, this.config.runtime.memory.groupRollup.lookbackHours) * 60 * 60 * 1000;
+    const maxInputs = Math.max(1, this.config.runtime.memory.groupRollup.maxInputs);
+    const sourceChannels = new Set(group.sources.map((source) => source.channel));
+    const rows = await this.messageStore.listRecent(maxInputs * 3);
+    const candidates = rows
+      .filter((row) => row.direction === "inbound")
+      .filter((row) => row.timestamp >= now - lookbackMs)
+      .filter((row) => sourceChannels.has(row.channelId))
+      .filter((row) => {
+        const groupFromMeta = typeof row.metadata?.groupId === "string" ? row.metadata.groupId : "";
+        return groupFromMeta === groupId;
+      })
+      .slice(0, maxInputs);
+    const perSource = new Map<string, { count: number; latestTs: number; sample: string; sourceRef: string }>();
+    for (const row of candidates) {
+      const key = `${row.channelId}:${row.sourceId}`;
+      const existing = perSource.get(key);
+      if (!existing) {
+        perSource.set(key, {
+          count: 1,
+          latestTs: row.timestamp,
+          sample: row.content,
+          sourceRef: row.sourceId,
+        });
+        continue;
+      }
+      perSource.set(key, {
+        ...existing,
+        count: existing.count + 1,
+        latestTs: Math.max(existing.latestTs, row.timestamp),
+        sample: existing.sample || row.content,
+      });
+    }
+    return {
+      entries: perSource,
+      totalInputs: candidates.length,
+    };
   }
 
   private async startHttpApi(): Promise<void> {
@@ -794,6 +1105,190 @@ export class GatewayServer {
       return;
     }
 
+    if (req.method === "GET" && parsedUrl.pathname === "/config/ontology") {
+      const raw = await this.readRuntimeConfigRaw();
+      this.writeJson(res, 200, {
+        ontology: this.getConfigSection(this.sanitizeConfigRead(raw), "ontology"),
+        stateVersion: this.stateVersion,
+      });
+      return;
+    }
+
+    if (req.method === "GET" && parsedUrl.pathname === "/memory/stats") {
+      if (!this.memoryStore) {
+        this.writeJson(res, 503, { error: "memory_not_ready" });
+        return;
+      }
+      const partition = readPartitionQueryParams(parsedUrl);
+      if ((!partition.projectId || !partition.groupId) && !partition.allowPartitionOverride) {
+        this.writeJson(res, 400, { error: "memory_partition_requires_project_and_group", hint: "Set projectId+groupId or allowPartitionOverride=1" });
+        return;
+      }
+      const observations = await this.memoryStore.listObservations(5000, {
+        projectId: partition.projectId,
+        groupId: partition.groupId,
+        sessionKey: partition.sessionKey,
+      });
+      this.writeJson(res, 200, {
+        stats: buildMemoryStats(observations),
+      });
+      return;
+    }
+
+    if (req.method === "GET" && parsedUrl.pathname === "/memory/observations") {
+      if (!this.memoryStore) {
+        this.writeJson(res, 503, { error: "memory_not_ready" });
+        return;
+      }
+      const limitRaw = Number(parsedUrl.searchParams.get("limit") ?? "200");
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 5000)) : 200;
+      const source = parsedUrl.searchParams.get("source") ?? undefined;
+      const partition = readPartitionQueryParams(parsedUrl);
+      if ((!partition.projectId || !partition.groupId) && !partition.allowPartitionOverride) {
+        this.writeJson(res, 400, { error: "memory_partition_requires_project_and_group", hint: "Set projectId+groupId or allowPartitionOverride=1" });
+        return;
+      }
+      const projectTag = parsedUrl.searchParams.get("projectTag") ?? undefined;
+      const trustClassParam = parsedUrl.searchParams.get("trustClass");
+      const trustClass =
+        trustClassParam === "trusted" || trustClassParam === "untrusted" || trustClassParam === "system"
+          ? trustClassParam
+          : undefined;
+      const signalTypeParam = parsedUrl.searchParams.get("signalType");
+      const signalType =
+        signalTypeParam === "blocker" ||
+        signalTypeParam === "risk" ||
+        signalTypeParam === "upsell" ||
+        signalTypeParam === "improvement"
+          ? signalTypeParam
+          : undefined;
+      const statusParam = parsedUrl.searchParams.get("status");
+      const status = statusParam === "accepted" || statusParam === "pending_review" ? statusParam : undefined;
+      const observations = await this.memoryStore.listObservations(limit, {
+        projectId: partition.projectId,
+        groupId: partition.groupId,
+        sessionKey: partition.sessionKey,
+        source,
+        projectTag,
+        trustClass,
+        signalType,
+        status,
+      });
+      const filtered = filterObservations(observations, {
+        projectId: partition.projectId,
+        groupId: partition.groupId,
+        sessionKey: partition.sessionKey,
+        source,
+        projectTag,
+        trustClass,
+        signalType,
+        status,
+      });
+      this.writeJson(res, 200, {
+        observations: filtered,
+        total: filtered.length,
+        limit,
+      });
+      return;
+    }
+
+    if (req.method === "GET" && parsedUrl.pathname === "/memory/summary") {
+      if (!this.memoryStore) {
+        this.writeJson(res, 503, { error: "memory_not_ready" });
+        return;
+      }
+      const partition = readPartitionQueryParams(parsedUrl);
+      if ((!partition.projectId || !partition.groupId) && !partition.allowPartitionOverride) {
+        this.writeJson(res, 400, { error: "memory_partition_requires_project_and_group", hint: "Set projectId+groupId or allowPartitionOverride=1" });
+        return;
+      }
+      const content = await this.memoryStore.readMemory({
+        projectId: partition.projectId,
+        groupId: partition.groupId,
+        sessionKey: partition.sessionKey,
+      });
+      this.writeJson(res, 200, { content });
+      return;
+    }
+
+    if (req.method === "GET" && parsedUrl.pathname === "/memory/history") {
+      if (!this.memoryStore) {
+        this.writeJson(res, 503, { error: "memory_not_ready" });
+        return;
+      }
+      const lineLimitRaw = Number(parsedUrl.searchParams.get("limit") ?? "0");
+      const partition = readPartitionQueryParams(parsedUrl);
+      if ((!partition.projectId || !partition.groupId) && !partition.allowPartitionOverride) {
+        this.writeJson(res, 400, { error: "memory_partition_requires_project_and_group", hint: "Set projectId+groupId or allowPartitionOverride=1" });
+        return;
+      }
+      const content = await this.memoryStore.readHistory({
+        projectId: partition.projectId,
+        groupId: partition.groupId,
+        sessionKey: partition.sessionKey,
+      });
+      const lineLimit = Number.isFinite(lineLimitRaw) ? Math.max(0, Math.min(lineLimitRaw, 5000)) : 0;
+      if (lineLimit === 0) {
+        this.writeJson(res, 200, { content });
+        return;
+      }
+      const lines = content.split(/\r?\n/).filter(Boolean);
+      const limitedContent = lines.slice(Math.max(0, lines.length - lineLimit)).join("\n");
+      this.writeJson(res, 200, { content: limitedContent });
+      return;
+    }
+
+    if (req.method === "GET" && parsedUrl.pathname === "/memory/search") {
+      if (!this.memoryStore) {
+        this.writeJson(res, 503, { error: "memory_not_ready" });
+        return;
+      }
+      const query = (parsedUrl.searchParams.get("query") ?? "").trim();
+      if (!query) {
+        this.writeJson(res, 400, { error: "query_required" });
+        return;
+      }
+      const limitRaw = Number(parsedUrl.searchParams.get("limit") ?? "50");
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 200)) : 50;
+      const partition = readPartitionQueryParams(parsedUrl);
+      if ((!partition.projectId || !partition.groupId) && !partition.allowPartitionOverride) {
+        this.writeJson(res, 400, { error: "memory_partition_requires_project_and_group", hint: "Set projectId+groupId or allowPartitionOverride=1" });
+        return;
+      }
+      const results = (await searchMemory(this.memoryStore, query, {
+        projectId: partition.projectId,
+        groupId: partition.groupId,
+        sessionKey: partition.sessionKey,
+      })).slice(0, limit);
+      this.writeJson(res, 200, {
+        query,
+        results,
+      });
+      return;
+    }
+
+    if (req.method === "GET" && parsedUrl.pathname === "/memory/rollups") {
+      if (!this.cronManager || !this.memoryStore) {
+        this.writeJson(res, 503, { error: "memory_not_ready" });
+        return;
+      }
+      const runs = await this.cronManager.listRuns(200);
+      const groupRuns = runs.filter((run) => isGroupRollupJob(run.jobId)).slice(0, 50);
+      const groups = [...new Set(groupRuns.map((run) => groupIdFromRollupJobId(run.jobId)).filter(Boolean) as string[])];
+      const counts = await Promise.all(
+        groups.map(async (groupId) => {
+          const observations = await this.memoryStore?.listObservations(5000, { groupId });
+          return [groupId, observations?.length ?? 0] as const;
+        }),
+      );
+      const byGroup = Object.fromEntries(counts);
+      this.writeJson(res, 200, {
+        runs: groupRuns,
+        byGroup,
+      });
+      return;
+    }
+
     if (req.method === "GET" && parsedUrl.pathname.startsWith("/providers/")) {
       const segments = parsedUrl.pathname.split("/").filter(Boolean);
       const providerId = segments[1];
@@ -888,6 +1383,24 @@ export class GatewayServer {
       return;
     }
 
+    if (req.method === "POST" && parsedUrl.pathname.startsWith("/config/ontology/connectors/")) {
+      if (!this.tokenAllowed(req)) {
+        this.unauthorized(res);
+        return;
+      }
+      const connectorId = decodeURIComponent(parsedUrl.pathname.slice("/config/ontology/connectors/".length)).trim();
+      if (!connectorId) {
+        this.writeJson(res, 400, { error: "connector_id_required" });
+        return;
+      }
+      const body = (await this.readJsonBody(req)) as Record<string, unknown>;
+      const raw = await this.readRuntimeConfigRaw();
+      setNestedValue(raw, ["ontology", "connectors", connectorId], body);
+      await this.persistRuntimeConfigRaw(raw);
+      this.writeJson(res, 200, await this.reloadConfigRuntime());
+      return;
+    }
+
     if (req.method === "DELETE" && parsedUrl.pathname.startsWith("/config/groups/")) {
       if (!this.tokenAllowed(req)) {
         this.unauthorized(res);
@@ -924,6 +1437,7 @@ export class GatewayServer {
       const body = (await this.readJsonBody(req)) as {
         channels?: Record<string, unknown>;
         groups?: Record<string, unknown>;
+        ontology?: Record<string, unknown>;
       };
       const raw = await this.readRuntimeConfigRaw();
       if (body.channels) {
@@ -931,6 +1445,9 @@ export class GatewayServer {
       }
       if (body.groups) {
         setNestedValue(raw, ["gateway", "groups"], body.groups);
+      }
+      if (body.ontology) {
+        setNestedValue(raw, ["ontology"], body.ontology);
       }
       await this.persistRuntimeConfigRaw(raw);
       this.writeJson(res, 200, await this.reloadConfigRuntime());
@@ -1111,19 +1628,7 @@ export class GatewayServer {
       throw new Error("gateway_not_ready");
     }
 
-    const toolNameByMethod: Record<string, string> = {
-      "ingest.message": "ingest",
-      "providers.test": "providers.test",
-      "ontology.query": "ontology.query",
-      "ontology.text": "ontology.text",
-      "memory.observation.append": "memory.observation.append",
-      "cron.add": "cron.add",
-      "cron.update": "cron.update",
-      "cron.enable": "cron.enable",
-      "cron.disable": "cron.disable",
-      "cron.remove": "cron.remove",
-    };
-    const toolName = toolNameByMethod[method];
+    const toolName = gatewayRpcMethodToToolName(method);
     if (toolName && !isGatewayToolAllowed(toolName, this.config.gateway.tools)) {
       throw new Error(`tool_blocked:${toolName}`);
     }
@@ -1158,6 +1663,25 @@ export class GatewayServer {
       const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 200)) : 50;
       return this.cronManager.listRuns(limit);
     }
+    if (method === "group.rollup.aggregate") {
+      const groupId = String(params.groupId ?? "").trim();
+      if (!groupId) throw new Error("group_id_required");
+      const aggregate = await this.collectGroupDailyDelta(groupId);
+      const entries = [...aggregate.entries.entries()]
+        .sort((a, b) => b[1].count - a[1].count)
+        .map(([key, value]) => ({
+          sourceKey: key,
+          count: value.count,
+          latestTs: value.latestTs,
+          sourceRef: value.sourceRef,
+          sample: truncateText(value.sample, 220),
+        }));
+      return {
+        groupId,
+        totalInputs: aggregate.totalInputs,
+        entries,
+      };
+    }
     if (method === "ontology.mapping.describe") {
       if (!this.ontologyService) throw new Error("ontology_not_enabled");
       return this.ontologyService.getMappingArtifact();
@@ -1183,6 +1707,34 @@ export class GatewayServer {
       if (!text.trim()) throw new Error("ontology_text_required");
       return this.ontologyService.executeText(text);
     }
+    if (method === "connector.onboarding.discover") {
+      if (!this.config) throw new Error("gateway_not_ready");
+      const connectorId = String(params.connectorId ?? "notion").trim();
+      const discovery = await discoverConnectorSources(this.config, connectorId);
+      return {
+        ok: true,
+        connectorId,
+        platform: discovery.platform,
+        sources: discovery.sources,
+      };
+    }
+    if (method === "connector.onboarding.propose") {
+      if (!this.config) throw new Error("gateway_not_ready");
+      const connectorId = String(params.connectorId ?? "notion").trim();
+      const selectedSourceIds = Array.isArray(params.selectedSourceIds)
+        ? params.selectedSourceIds.filter((entry): entry is string => typeof entry === "string")
+        : undefined;
+      const proposal = await proposeConnectorOnboarding(
+        this.config.runtime.workspaceDir,
+        this.config,
+        connectorId,
+        selectedSourceIds,
+      );
+      return {
+        ok: true,
+        ...proposal,
+      };
+    }
     if (method === "config.get") {
       const raw = await this.readRuntimeConfigRaw();
       return { config: this.sanitizeConfigRead(raw), stateVersion: this.stateVersion };
@@ -1194,6 +1746,10 @@ export class GatewayServer {
     if (method === "config.groups.get") {
       const raw = await this.readRuntimeConfigRaw();
       return { groups: this.getConfigSection(this.sanitizeConfigRead(raw), "groups"), stateVersion: this.stateVersion };
+    }
+    if (method === "config.ontology.get") {
+      const raw = await this.readRuntimeConfigRaw();
+      return { ontology: this.getConfigSection(this.sanitizeConfigRead(raw), "ontology"), stateVersion: this.stateVersion };
     }
 
     if (!this.tokenAllowed(req)) {
@@ -1210,11 +1766,67 @@ export class GatewayServer {
       const groups = typeof params.groups === "object" && params.groups
         ? (params.groups as Record<string, unknown>)
         : undefined;
+      const ontology = typeof params.ontology === "object" && params.ontology
+        ? (params.ontology as Record<string, unknown>)
+        : undefined;
       const raw = await this.readRuntimeConfigRaw();
       if (channels) setNestedValue(raw, ["gateway", "channels"], channels);
       if (groups) setNestedValue(raw, ["gateway", "groups"], groups);
+      if (ontology) setNestedValue(raw, ["ontology"], ontology);
       await this.persistRuntimeConfigRaw(raw);
       return this.reloadConfigRuntime();
+    }
+    if (method === "connector.onboarding.commit") {
+      const connectorId = String(params.connectorId ?? "").trim();
+      if (!connectorId) throw new Error("connector_id_required");
+      const mappings = Array.isArray(params.mappings) ? params.mappings : [];
+      if (mappings.length === 0) throw new Error("onboarding_commit_requires_mappings");
+      const raw = await this.readRuntimeConfigRaw();
+      const rawConnector = this.getConfigSection(raw, "ontology").connectors as Record<string, unknown> | undefined;
+      const connectors = rawConnector && typeof rawConnector === "object" ? rawConnector : {};
+      const connector = connectors[connectorId];
+      if (!connector || typeof connector !== "object") throw new Error(`connector_not_found:${connectorId}`);
+      const entityPatch: Record<string, unknown> = {};
+      for (const mapping of mappings) {
+        if (!mapping || typeof mapping !== "object") continue;
+        const entityType = String((mapping as Record<string, unknown>).entityType ?? "").trim();
+        const databaseId = String((mapping as Record<string, unknown>).databaseId ?? "").trim();
+        if (!entityType || !databaseId) continue;
+        entityPatch[entityType] = { databaseId };
+      }
+      if (Object.keys(entityPatch).length === 0) throw new Error("onboarding_commit_requires_valid_database_ids");
+      const connectorRecord = connector as Record<string, unknown>;
+      const existingEntities =
+        connectorRecord.entities && typeof connectorRecord.entities === "object"
+          ? connectorRecord.entities as Record<string, unknown>
+          : {};
+      const nextEntities = {
+        ...existingEntities,
+      };
+      for (const [entityType, patch] of Object.entries(entityPatch)) {
+        const prev = existingEntities[entityType];
+        nextEntities[entityType] = {
+          ...(prev && typeof prev === "object" ? prev as Record<string, unknown> : {}),
+          ...(patch as Record<string, unknown>),
+        };
+      }
+      const nextConnector = {
+        ...connectorRecord,
+        entities: nextEntities,
+      };
+      const nextConnectors = {
+        ...connectors,
+        [connectorId]: nextConnector,
+      };
+      setNestedValue(raw, ["ontology", "connectors"], nextConnectors);
+      await this.persistRuntimeConfigRaw(raw);
+      const reloaded = await this.reloadConfigRuntime();
+      return {
+        ok: true,
+        connectorId,
+        appliedMappings: Object.keys(entityPatch).length,
+        ...reloaded,
+      };
     }
 
     if (method === "providers.test") {
@@ -1241,12 +1853,68 @@ export class GatewayServer {
       return { accepted: true, outbound, stateVersion: this.nextStateVersion() };
     }
 
+    if (method === "skills.execute") {
+      if (!this.skillManager) throw new Error("skills_not_ready");
+      const name = String(params.name ?? "").trim();
+      if (!name) throw new Error("skill_name_required");
+      const args = typeof params.args === "object" && params.args ? params.args as Record<string, string> : {};
+      const result = await this.skillManager.executeSkill(name, args, {
+        allowUntrusted: Boolean(params.allowUntrusted),
+        allowWriteCapable: Boolean(params.allowWriteCapable),
+      });
+      return { ok: true, result };
+    }
+
+    if (method === "connector.bootstrap.preview" || method === "connector.bootstrap.prove") {
+      if (!this.config || !this.ontologyService) throw new Error("ontology_not_enabled");
+      const connectorId = String(params.connectorId ?? "notion").trim();
+      const proof = await runConnectorProof(this.config.runtime.workspaceDir, this.config, this.ontologyService, connectorId);
+      this.connectorProofCache.set(connectorId, proof);
+      return {
+        ok: true,
+        connectorId,
+        confidence: proof.confidence,
+        generatedSkillPath: proof.generatedSkillPath,
+        evidencePath: proof.evidencePath,
+        fetchedCount: proof.fetchedRecords.length,
+        preview: proof.observationPreview,
+      };
+    }
+
+    if (method === "connector.bootstrap.commit") {
+      if (!this.observationalMemory || !this.config) throw new Error("memory_not_ready");
+      const connectorId = String(params.connectorId ?? "notion").trim();
+      const proof = this.connectorProofCache.get(connectorId);
+      if (!proof) throw new Error(`connector_proof_not_found:${connectorId}`);
+      const partitionGroupId = typeof params.groupId === "string" && params.groupId.trim()
+        ? params.groupId.trim()
+        : this.config.ontology.connectors[connectorId]?.workspaceName || "default";
+      const partitionProjectId = typeof params.projectId === "string" && params.projectId.trim()
+        ? params.projectId.trim()
+        : this.config.ontology.connectors[connectorId]?.projectTags?.[0] || partitionGroupId;
+      const partitionSessionKey = typeof params.sessionKey === "string" && params.sessionKey.trim()
+        ? params.sessionKey.trim()
+        : `group:${partitionGroupId}:main`;
+      const commit = await commitProofToMemory(proof, this.observationalMemory, this.config, {
+        projectId: partitionProjectId,
+        groupId: partitionGroupId,
+        sessionKey: partitionSessionKey,
+      });
+      return { ok: true, connectorId, ...commit };
+    }
+
     if (method === "memory.observation.append") {
       if (!this.observationalMemory) throw new Error("memory_not_ready");
       const summary = String(params.summary ?? "").trim();
       if (!summary) throw new Error("memory_observation_summary_required");
       const source = String(params.source ?? "").trim();
       if (!source) throw new Error("memory_observation_source_required");
+      const projectId = String(params.projectId ?? "").trim();
+      if (!projectId) throw new Error("memory_observation_project_id_required");
+      const groupId = String(params.groupId ?? "").trim();
+      if (!groupId) throw new Error("memory_observation_group_id_required");
+      const sessionKey = String(params.sessionKey ?? "").trim();
+      if (!sessionKey) throw new Error("memory_observation_session_key_required");
       await this.observationalMemory.recordPollingRun(
         {
           ts: Date.now(),
@@ -1256,6 +1924,9 @@ export class GatewayServer {
           correlationId: typeof params.correlationId === "string" ? params.correlationId : undefined,
         },
         {
+          projectId,
+          groupId,
+          sessionKey,
           source,
           sourceRef: String(params.sourceRef ?? source),
           summary,
@@ -1266,7 +1937,19 @@ export class GatewayServer {
               ? params.trustClass
               : "trusted",
           confidence: typeof params.confidence === "number" ? params.confidence : 0.8,
-          metadata: { via: "rpc" },
+          category:
+            params.category === "decision" ||
+            params.category === "blocker_risk" ||
+            params.category === "progress_delta" ||
+            params.category === "commitment_shift" ||
+            params.category === "opportunity"
+              ? params.category
+              : undefined,
+          rationale: typeof params.rationale === "string" ? params.rationale : undefined,
+          provenanceRefs: Array.isArray(params.provenanceRefs)
+            ? params.provenanceRefs.filter((entry): entry is string => typeof entry === "string")
+            : undefined,
+          metadata: { via: "rpc", projectId, groupId, sessionKey },
         },
       );
       return { ok: true };
