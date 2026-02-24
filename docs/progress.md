@@ -1,68 +1,106 @@
-# Fahrenheit Observational Memory Slice Board
+# Fahrenheit Chat Config Slice Board
 
 **Status**: In progress
-**Scope**: SLC-03 observational memory (Notion + Slack MVP)
+**Scope**: SLC-02 chat-native config + cron control
 **Date**: 2026-02-24
 
-This slice establishes structured observational memory for workflow deltas across Notion and Slack, adds trust-gated promotion into durable memory, and enables heartbeat-driven compression with replay snapshots.
+This slice makes operational controls accessible while in chat sessions by adding a runtime bridge to gateway config/cron methods, while preserving policy gates and auditability for write actions.
 
-## Ticket Board (Active Slice: SLC-03)
+## Ticket Board (Active Slice: SLC-02)
 
 | ID | Title | Depends On | Status |
 | --- | --- | --- | --- |
-| OM-001 | Define observation event contract and project/role partitions | - | completed |
-| OM-002 | Implement structured history append + provenance/trust metadata | OM-001 | completed |
-| OM-003 | Add trust-gated promotion engine (`informational`, `operational`, `warning`) | OM-001, OM-002 | completed |
-| OM-004 | Implement combined-threshold compression with snapshot before truncate | OM-002 | completed |
-| OM-005 | Wire Notion/Slack polling and observational ingress into memory intake | OM-001, OM-002, OM-003 | completed |
-| OM-006 | Add first-pass insight extraction (blocker/risk/upsell/improvement) | OM-001, OM-002 | completed |
-| OM-007 | Add tests, runbook evidence, and backpressure checks | OM-001..OM-006 | completed |
+| S2-201 | Schema + contract for chat configuration tools | - | in_progress |
+| S2-202 | Runtime gateway-RPC bridge for chat sessions | S2-201 | in_progress |
+| S2-203 | Safe config-write path with policy gates | S2-201, S2-202 | in_progress |
+| S2-204 | CLI parity + tests for chat-driven operations | S2-202, S2-203 | in_progress |
 
-## Implemented Evidence (SLC-03)
+## Acceptance Criteria (SLC-02)
 
-- Observation contracts and promotion types added in `src/types.ts`.
-- Structured observation parsing/derivation added in `src/memory/observations.ts`.
-- `MemoryStore` now supports:
-  - structured observation append to `HISTORY.md`
-  - trust-gated auto-promotion to `MEMORY.md`
-  - replay-safe compression with snapshots
-  - structured observation listing
-- New memory pipeline adapter in `src/memory/pipeline.ts` handles:
-  - observational gateway ingress writes
-  - cron polling run ingestion for provider sources
-  - heartbeat compression hook
-- Gateway integration updates:
-  - `src/gateway/router.ts` emits observational payloads to memory intake callback
-  - `src/gateway/server.ts` wires memory pipeline to router, cron, and heartbeat
-  - new RPC write endpoint: `memory.observation.append` (auth-gated)
-- Scheduler integration updates:
-  - `src/scheduler/cron.ts` supports optional observation metadata per job and run-complete callback
-  - `src/scheduler/heartbeat.ts` supports pre-prompt maintenance callback
-- Config and examples updated:
-  - `src/config/schema.ts` (`runtime.memory.*`, ontology connector partition/trust metadata)
-  - `src/config/loader.ts` (`runtime.memory.compression.snapshotDir` expansion)
-  - `fahrenheit.example.json` (memory config and connector tags/trust)
-- Memory module scaffolding added:
-  - `src/memory/AGENTS.md`
-  - `src/memory/README.md`
+- Chat session can read config and manage cron directly without manual `bash + curl`.
+- Chat session can apply config writes only when policy allows.
+- Write actions include correlation metadata and are auditable.
+- CLI config mutations and chat mutations use equivalent backend contracts.
+- Backpressure evidence captured (`npm run test:once`, `npm run typecheck`, `npm run build`) with unrelated baseline failures explicitly called out.
 
-## Acceptance Criteria (SLC-03)
+## Implemented Evidence (SLC-02)
 
-- [x] Cron/observer flows can append structured entries to `HISTORY.md`.
-- [x] Promotion writes trusted/system entries to `MEMORY.md`, untrusted entries stay gated.
-- [x] Compression uses combined threshold and snapshots before truncate.
-- [x] Memory events preserve provenance/trust metadata.
-- [x] Blocker/risk/upsell/improvement signals are captured as typed observations.
-- [x] Brain prompt continues to include durable `MEMORY.md` context each turn.
+- Runtime chat command bridge added in `src/agent/runner.ts`:
+  - `/config get|channels|groups`
+  - `/config apply <json> --confirm`
+  - `/config reload --confirm`
+  - `/cron list|runs|add|update|enable|disable|remove`
+- Gateway RPC tool mapping centralized for policy in `src/security/policy.ts` and applied in `src/gateway/server.ts`.
+- CLI config parity added:
+  - `config get --path`
+  - `config set --path --value`
+  - `config validate`
+  - files: `src/cli/commands/config.ts`, `src/cli/index.ts`
+- Runtime gateway control wiring added for gateway/agent/tui creation paths:
+  - `src/gateway/server.ts`
+  - `src/cli/commands/agent.ts`
+  - `src/cli/commands/tui.ts`
+- Tests added:
+  - `src/agent/runner.control.test.ts`
+  - `src/cli/commands/config.test.ts`
+  - `src/security/policy.test.ts` expanded
 
-## Required Backpressure Evidence
+## Required Evidence / Backpressure
 
 - Focused tests passed:
-  - `npx vitest run src/memory/store.test.ts src/memory/pipeline.test.ts src/scheduler/cron.test.ts src/gateway/routing.test.ts`
-- Full `npm run test:once` currently fails due existing Convex test environment gap (`_generated` missing) unrelated to SLC-03 changes.
-- `npm run typecheck` / `npm run build` currently fail due pre-existing type errors in `src/channels/discord.ts` and `src/channels/whatsapp.ts`, unrelated to SLC-03.
+  - `npx vitest run src/security/policy.test.ts src/agent/runner.control.test.ts src/cli/commands/config.test.ts src/scheduler/cron.test.ts src/config/loader.test.ts`
+- `npm run typecheck` passed.
+- `npm run build` passed.
+- `npm run test:once` currently fails only in `convex/messages.test.ts` because Convex `_generated` artifacts are missing in this environment (unrelated baseline issue).
 
-## Next Slice Handoff
+## Queued Follow-Ups (Not Active)
 
-- SLC-11 can consume `ObservationEvent` contracts for richer extractor models and confidence policying.
-- SLC-05 can use observation provenance/tags to scaffold generated skill manifests and sessionized tool calls.
+1. **SLC-04**: scheduler runtime controls beyond current cron contract.
+2. **SLC-05**: richer skill/tool discovery and OpenClaw-like slash ergonomics (`/config`, `/debug`) on top of this bridge.
+
+## Completed Follow-Up (Memory UI Tab)
+
+- Added read-only memory APIs in `src/gateway/server.ts`:
+  - `GET /memory/stats`
+  - `GET /memory/observations`
+  - `GET /memory/summary`
+  - `GET /memory/history`
+  - `GET /memory/search`
+- Added helper coverage in `src/gateway/memory.test.ts` for observation filtering and KPI aggregation.
+- Added Gateway UI memory surface in:
+  - `ui/src/App.tsx` (tabs: Events, Config, Memory)
+  - `ui/src/MemorySection.tsx`
+  - `ui/src/styles.css` (memory tab/panel styling)
+- Validation status:
+  - `npx vitest run src/gateway/memory.test.ts src/memory/store.test.ts src/memory/pipeline.test.ts src/gateway/routing.test.ts src/config/loader.test.ts` passed
+  - `npm run typecheck` passed
+  - `npm run build` passed
+  - `npm run test:once` fails only in `convex/messages.test.ts` due missing Convex `_generated` in current environment
+
+## Active Slice (Group-Centric Observational Memory)
+
+Status: in_progress
+
+| ID | Title | Status |
+| --- | --- | --- |
+| GRP-001 | Group rollup cron contract | completed |
+| GRP-002 | Source aggregation skill/tool per group | completed |
+| GRP-003 | Persistent group agent behavior | completed |
+| GRP-004 | DB-first memory write path | completed |
+| GRP-005 | Guardrails + quality controls | completed |
+| GRP-006 | Memory UI group-centric visibility | completed |
+| GRP-007 | Validation + onboarding runbook | in_progress |
+
+## Active Slice (Hybrid Onboarding + Dual-Key Memory)
+
+Status: in_progress
+
+| ID | Title | Status |
+| --- | --- | --- |
+| ONB-201 | Onboarding RPC contract + policy wiring | completed |
+| ONB-202 | Notion source discovery + hint resolution | completed |
+| ONB-203 | Proposal artifacts for mappings/skills | completed |
+| ONB-204 | Dual-required keys (`projectId` + `groupId`) for memory writes/reads | completed |
+| ONB-205 | Workflow signal extraction schema (category/rationale/provenance) | completed |
+| ONB-206 | Docs + runbooks + memory/history updates | completed |
+| ONB-207 | Tests for onboarding/proposal/partition isolation | in_progress |

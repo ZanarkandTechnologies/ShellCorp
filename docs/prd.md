@@ -34,7 +34,9 @@ Core platform behaviors:
 - Each agent can spawn delegated subprocess work (`opencode`, `oagi`) without blocking inbound handling
 - Ontology-first contract layer maps provider-specific models into canonical entities
 - Text-defined integrations can produce reusable generated tools/pipelines
-- Memory is pragmatic and file-backed (`HISTORY.md`, `MEMORY.md`) with trust and promotion rules
+- Connector bootstrap supports free-form profile instructions, proof-run validation, and transform preview before gated commits
+- Hybrid connector onboarding supports source auto-discovery, agentic mapping/skill proposal, and explicit commit approval
+- Memory is DB-first for shared multi-session access, with file-backed `HISTORY.md`/`MEMORY.md` as local fallback
 - Local cron + heartbeat drive proactive workflows (including ticket closing loops)
 - Convex (SLC-2) provides log ingestion, control APIs, and visualization data
 
@@ -71,6 +73,7 @@ Core platform behaviors:
 - Session-keyed agents persist and restore context across restarts
 - At least one kanban item closes end-to-end via autonomous execution loop
 - Text-to-ontology and ontology-to-tool pipeline path works with confidence-gated writes
+- Connector bootstrap can prove fetch connectivity and preview transformed observational-memory outputs before commit
 - Channel observer emits actionable workflow/blocker events with provenance
 - Logs are durable and queryable locally (SLC-1), with Convex integration path defined
 - Operators can inspect and intervene in delegated `opencode`/`oagi` workflows
