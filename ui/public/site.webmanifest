@@ -1,0 +1,14 @@
+{
+  "name": "Shell Company",
+  "short_name": "ShellCorp",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "theme_color": "#111827",
+  "background_color": "#111827",
+  "display": "standalone"
+}
