@@ -1,79 +1,67 @@
-# Fahrenheit
+# Shell Company
 
-Single-brain, multi-hand AI operating system.
+Gamified control center UI for OpenClaw multi-agent operations.
 
-## Runtime requirement
+## Product Direction
 
-- Node.js 20+ (required by PI packages and dependencies like `pi-tui`)
+This repository is now UI-first:
 
-## Quick start
+- OpenClaw handles runtime, routing, sessions, and plugin loading.
+- Shell Company maps OpenClaw state into a gamified office UI.
+- Notion logic is being packaged as an in-repo OpenClaw extension.
+
+Canonical indexes:
+
+- OpenClaw Multi-Agent Routing: https://docs.openclaw.ai/concepts/multi-agent#multi-agent-routing
+- OpenClaw Plugins: https://docs.openclaw.ai/tools/plugin#plugins
+
+## Requirements
+
+- Node.js 20+
+- An OpenClaw instance running on your VPS or local environment
+
+## Quick Start (UI)
 
 ```bash
 npm install
-npm run build
-cp fahrenheit.example.json ~/.fahrenheit/fahrenheit.json
-npm run gateway
+npm run ui
 ```
 
-## CLI
+By default, the UI expects an OpenClaw-compatible gateway endpoint at:
 
-- `npm run gateway` - start gateway server
-- `npm run status` - print runtime status
-- `npm run dev -- agent --message "hello"` - one-shot prompt
-- `npm run dev -- channels login` - generate provider setup scaffold (n8n workflow + env checker)
+- `http://127.0.0.1:8787` (override via `VITE_GATEWAY_URL`)
 
-Cron management examples:
+## Architecture Summary
 
-```bash
-npm run dev -- cron add --id daily-review --schedule "0 9 * * *" --prompt "Run daily review" --session "brain:main"
-npm run dev -- cron list
-npm run dev -- cron remove --id daily-review
-```
+- `ui/src/**` contains the gamified office and operational panels.
+- `src/**` contains remaining Notion-related logic being migrated to plugin form.
+- `docs/specs/SC01..SC04` define state mapping, plugin packaging, memory/skills surfaces, and chat bridge contracts.
 
-Provider scaffold (n8n-first):
+## OpenClaw State Model (MVP)
 
-```bash
-npm run dev -- channels login
-```
+Shell Company adapters treat OpenClaw as source of truth:
 
-Provider control endpoints:
+- `~/.openclaw/openclaw.json`
+- `~/.openclaw/agents/<agentId>/sessions/sessions.json`
+- `~/.openclaw/agents/<agentId>/sessions/*.jsonl`
+- OpenClaw gateway APIs for online operations (send/refresh/session state)
 
-- `GET /providers` - list provider setup and runtime status
-- `GET /providers/:id/setup` - provider setup requirements
-- `GET /providers/:id/status` - provider runtime status
-- `POST /providers/:id/test` - inject a provider test event through the full gateway pipeline
-- `GET /ui` - built-in visual gateway dashboard
-- `POST /rpc` - generic method-based control API (`gateway.status`, `providers.*`, `messages.list`, `ingest.message`, `ontology.*`)
+## In-Repo Notion Extension Workflow
 
-Gateway provider configuration:
+The Notion plugin is developed in-repo under an extension folder and loaded by OpenClaw via `plugins.load.paths`.
 
-- `providers` defines bridge/ingest providers (for example `notion-comments`, `discord-comments`)
-- Native realtime channels remain under `channels` (`telegram`, `discord`, `slack`, `whatsapp`)
+Typical local flow:
 
-Event sink configuration:
+1. Implement/update plugin code and `openclaw.plugin.json`.
+2. Point OpenClaw config `plugins.load.paths` to the extension directory.
+3. Restart OpenClaw gateway.
+4. Verify plugin is loaded:
+   - `openclaw plugins list`
+   - `openclaw plugins info <plugin-id>`
 
-- `eventSink.type = "memory" | "file" | "convex"`
-- `eventSink.type="memory"` for local/no-dependency testing
-- `eventSink.type="file"` for append-only JSONL on disk
-- `eventSink.type="convex"` when you want Convex-backed source-of-truth
-- `eventSink.type="convex"` requires `eventSink.convex.deploymentUrl` (and optional `eventSink.convex.authToken`)
+## Current Focus
 
-Pi model configuration:
-
-- `ai.enabled=true` enables conversational brain responses
-- `ai.providers` stores provider credentials/overrides (`apiKey`, `apiBase`, `extraHeaders`)
-- `agents.defaults.model` selects the active model as `provider/model` (for example `anthropic/claude-opus-4-5`)
-- `agents.defaults.workspace` can be used as workspace alias if `workspaceDir` is omitted
-
-Ontology mapping configuration:
-
-- `ontology.mappingDescription` is free-form plain language describing workspace structure
-- `ontology.providers.notion.apiKey` enables Notion-backed canonical operations
-- `ontology.entities.<entity>.databaseId` points each canonical entity to a Notion database
-- `ontology.writeMinConfidence` controls write gating for low-confidence mappings
-
-Ontology RPC methods:
-
-- `ontology.mapping.describe` - returns inferred mapping artifact + clarification questions
-- `ontology.query` - typed canonical operations (`list|get|create|update|search`)
-- `ontology.text` - natural language request resolver mapped to canonical operations
+- Keep and improve office/game visualization.
+- Replace old data access paths with OpenClaw adapters.
+- Upgrade memory and skills UI surfaces.
+- Route operator chat actions from UI back into OpenClaw sessions.

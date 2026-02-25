@@ -1,95 +1,97 @@
-# Product Requirements Document: Fahrenheit
+# Product Requirements Document: Shell Company
 
-**Status**: Draft
-**Created**: 2026-02-21
-**Updated**: 2026-02-23
+**Status**: Draft  
+**Created**: 2026-02-21  
+**Updated**: 2026-02-25  
 **Author**: gpt-5.3-codex
+
+## Documentation Indexes
+
+- OpenClaw Multi-Agent Routing: https://docs.openclaw.ai/concepts/multi-agent#multi-agent-routing
+- OpenClaw Plugins: https://docs.openclaw.ai/tools/plugin#plugins
 
 ## Job To Be Done
 
-When messages and tasks pile up across communication channels and work systems, a founder or small team needs autonomous AI workers that can listen continuously, gather context across real tools, execute work safely on a VPS, and show a full audit trail of what happened.
+When a small team runs many autonomous agents on one VPS, they need a single gamified control center that makes sessions, agents, memory, and skills easy to inspect and steer without rebuilding the underlying agent runtime.
 
 ## Audience
 
-- Solo founders operating across messaging, docs, and issue-tracking tools
-- Small teams that want one autonomous operations layer across channels
-- Teams that prefer VPS-hosted control over ad-hoc local automation
+- Founders and small teams already running OpenClaw on a VPS
+- Operators who need visual control over many agents/sessions
+- Teams that prefer local state directories over additional hosted infrastructure
 
 ## Problem
 
-Most agent stacks are either chat-only assistants or brittle automation scripts. They do not maintain durable per-conversation context, cannot reliably execute kanban-driven work loops, and rarely expose enough observability for trust.
+OpenClaw already solves agent runtime, routing, and plugin loading. The missing layer is a high-quality office UI that maps the existing OpenClaw state into understandable operational views for day-to-day multi-agent management.
 
 ## Solution
 
-Build Fahrenheit as an autonomous company control layer across four pillars:
+Build Shell Company as a UI-first control center on top of OpenClaw:
 
-1. **Channel gateway**: normalize inbound events from Slack, Discord, Telegram, WhatsApp, and route to session-keyed agents.
-2. **Ontology and skill layer**: map provider schemas into canonical entities, then generate callable tools/pipelines from text-defined system descriptions.
-3. **Autonomous execution loop**: run kanban-driven execution where agents gather context, plan, delegate computer work, verify outcomes, and close/report tasks.
-4. **Observational memory and observability**: collect ongoing signals via scheduler/heartbeat, synthesize durable memory, and log all decisions/actions with correlation IDs.
+1. **State mapping layer**: map OpenClaw state directories and gateway APIs into UI view models.
+2. **Gamified office UX**: keep and expand existing visualization and game logic.
+3. **Plugin-first integrations**: package Notion logic as an OpenClaw plugin instead of internal gateway code.
+4. **Operational surfaces**: improve memory and skill visibility for agent orchestration.
 
-Core platform behaviors:
+## Core Platform Behaviors
 
-- One persistent agent runtime hosts many session-keyed agents (one per DM/group/session key)
-- Each agent can spawn delegated subprocess work (`opencode`, `oagi`) without blocking inbound handling
-- Ontology-first contract layer maps provider-specific models into canonical entities
-- Text-defined integrations can produce reusable generated tools/pipelines
-- Connector bootstrap supports free-form profile instructions, proof-run validation, and transform preview before gated commits
-- Hybrid connector onboarding supports source auto-discovery, agentic mapping/skill proposal, and explicit commit approval
-- Memory is DB-first for shared multi-session access, with file-backed `HISTORY.md`/`MEMORY.md` as local fallback
-- Local cron + heartbeat drive proactive workflows (including ticket closing loops)
-- Convex (SLC-2) provides log ingestion, control APIs, and visualization data
+- OpenClaw remains the system-of-record for agents, sessions, and routing
+- UI reads from `~/.openclaw/agents/*`-derived state (through adapters) plus OpenClaw gateway APIs
+- Agent and session topology follows OpenClaw multi-agent bindings
+- Notion integration is shipped as an in-repo OpenClaw plugin
+- Chat actions from UI are bridged back to OpenClaw gateway APIs
+
+## MVP Focus
+
+Single VPS, one shared OpenClaw instance, many agents:
+
+- Show agent roster from OpenClaw state
+- Show per-agent sessions and session activity timeline
+- Support basic chat send/steer actions to OpenClaw
+- Ship Notion plugin in-repo and wired for MVP workflows
+- Ship upgraded Memory and Skills panels in the office UI
 
 ## Goals
 
-- Reliable always-on message handling for Telegram, Discord, Slack, and WhatsApp
-- One agent session per configured routing key (DM/group/session), preserving context over time
-- Canonical ontology operations (`list/get/create/update/search`) over Task, Project, Goal, and CRM records
-- Text-defined integration mapping that can be compiled into callable pipelines/tools
-- Kanban executor loop that can autonomously progress and close work items
-- Workflow and blocker detection from observed channel activity
-- Strong operational audit trail and traceability across parent/subagent execution
-- Human takeover path via direct VPS access and delegated process resume
+- Preserve and enhance the gamified office UI as the primary product value
+- Provide reliable session and agent observability from real OpenClaw state
+- Package Notion integration as an OpenClaw extension with schema-driven config
+- Keep architecture simple: local VPS state first, no mandatory external DB
+- Make per-agent sandbox and tool policy visible in UI
 
-## Non-Goals (SLC-1)
+## Non-Goals
 
-- Fully self-directed long-horizon swarm planning with no human guardrails
-- Production-grade horizontal auto-scaling across many hosts
-- Full BI suite or analytics warehouse replacement
-- Massive connector catalog before ontology reliability and execution quality are proven
+- Rebuilding custom gateway/routing/config runtime that duplicates OpenClaw
+- Building a generic public multi-tenant SaaS in this MVP
+- Large connector marketplace beyond Notion in first slice
+- Replacing OpenClaw core session/routing internals
 
 ## Constraints
 
 - TypeScript-first implementation
-- Pi runtime as the core agent layer
-- VPS-hosted execution plane with bash capability
-- Security-first defaults (allowlists, secret resolution, redaction, policy checks)
-- Spec-first workflow: approve specs before implementation
-- Keep OpenClaw mental-model compatibility for routing/session/config where high-value, while deferring non-core bloat
+- OpenClaw-compatible architecture and terminology
+- In-repo plugin development model for fast iteration
+- Spec-first workflow for major scope changes
+- Security-first defaults for plugin trust and secret handling
 
 ## Success Metrics
 
-- Gateway handles inbound and proactive outbound messaging with session-aware routing
-- Session-keyed agents persist and restore context across restarts
-- At least one kanban item closes end-to-end via autonomous execution loop
-- Text-to-ontology and ontology-to-tool pipeline path works with confidence-gated writes
-- Connector bootstrap can prove fetch connectivity and preview transformed observational-memory outputs before commit
-- Channel observer emits actionable workflow/blocker events with provenance
-- Logs are durable and queryable locally (SLC-1), with Convex integration path defined
-- Operators can inspect and intervene in delegated `opencode`/`oagi` workflows
+- Operators can view active agents and sessions from OpenClaw-backed data
+- Session timeline and chat bridge work for at least one real project flow
+- Notion plugin loads and runs under OpenClaw plugin system
+- Memory and Skills panels show actionable state for multiple agents
+- Docs/README/specs fully reflect this OpenClaw-first architecture
 
 ## Risks
 
-- Tool-generation sprawl if generated pipelines are not policy-gated
-- Session contention when many active session-keyed agents share one filesystem/runtime
-- Credential leaks if skill/tool config loading and logging redaction are weak
-- Backlog growth can outpace executor scheduling and verification throughput
-- Incorrect ontology mapping inference can cause bad writes without strict confidence/approval gates
-- Premature connector expansion can outpace product value and reliability
+- Data-shape mismatches between UI assumptions and OpenClaw state formats
+- Plugin safety issues if extension trust boundaries are weak
+- Hard deletion of old backend paths may remove fallback debugging tools too early
+- UI complexity can outpace MVP reliability if adapter contracts are not strict
 
 ## Release Slices
 
-- **SLC-1**: Core gateway + session-keyed runtime + scheduler/heartbeat + one channel end-to-end
-- **SLC-1.5 (current focus)**: Canonical ontology MVP (Notion-first) + text mapping inference + ontology RPC (`ontology.mapping.describe`, `ontology.query`, `ontology.text`) + write confidence gating
-- **SLC-2**: Full channel set + Convex logging/API/dashboard + observer pipeline + kanban executor loop + ontology explainability and policy hardening
-- **SLC-3**: Multi-provider ontology expansion (Linear/Jira/CRM/Attio) + richer autonomous workflow optimization + AI office visualization
+- **SC01**: OpenClaw state mapping contracts + adapter scaffolding
+- **SC02**: Notion plugin packaged as in-repo OpenClaw extension
+- **SC03**: UI memory/skills upgrade on top of adapter layer
+- **SC04**: Session/chat bridge from office UI to OpenClaw gateway
