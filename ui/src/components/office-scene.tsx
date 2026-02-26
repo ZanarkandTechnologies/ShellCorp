@@ -184,7 +184,7 @@ const SceneContents = ({
     officeObjects: allOfficeObjects,
     companyId,
 }: SceneContentsProps) => {
-    const enableOfficeObjects = import.meta.env.VITE_ENABLE_OFFICE_OBJECTS === 'true';
+    const enableOfficeObjects = import.meta.env.VITE_ENABLE_OFFICE_OBJECTS !== "false";
     // Use real store hooks with selectors to prevent unnecessary re-renders
     const isBuilderMode = useAppStore(state => state.isBuilderMode);
     const debugMode = useAppStore(state => state.debugMode);
@@ -195,9 +195,12 @@ const SceneContents = ({
     const placementMode = useAppStore(state => state.placementMode);
     const setSelectedObjectId = useAppStore(state => state.setSelectedObjectId);
 
-    const { openEmployeeChat, openTeamChat } = useChatActions();
+    const { openEmployeeChat } = useChatActions();
     const setIsTeamPanelOpen = useAppStore(state => state.setIsTeamPanelOpen);
     const setActiveTeamId = useAppStore(state => state.setActiveTeamId);
+    const setSelectedTeamId = useAppStore(state => state.setSelectedTeamId);
+    const setSelectedProjectId = useAppStore(state => state.setSelectedProjectId);
+    const setKanbanFocusAgentId = useAppStore(state => state.setKanbanFocusAgentId);
 
     const registerObject = useObjectRegistrationStore(state => state.registerObject);
     const unregisterObject = useObjectRegistrationStore(state => state.unregisterObject);
@@ -231,6 +234,16 @@ const SceneContents = ({
     const floorRef = useRef<THREE.Mesh>(null);
     const ceoDeskRef = useRef<THREE.Group>(null);
 
+    const ceoAnchorFromGlassWalls = useMemo<[number, number, number]>(() => {
+        const glassWalls = (allOfficeObjects ?? []).filter((obj) => obj.meshType === "glass-wall");
+        if (glassWalls.length === 0) return [0, 0, 15];
+        const avgX = glassWalls.reduce((sum, wall) => sum + wall.position[0], 0) / glassWalls.length;
+        const maxZ = glassWalls.reduce((max, wall) => Math.max(max, wall.position[2]), -Infinity);
+        const x = Number.isFinite(avgX) ? avgX : 0;
+        const z = Number.isFinite(maxZ) ? maxZ : 15;
+        return [Math.max(-HALF_FLOOR + 2, Math.min(HALF_FLOOR - 2, x)), 0, Math.max(-HALF_FLOOR + 2, Math.min(HALF_FLOOR - 2, z))];
+    }, [allOfficeObjects]);
+
     // Create refs for office objects - we'll collect these for obstacle detection
     const officeObjectRefs = useRef<Map<string, React.RefObject<THREE.Group | null>>>(new Map());
 
@@ -246,7 +259,6 @@ const SceneContents = ({
                 teamId: employee.teamId,
                 builtInRole: employee.builtInRole
             });
-            // openEmployeeChat automatically opens the dialog and sets the threadId
             await openEmployeeChat(employee._id, true);
         },
         [setActiveChatParticipant, openEmployeeChat],
@@ -263,9 +275,14 @@ const SceneContents = ({
 
             // Open team panel instead of chat
             setActiveTeamId(team._id);
+            setSelectedTeamId(team._id);
+            if (String(team._id).startsWith("team-")) {
+                setSelectedProjectId(String(team._id).replace(/^team-/, ""));
+            }
+            setKanbanFocusAgentId(null);
             setIsTeamPanelOpen(true);
         },
-        [setActiveTeamId, setIsTeamPanelOpen],
+        [setActiveTeamId, setIsTeamPanelOpen, setKanbanFocusAgentId, setSelectedProjectId, setSelectedTeamId],
     );
 
     // const desksByTeam = useMemo(() => {
@@ -292,7 +309,7 @@ const SceneContents = ({
 
         // Get all Management team desks to calculate total count
         const managementDesks = desks.filter(d => d.team === 'Management');
-        const clusterPosition = managementTeam.clusterPosition || [0, 0, 15];
+        const clusterPosition = managementTeam.clusterPosition || ceoAnchorFromGlassWalls;
 
         // Calculate position dynamically (relative to cluster position)
         const position = getAbsoluteDeskPosition(
@@ -307,7 +324,7 @@ const SceneContents = ({
             position,
             rotationY,
         };
-    }, [desks, teams]);
+    }, [desks, teams, ceoAnchorFromGlassWalls]);
 
     const officeObjectIdsString = useMemo(() => {
         if (!allOfficeObjects) return '';
@@ -698,6 +715,7 @@ const SceneContents = ({
                     wantsToWander={emp.wantsToWander}
                     jobTitle={emp.jobTitle}
                     team={emp.team}
+                    teamId={emp.teamId}
                     notificationCount={emp.notificationCount}
                     notificationPriority={emp.notificationPriority}
                     profileImageUrl={emp.profileImageUrl}
