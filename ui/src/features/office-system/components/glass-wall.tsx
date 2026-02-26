@@ -24,7 +24,7 @@ export default function GlassWall({
             initialPosition={position}
             initialRotation={rotation}
         >
-            <mesh castShadow receiveShadow>
+            <mesh position={[0, dimensions[1] / 2, 0]} castShadow receiveShadow>
                 <boxGeometry args={dimensions} />
                 <meshStandardMaterial
                     color="lightblue"

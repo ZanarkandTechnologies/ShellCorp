@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import OfficeSimulation from "@/components/office-simulation";
+import { gatewayBase, stateBase } from "@/lib/gateway-config";
 import { OpenClawAdapter } from "@/lib/openclaw-adapter";
 import type {
   AgentCardModel,
@@ -15,8 +16,6 @@ import type {
   SkillItemModel,
 } from "@/lib/openclaw-types";
 import { OfficeDataProvider } from "@/providers/office-data-provider";
-
-const gatewayBase = import.meta.env.VITE_GATEWAY_URL || "http://127.0.0.1:8787";
 
 type UiTab = "operations" | "memory" | "skills" | "office";
 type AppProps = {
@@ -50,7 +49,7 @@ const fallbackAgents: AgentCardModel[] = [
 ];
 
 export function App({ initialTab = "operations" }: AppProps): JSX.Element {
-  const adapter = useMemo(() => new OpenClawAdapter(gatewayBase), []);
+  const adapter = useMemo(() => new OpenClawAdapter(gatewayBase, stateBase), []);
   const [activeTab, setActiveTab] = useState<UiTab>(initialTab);
   const [agents, setAgents] = useState<AgentCardModel[]>([]);
   const [sessions, setSessions] = useState<SessionRowModel[]>([]);
@@ -119,7 +118,11 @@ export function App({ initialTab = "operations" }: AppProps): JSX.Element {
   async function refreshAgentsMemorySkills(): Promise<void> {
     try {
       const unified = await adapter.getUnifiedOfficeModel();
-      const nextAgents = unified.runtimeAgents.length > 0 ? unified.runtimeAgents : fallbackAgents;
+      const nextAgents = unified.configuredAgents.length > 0
+        ? unified.configuredAgents
+        : unified.runtimeAgents.length > 0
+          ? unified.runtimeAgents
+          : fallbackAgents;
       setAgents(nextAgents);
       setMemory(unified.memory);
       setSkills(unified.skills);

@@ -22,12 +22,11 @@
  * const { confirmCoordinatePlacement } = usePlacementSystem();
  * */
 import { useAppStore } from "@/lib/app-store";
-import { useThree } from "@react-three/fiber";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import * as THREE from "three";
-import { useState, useCallback } from "react";
-import { Id } from "@/convex/_generated/dataModel";
+import { useCallback } from "react";
+import { OfficeId } from "@/lib/types";
+import { gatewayBase, stateBase } from "@/lib/gateway-config";
+import { OpenClawAdapter } from "@/lib/openclaw-adapter";
 
 import { getGameObjectDefinition } from "../components/object-registry";
 
@@ -39,9 +38,42 @@ export function usePlacementSystem() {
     const setPlacementMode = useAppStore(state => state.setPlacementMode);
     const { active, type, data } = placementMode;
 
-    // Mutations
-    const createTeamAndPlace = useMutation(api.office_system.teams.createTeamAndPlace);
-    const incrementDeskCount = useMutation(api.office_system.teams.incrementDeskCount);
+    const adapter = new OpenClawAdapter(gatewayBase, stateBase);
+
+    async function createTeamAndPlace(input: {
+        name: string;
+        description: string;
+        companyId: OfficeId<"companies">;
+        position: [number, number, number];
+        services?: string[];
+    }): Promise<void> {
+        const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || `team-${Date.now()}`;
+        const objectId = `team-cluster-${slug}`;
+        const result = await adapter.upsertOfficeObject({
+            id: objectId,
+            identifier: objectId,
+            meshType: "team-cluster",
+            position: input.position,
+            rotation: [0, 0, 0],
+            metadata: {
+                teamId: `team-${slug}`,
+                name: input.name,
+                description: input.description,
+                services: input.services ?? [],
+            },
+        });
+        if (!result.ok) {
+            throw new Error(result.error ?? "team_cluster_place_failed");
+        }
+    }
+
+    async function incrementDeskCount(input: { teamId: OfficeId<"teams"> }): Promise<void> {
+        // Placeholder persistence action while desk-count model is sidecar-driven.
+        const tag = String(input.teamId).trim();
+        if (!tag) {
+            throw new Error("team_assignment_missing_team_id");
+        }
+    }
 
     // Actions
     const startPlacement = useCallback((type: PlacementType, data: Record<string, unknown>) => {
@@ -71,7 +103,7 @@ export function usePlacementSystem() {
                         await createTeamAndPlace({
                             name: data.name,
                             description: data.description,
-                            companyId: data.companyId as Id<"companies">,
+                            companyId: data.companyId as OfficeId<"companies">,
                             position: posArray,
                             services: Array.isArray(data.services) ? data.services : undefined,
                         });
@@ -108,7 +140,7 @@ export function usePlacementSystem() {
         }
 
         try {
-            await incrementDeskCount({ teamId: teamId as Id<"teams"> });
+            await incrementDeskCount({ teamId: teamId as OfficeId<"teams"> });
             cancelPlacement();
         } catch (error) {
             console.error("Failed to assign desk to team:", error);

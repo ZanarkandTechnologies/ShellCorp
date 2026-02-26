@@ -2,10 +2,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useFrame, ThreeEvent, useThree } from '@react-three/fiber';
 import { Edges } from '@react-three/drei';
 import * as THREE from 'three';
-import { useMutation } from 'convex/react';
 import { useAppStore } from '@/lib/app-store';
-import { api } from '@/convex/_generated/api';
-import type { Id } from '@/convex/_generated/dataModel';
+import type { OfficeId } from '@/lib/types';
+import { gatewayBase, stateBase } from '@/lib/gateway-config';
+import { OpenClawAdapter } from '@/lib/openclaw-adapter';
 import { ContextMenu, MenuAction } from './context-menu';
 import { Move, RotateCw, RotateCcw, Trash2, Settings } from 'lucide-react';
 import { DraggableController } from '../controllers/draggable-controller';
@@ -14,9 +14,9 @@ interface InteractiveObjectProps {
     children: React.ReactNode;
 
     // Database
-    objectId: Id<"officeObjects">;
+    objectId: OfficeId<"officeObjects">;
     objectType: string; // e.g., "plant", "couch", "team-cluster"
-    companyId?: Id<"companies">;
+    companyId?: OfficeId<"companies">;
 
     // Transform
     initialPosition?: [number, number, number];
@@ -72,6 +72,7 @@ export function InteractiveObject({
     const groupRef = useRef<THREE.Group>(null);
     const controllerRef = useRef<DraggableController | null>(null);
     const { camera, gl } = useThree();
+    const adapterRef = useRef<OpenClawAdapter>(new OpenClawAdapter(gatewayBase, stateBase));
 
     // Local state for optimistic updates
     const [localPosition, setLocalPosition] = useState<[number, number, number]>(initialPosition);
@@ -90,9 +91,35 @@ export function InteractiveObject({
     const objectIdString = `object-${objectId}`;
     const isSelected = selectedObjectId === objectIdString;
 
-    // Database mutations
-    const updateOfficeObjectPosition = useMutation(api.office_system.office_objects.updateOfficeObjectPosition);
-    const deleteOfficeObject = useMutation(api.office_system.office_objects.deleteOfficeObject);
+    async function updateOfficeObjectPosition(input: {
+        id: string;
+        position: [number, number, number];
+        rotation?: [number, number, number];
+    }): Promise<void> {
+        const adapter = adapterRef.current;
+        const current = await adapter.getOfficeObjects();
+        const existing = current.find((item) => item.id === input.id);
+        const payload = {
+            id: input.id,
+            identifier: existing?.identifier ?? input.id,
+            meshType: (existing?.meshType ?? objectType) as "team-cluster" | "plant" | "couch" | "bookshelf" | "pantry" | "glass-wall",
+            position: input.position,
+            rotation: input.rotation ?? existing?.rotation ?? initialRotation,
+            scale: existing?.scale,
+            metadata: existing?.metadata ?? {},
+        };
+        const result = await adapter.upsertOfficeObject(payload);
+        if (!result.ok) {
+            throw new Error(result.error ?? "office_object_update_failed");
+        }
+    }
+
+    async function deleteOfficeObject(input: { id: string }): Promise<void> {
+        const result = await adapterRef.current.deleteOfficeObject(input.id);
+        if (!result.ok) {
+            throw new Error(result.error ?? "office_object_delete_failed");
+        }
+    }
 
     // Initialize drag controller
     useEffect(() => {
@@ -107,7 +134,7 @@ export function InteractiveObject({
             // Database sync
             try {
                 await updateOfficeObjectPosition({
-                    id: objectId,
+                    id: String(objectId),
                     position: newPosArray,
                 });
             } catch (error) {
@@ -164,7 +191,7 @@ export function InteractiveObject({
 
         try {
             await updateOfficeObjectPosition({
-                id: objectId,
+                    id: String(objectId),
                 position: localPosition,
                 rotation: newRotArray,
             });

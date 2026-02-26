@@ -1,0 +1,346 @@
+[
+  {
+    "_creationTime": 1763698834092.7249,
+    "_id": "jd78w8wjq690v3p3p6tcdqrhw57vvnan",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834092,
+    "identifier": "team-k977h6zs775xgssryf3afg1mmn7vtx5a",
+    "meshType": "team-cluster",
+    "metadata": {
+      "teamId": "k977h6zs775xgssryf3afg1mmn7vtx5a"
+    },
+    "position": [
+      -12,
+      0,
+      -5
+    ],
+    "updatedAt": 1763837326686
+  },
+  {
+    "_creationTime": 1763698834092.7256,
+    "_id": "jd7bjkcgbkkk2gzyvjkn1tdtp57vtqyj",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834092,
+    "identifier": "team-k9703tv3w2dajw2kw4ckjq2c9h7vtm5f",
+    "meshType": "team-cluster",
+    "metadata": {
+      "teamId": "k9703tv3w2dajw2kw4ckjq2c9h7vtm5f"
+    },
+    "position": [
+      -12,
+      0,
+      5
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "updatedAt": 1763698834092
+  },
+  {
+    "_creationTime": 1763698834092.7258,
+    "_id": "jd73tctjvnhzya3jvvp75qxy1s7vtvrs",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834092,
+    "identifier": "team-k97cr8f6pqypsp6p7bwjtvp63h7vtgw6",
+    "meshType": "team-cluster",
+    "metadata": {
+      "teamId": "k97cr8f6pqypsp6p7bwjtvp63h7vtgw6"
+    },
+    "position": [
+      0,
+      0,
+      5
+    ],
+    "updatedAt": 1763838518356
+  },
+  {
+    "_creationTime": 1763698834092.726,
+    "_id": "jd7en158yb1336h7ye6kwz8gxx7vvrxg",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834092,
+    "identifier": "team-k970m8ecd22h4gj133jjg2hc197vvmhe",
+    "meshType": "team-cluster",
+    "metadata": {
+      "teamId": "k970m8ecd22h4gj133jjg2hc197vvmhe"
+    },
+    "position": [
+      12,
+      0,
+      5
+    ],
+    "updatedAt": 1763837252448
+  },
+  {
+    "_creationTime": 1763698834092.7263,
+    "_id": "jd71sw16sy22pxrq3mvgsc2eg97vt2x3",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834092,
+    "identifier": "team-k977zywtts36kp2b5mm75dzrx17vt3m1",
+    "meshType": "team-cluster",
+    "metadata": {
+      "teamId": "k977zywtts36kp2b5mm75dzrx17vt3m1"
+    },
+    "position": [
+      0,
+      0,
+      15
+    ],
+    "updatedAt": 1763837258637
+  },
+  {
+    "_creationTime": 1763698834162.0527,
+    "_id": "jd712zc5dbfhah2sp57wssmw0h7vtkc1",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834162,
+    "identifier": "ceo-wall-left",
+    "meshType": "glass-wall",
+    "metadata": {},
+    "position": [
+      -2,
+      0,
+      15
+    ],
+    "rotation": [
+      0,
+      1.5707963267948966,
+      0
+    ],
+    "updatedAt": 1764907430841
+  },
+  {
+    "_creationTime": 1763698834200.3818,
+    "_id": "jd788neydpd83k9vm21vjn931x7vv5zc",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834200,
+    "identifier": "ceo-wall-right",
+    "meshType": "glass-wall",
+    "metadata": {},
+    "position": [
+      2,
+      0,
+      15
+    ],
+    "rotation": [
+      0,
+      1.5707963267948966,
+      0
+    ],
+    "updatedAt": 1764907429144
+  },
+  {
+    "_creationTime": 1763698834236.5588,
+    "_id": "jd7at3p5edmyt771n2bmbsjnk97vv36s",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834236,
+    "identifier": "ceo-wall-front",
+    "meshType": "glass-wall",
+    "metadata": {},
+    "position": [
+      0,
+      0,
+      13
+    ],
+    "updatedAt": 1763849923937
+  },
+  {
+    "_creationTime": 1763698834266.8105,
+    "_id": "jd7833myrw81c9vp0xehdt4hsh7vvryn",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834266,
+    "identifier": "pantry-main",
+    "meshType": "pantry",
+    "metadata": {},
+    "position": [
+      0,
+      0,
+      -16
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "scale": [
+      1,
+      1,
+      1
+    ],
+    "updatedAt": 1763698834266
+  },
+  {
+    "_creationTime": 1763698834266.8108,
+    "_id": "jd74cgpve22bmevm1rmcsny4px7vt08f",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834266,
+    "identifier": "bookshelf-main",
+    "meshType": "bookshelf",
+    "metadata": {},
+    "position": [
+      -10.25,
+      0,
+      -17.3
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "scale": [
+      1,
+      1,
+      1
+    ],
+    "updatedAt": 1763698834266
+  },
+  {
+    "_creationTime": 1763698834266.811,
+    "_id": "jd7aye11fhantd2ab94q3cstf17vt6gj",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834266,
+    "identifier": "couch-main",
+    "meshType": "couch",
+    "metadata": {},
+    "position": [
+      10.25,
+      0,
+      -17
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "scale": [
+      1,
+      1,
+      1
+    ],
+    "updatedAt": 1763698834266
+  },
+  {
+    "_creationTime": 1763698834266.8113,
+    "_id": "jd7ct59rn4aehfj74zgsfnp1297vvydk",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834266,
+    "identifier": "plant-0",
+    "meshType": "plant",
+    "metadata": {},
+    "position": [
+      -15,
+      0,
+      -10
+    ],
+    "updatedAt": 1763839398448
+  },
+  {
+    "_creationTime": 1763698834266.8115,
+    "_id": "jd75tys7gs70y3gj2w9yry48zx7vt149",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834266,
+    "identifier": "plant-1",
+    "meshType": "plant",
+    "metadata": {},
+    "position": [
+      15,
+      0,
+      -10
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "scale": [
+      1,
+      1,
+      1
+    ],
+    "updatedAt": 1763698834266
+  },
+  {
+    "_creationTime": 1763698834266.8118,
+    "_id": "jd77j7s3964p5v5m98trhjc2817vt3nn",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834266,
+    "identifier": "plant-2",
+    "meshType": "plant",
+    "metadata": {},
+    "position": [
+      -15,
+      0,
+      10
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "scale": [
+      1,
+      1,
+      1
+    ],
+    "updatedAt": 1763698834266
+  },
+  {
+    "_creationTime": 1763698834266.812,
+    "_id": "jd7f9z74wf26hn439gke6h4h097vtmy7",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698834266,
+    "identifier": "plant-3",
+    "meshType": "plant",
+    "metadata": {},
+    "position": [
+      15,
+      0,
+      10
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "scale": [
+      1,
+      1,
+      1
+    ],
+    "updatedAt": 1763698834266
+  },
+  {
+    "_creationTime": 1763698903588.1943,
+    "_id": "jd75pyzab75am3jh827vhgb2dh7vvvra",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763698903591,
+    "identifier": "team-k97dpv7rgj5sr3raz4z0pfzgkd7vt0tn",
+    "meshType": "team-cluster",
+    "metadata": {
+      "teamId": "k97dpv7rgj5sr3raz4z0pfzgkd7vt0tn"
+    },
+    "position": [
+      0,
+      -1.7763568394002505e-14,
+      -5.5
+    ],
+    "updatedAt": 1763847734285
+  },
+  {
+    "_creationTime": 1763724801312.3784,
+    "_id": "jd77y9m0jf19hs84vke8qs1qa17vv5mw",
+    "companyId": "jh70ft5ee75nykbre78t8m8wkh7vvpqx",
+    "createdAt": 1763724801316,
+    "identifier": "team-k97bdcs2xjpg2ewqybb1xqkv397vth44",
+    "meshType": "team-cluster",
+    "metadata": {
+      "teamId": "k97bdcs2xjpg2ewqybb1xqkv397vth44"
+    },
+    "position": [
+      10.5,
+      0,
+      -5
+    ],
+    "updatedAt": 1764156179740
+  }
+]
