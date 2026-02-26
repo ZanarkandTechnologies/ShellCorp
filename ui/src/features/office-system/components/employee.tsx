@@ -17,7 +17,7 @@ import PathVisualizer from "@/features/nav-system/components/path-visualizer";
 import StatusIndicator, { StatusType } from "@/features/nav-system/components/status-indicator";
 import { getRandomItem } from "@/lib/utils";
 import { ContextMenu } from "./context-menu";
-import { MessageSquare, Monitor, UserCog, CheckSquare, Book } from 'lucide-react';
+import { MessageSquare, Monitor, UserCog, CheckSquare, Book, Brain } from 'lucide-react';
 import { useAppStore } from "@/lib/app-store";
 import { Id } from "@/convex/_generated/dataModel";
 
@@ -36,6 +36,7 @@ interface EmployeeProps {
     wantsToWander?: boolean;
     jobTitle?: string;
     team?: string;
+    teamId?: string;
     notificationCount?: number;
     notificationPriority?: number;
     profileImageUrl?: string; // Profile image URL for expert imports (displayed as head texture)
@@ -193,6 +194,7 @@ const Employee = memo(function Employee({
     wantsToWander = true,
     jobTitle,
     team,
+    teamId,
     notificationCount = 0,
     notificationPriority = 0,
 }: EmployeeProps) {
@@ -213,7 +215,12 @@ const Employee = memo(function Employee({
     const setViewComputerEmployeeId = useAppStore(state => state.setViewComputerEmployeeId);
     const viewComputerEmployeeId = useAppStore(state => state.viewComputerEmployeeId);
     const setTrainingEmployeeId = useAppStore(state => state.setTrainingEmployeeId);
-    const setTaskStatusEmployeeId = useAppStore(state => state.setTaskStatusEmployeeId);
+    const setMemoryPanelEmployeeId = useAppStore(state => state.setMemoryPanelEmployeeId);
+    const setIsTeamPanelOpen = useAppStore(state => state.setIsTeamPanelOpen);
+    const setActiveTeamId = useAppStore(state => state.setActiveTeamId);
+    const setSelectedTeamId = useAppStore(state => state.setSelectedTeamId);
+    const setSelectedProjectId = useAppStore(state => state.setSelectedProjectId);
+    const setKanbanFocusAgentId = useAppStore(state => state.setKanbanFocusAgentId);
 
     const [isHovered, setIsHovered] = useState(false);
     const highlightedEmployeeIds = useAppStore(state => state.highlightedEmployeeIds);
@@ -544,6 +551,7 @@ const Employee = memo(function Employee({
             color: 'blue',
             position: 'top' as const,
             onClick: () => {
+                setSelectedObjectId(null);
                 onClick();
             }
         },
@@ -568,13 +576,35 @@ const Employee = memo(function Employee({
             }
         },
         {
-            id: 'task-status',
-            label: 'Tasks & Status',
+            id: 'kanban',
+            label: 'Kanban',
             icon: CheckSquare,
             color: 'purple',
             position: 'left' as const,
             onClick: () => {
-                setTaskStatusEmployeeId(id);
+                const employeeId = String(id);
+                const focusedAgentId = employeeId.startsWith("employee-")
+                    ? employeeId.replace(/^employee-/, "")
+                    : employeeId;
+                const selectedTeamIdFromEmployee = String(teamId ?? "");
+                const selectedTeam = String((useAppStore.getState().activeChatParticipant as { teamId?: string } | null)?.teamId ?? "");
+
+                setSelectedObjectId(null);
+                setKanbanFocusAgentId(focusedAgentId);
+                if (selectedTeamIdFromEmployee) {
+                    setActiveTeamId(selectedTeamIdFromEmployee);
+                    setSelectedTeamId(selectedTeamIdFromEmployee);
+                    if (selectedTeamIdFromEmployee.startsWith("team-")) {
+                        setSelectedProjectId(selectedTeamIdFromEmployee.replace(/^team-/, ""));
+                    }
+                } else if (selectedTeam) {
+                    setActiveTeamId(selectedTeam);
+                    setSelectedTeamId(selectedTeam);
+                    if (selectedTeam.startsWith("team-")) {
+                        setSelectedProjectId(selectedTeam.replace(/^team-/, ""));
+                    }
+                }
+                setIsTeamPanelOpen(true);
             }
         },
         {
@@ -586,8 +616,31 @@ const Employee = memo(function Employee({
             onClick: () => {
                 setTrainingEmployeeId(id);
             }
+        },
+        {
+            id: 'memory',
+            label: 'Memory',
+            icon: Brain,
+            color: 'cyan',
+            onClick: () => {
+                setMemoryPanelEmployeeId(id);
+            }
         }
-    ], [name, onClick, id, setManageAgentEmployeeId, setTrainingEmployeeId, setViewComputerEmployeeId, setTaskStatusEmployeeId]);
+    ], [
+        onClick,
+        id,
+        teamId,
+        setActiveTeamId,
+        setKanbanFocusAgentId,
+        setIsTeamPanelOpen,
+        setManageAgentEmployeeId,
+        setMemoryPanelEmployeeId,
+        setSelectedObjectId,
+        setSelectedProjectId,
+        setSelectedTeamId,
+        setTrainingEmployeeId,
+        setViewComputerEmployeeId,
+    ]);
 
     // Handle click for selection - close other menus and toggle this one
     const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {

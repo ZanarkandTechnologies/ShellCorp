@@ -48,10 +48,30 @@ interface AppState {
   ) => void;
   trainingEmployeeId: OfficeId<"employees"> | null;
   setTrainingEmployeeId: (id: OfficeId<"employees"> | null) => void;
+  memoryPanelEmployeeId: OfficeId<"employees"> | null;
+  setMemoryPanelEmployeeId: (id: OfficeId<"employees"> | null) => void;
   isTeamPanelOpen: boolean;
   setIsTeamPanelOpen: (isOpen: boolean) => void;
-  activeTeamId: Id<"teams"> | null;
-  setActiveTeamId: (id: Id<"teams"> | null) => void;
+  isGlobalTeamPanelOpen: boolean;
+  setIsGlobalTeamPanelOpen: (isOpen: boolean) => void;
+  isAgentSessionPanelOpen: boolean;
+  setIsAgentSessionPanelOpen: (isOpen: boolean) => void;
+  isSkillsPanelOpen: boolean;
+  setIsSkillsPanelOpen: (isOpen: boolean) => void;
+  activeTeamId: string | null;
+  setActiveTeamId: (id: string | null) => void;
+  selectedProjectId: string | null;
+  setSelectedProjectId: (projectId: string | null) => void;
+  selectedTeamId: string | null;
+  setSelectedTeamId: (teamId: string | null) => void;
+  kanbanFocusAgentId: string | null;
+  setKanbanFocusAgentId: (agentId: string | null) => void;
+  selectedAgentId: string | null;
+  setSelectedAgentId: (agentId: string | null) => void;
+  selectedSessionKey: string | null;
+  setSelectedSessionKey: (sessionKey: string | null) => void;
+  isSettingsModalOpen: boolean;
+  setIsSettingsModalOpen: (isOpen: boolean) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -94,9 +114,29 @@ export const useAppStore = create<AppState>()(
       }),
     trainingEmployeeId: null,
     setTrainingEmployeeId: (id) => set({ trainingEmployeeId: id }),
+    memoryPanelEmployeeId: null,
+    setMemoryPanelEmployeeId: (id) => set({ memoryPanelEmployeeId: id }),
     isTeamPanelOpen: false,
     setIsTeamPanelOpen: (isOpen) => set({ isTeamPanelOpen: isOpen }),
+    isGlobalTeamPanelOpen: false,
+    setIsGlobalTeamPanelOpen: (isOpen) => set({ isGlobalTeamPanelOpen: isOpen }),
+    isAgentSessionPanelOpen: false,
+    setIsAgentSessionPanelOpen: (isOpen) => set({ isAgentSessionPanelOpen: isOpen }),
+    isSkillsPanelOpen: false,
+    setIsSkillsPanelOpen: (isOpen) => set({ isSkillsPanelOpen: isOpen }),
     activeTeamId: null,
     setActiveTeamId: (id) => set({ activeTeamId: id }),
+    selectedProjectId: null,
+    setSelectedProjectId: (projectId) => set({ selectedProjectId: projectId }),
+    selectedTeamId: null,
+    setSelectedTeamId: (teamId) => set({ selectedTeamId: teamId }),
+    kanbanFocusAgentId: null,
+    setKanbanFocusAgentId: (agentId) => set({ kanbanFocusAgentId: agentId }),
+    selectedAgentId: null,
+    setSelectedAgentId: (agentId) => set({ selectedAgentId: agentId }),
+    selectedSessionKey: null,
+    setSelectedSessionKey: (sessionKey) => set({ selectedSessionKey: sessionKey }),
+    isSettingsModalOpen: false,
+    setIsSettingsModalOpen: (isOpen) => set({ isSettingsModalOpen: isOpen }),
   })),
 );
