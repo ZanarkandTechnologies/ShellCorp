@@ -2,6 +2,12 @@
 
 Gamified control center UI for OpenClaw multi-agent operations.
 
+## Concept Video
+
+Original concept demo of what an AI office could look like:
+
+[Watch on Loom](https://www.loom.com/share/2252d33ca4f14d5a8a4671c30746c756)
+
 ## Product Direction
 
 This repository is now UI-first:
@@ -9,6 +15,12 @@ This repository is now UI-first:
 - OpenClaw handles runtime, routing, sessions, and plugin loading.
 - Shell Company maps OpenClaw state into a gamified office UI.
 - Notion logic is being packaged as an in-repo OpenClaw extension.
+- Shell Company is expanding into a personalized autonomous company cockpit:
+  - Multi-provider mission visibility (Notion/Vibe/internal)
+  - Ticket/session lifecycle control
+  - Context graphing and generated context tools/skills
+  - Heartbeat/autonomy observability and intervention controls
+  - Agent identity and office personalization (2D/2.5D/3D)
 
 Canonical indexes:
 
@@ -55,7 +67,7 @@ cp templates/sidecar/office-objects.template.json ./officeObjects.json
 
 - `ui/src/**` contains the gamified office and operational panels.
 - `src/**` contains remaining Notion-related logic being migrated to plugin form.
-- `docs/specs/SC01..SC04` define state mapping, plugin packaging, memory/skills surfaces, and chat bridge contracts.
+- `docs/specs/SC01..SC10` define state mapping, plugin packaging, memory/skills surfaces, chat bridge contracts, kanban federation, lifecycle controls, context indexing, personalization, and heartbeat autonomy.
 
 ## OpenClaw State Model (MVP)
 
@@ -83,5 +95,8 @@ Typical local flow:
 
 - Keep and improve office/game visualization.
 - Replace old data access paths with OpenClaw adapters.
-- Upgrade memory and skills UI surfaces.
-- Route operator chat actions from UI back into OpenClaw sessions.
+- Expand observability for agent/session state, memory, and cross-agent context transfer.
+- Route operator chat actions and lifecycle controls from UI back into OpenClaw sessions.
+- Federate board workflows across Notion/Vibe/internal sources with explicit sync ownership.
+- Ship context indexing that generates reusable context tools/skills for autonomous execution.
+- Expose heartbeat/autonomy governance with pause/resume/manual-run and traceable state.
