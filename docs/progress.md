@@ -1,7 +1,7 @@
 # Shell Company MVP Progress
 
 **Status**: in_progress  
-**Date**: 2026-02-25
+**Date**: 2026-02-26
 
 ## Active Slice
 
@@ -14,6 +14,11 @@ UI-first OpenClaw mapping pivot:
 | SC03 | Memory + skills UI upgrade baseline | completed |
 | SC04 | Chat bridge and session timeline baseline | completed |
 | SC05 | Wire live OpenClaw endpoints on VPS | in_progress |
+| SC06 | Kanban federation and sync policy | planned |
+| SC07 | Ticket-session lifecycle contract | planned |
+| SC08 | Provider context indexing and generated skill catalog | planned |
+| SC09 | Agent personalization and mesh/image wrapper integration | planned |
+| SC10 | Heartbeat-driven autonomy loop governance | planned |
 
 ## Notes
 
@@ -28,3 +33,4 @@ UI-first OpenClaw mapping pivot:
 - Removed the OfficeWorkspace overlay and restored panel-first navigation: top-left menu now opens standalone Team/Agent Session/Skills panels plus Settings, while in-scene actions open filtered panel contexts.
 - UI layout is now aligned with operator expectations: menu at top-left, settings only as a menu option, and logs toggle anchored at bottom-right.
 - Added employee-triggered Agent Memory Panel (`List`, `Search`, `Graph`) backed by parsed OpenClaw memory files (`MEMORY.md` + `memory/*.md`) through a new state-bridge endpoint, with visual QA spec/report artifacts under `docs/research/qa-testing/`.
+- Added phase-2 planning artifacts: founder-direction study (`ST01`), new specs (`SC06`-`SC10`), and expected visual QA ASCII baselines for Kanban Federation Panel and Agent Personalization Studio.
