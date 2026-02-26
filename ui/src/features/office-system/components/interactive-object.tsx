@@ -9,6 +9,7 @@ import { OpenClawAdapter } from '@/lib/openclaw-adapter';
 import { ContextMenu, MenuAction } from './context-menu';
 import { Move, RotateCw, RotateCcw, Trash2, Settings } from 'lucide-react';
 import { DraggableController } from '../controllers/draggable-controller';
+import { resolvePersistedOfficeObjectId } from './office-object-id';
 
 interface InteractiveObjectProps {
     children: React.ReactNode;
@@ -79,6 +80,8 @@ export function InteractiveObject({
     const [localRotation, setLocalRotation] = useState<[number, number, number]>(initialRotation);
     const [isHovered, setIsHovered] = useState(false);
     const [isLocallyDragging, setIsLocallyDragging] = useState(false);
+    const lastConfirmedPositionRef = useRef<[number, number, number]>(initialPosition);
+    const lastConfirmedRotationRef = useRef<[number, number, number]>(initialRotation);
 
     // Global state
     const isBuilderMode = useAppStore(state => state.isBuilderMode);
@@ -98,10 +101,13 @@ export function InteractiveObject({
     }): Promise<void> => {
         const adapter = adapterRef.current;
         const current = await adapter.getOfficeObjects();
-        const existing = current.find((item) => item.id === input.id);
+        const knownIds = new Set(current.map((item) => item.id));
+        // MEM-0115: UI IDs can be prefixed while sidecar IDs may not be.
+        const persistedId = resolvePersistedOfficeObjectId(input.id, knownIds);
+        const existing = current.find((item) => item.id === persistedId);
         const payload = {
-            id: input.id,
-            identifier: existing?.identifier ?? input.id,
+            id: persistedId,
+            identifier: existing?.identifier ?? persistedId,
             meshType: (existing?.meshType ?? objectType) as "team-cluster" | "plant" | "couch" | "bookshelf" | "pantry" | "glass-wall",
             position: input.position,
             rotation: input.rotation ?? existing?.rotation ?? initialRotation,
@@ -112,10 +118,15 @@ export function InteractiveObject({
         if (!result.ok) {
             throw new Error(result.error ?? "office_object_update_failed");
         }
+        lastConfirmedPositionRef.current = input.position;
+        lastConfirmedRotationRef.current = payload.rotation;
     }, [objectType, initialRotation]);
 
     const deleteOfficeObject = useCallback(async (input: { id: string }): Promise<void> => {
-        const result = await adapterRef.current.deleteOfficeObject(input.id);
+        const current = await adapterRef.current.getOfficeObjects();
+        const knownIds = new Set(current.map((item) => item.id));
+        const persistedId = resolvePersistedOfficeObjectId(input.id, knownIds);
+        const result = await adapterRef.current.deleteOfficeObject(persistedId);
         if (!result.ok) {
             throw new Error(result.error ?? "office_object_delete_failed");
         }
@@ -139,7 +150,7 @@ export function InteractiveObject({
                 });
             } catch (error) {
                 console.error(`Failed to update ${objectId} position:`, error);
-                setLocalPosition(initialPosition); // Revert on error
+                setLocalPosition(lastConfirmedPositionRef.current); // Revert on error
             }
         };
 
@@ -169,6 +180,18 @@ export function InteractiveObject({
         }
     }, [localPosition, isLocallyDragging]);
 
+    // Keep local transform in sync only when canonical props change.
+    // Drag end toggles isLocallyDragging; including it here causes snap-back to stale props.
+    useEffect(() => {
+        setLocalPosition(initialPosition);
+        lastConfirmedPositionRef.current = initialPosition;
+    }, [initialPosition, objectId]);
+
+    useEffect(() => {
+        setLocalRotation(initialRotation);
+        lastConfirmedRotationRef.current = initialRotation;
+    }, [initialRotation]);
+
     // Handle selection - close other menus and toggle this one
     const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
         if (isLocallyDragging) return;
@@ -197,7 +220,7 @@ export function InteractiveObject({
             });
         } catch (error) {
             console.error(`Failed to update ${objectId} rotation:`, error);
-            setLocalRotation(initialRotation);
+            setLocalRotation(lastConfirmedRotationRef.current);
         }
     }, [objectId, updateOfficeObjectPosition, localPosition, localRotation, initialRotation]);
 

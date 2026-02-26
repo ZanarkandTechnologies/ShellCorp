@@ -10,14 +10,17 @@ import type {
   CompanyOfficeObjectModel,
   CompanyModel,
   DepartmentModel,
+  FederationProjectPolicy,
+  FederatedTaskModel,
   HeartbeatProfileModel,
   OpenClawConfigPreview,
   OpenClawConfigSnapshot,
+  ProviderIndexProfile,
   ProjectModel,
   ProjectWorkloadSummary,
   ReconciliationWarning,
   RoleSlotModel,
-  TaskModel,
+  TaskSyncState,
   UnifiedOfficeModel,
   MemoryItemModel,
   SessionRowModel,
@@ -200,6 +203,8 @@ const DEFAULT_COMPANY_MODEL: CompanyModel = {
   agents: [{ agentId: "main", role: "ceo", heartbeatProfileId: "hb-ceo", isCeo: true, lifecycleState: "active" }],
   roleSlots: [],
   tasks: [],
+  federationPolicies: [],
+  providerIndexProfiles: [],
   heartbeatProfiles: [
     {
       id: "hb-ceo",
@@ -288,7 +293,7 @@ function toRoleSlot(entry: unknown): RoleSlotModel | null {
   };
 }
 
-function toTask(entry: unknown): TaskModel | null {
+export function toTask(entry: unknown): FederatedTaskModel | null {
   const row = asRecord(entry);
   const id = String(row.id ?? "").trim();
   const projectId = String(row.projectId ?? "").trim();
@@ -296,6 +301,9 @@ function toTask(entry: unknown): TaskModel | null {
   if (!id || !projectId || !title) return null;
   const status = String(row.status ?? "todo");
   const priority = String(row.priority ?? "medium");
+  const provider = String(row.provider ?? row.sourceProvider ?? "internal");
+  const canonicalProvider = String(row.canonicalProvider ?? (provider || "internal"));
+  const syncState = String(row.syncState ?? "healthy");
   return {
     id,
     projectId,
@@ -303,7 +311,104 @@ function toTask(entry: unknown): TaskModel | null {
     status: status === "in_progress" || status === "blocked" || status === "done" ? status : "todo",
     ownerAgentId: typeof row.ownerAgentId === "string" ? row.ownerAgentId : undefined,
     priority: priority === "low" || priority === "high" ? priority : "medium",
+    provider: provider === "notion" || provider === "vibe" || provider === "linear" ? provider : "internal",
+    canonicalProvider:
+      canonicalProvider === "notion" || canonicalProvider === "vibe" || canonicalProvider === "linear"
+        ? canonicalProvider
+        : "internal",
+    providerUrl: typeof row.providerUrl === "string" && row.providerUrl.trim() ? row.providerUrl : undefined,
+    syncState:
+      syncState === "pending" || syncState === "conflict" || syncState === "error"
+        ? (syncState as TaskSyncState)
+        : "healthy",
+    syncError: typeof row.syncError === "string" && row.syncError.trim() ? row.syncError : undefined,
+    updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : Date.now(),
   };
+}
+
+export function toFederationPolicy(entry: unknown): FederationProjectPolicy | null {
+  const row = asRecord(entry);
+  const projectId = String(row.projectId ?? "").trim();
+  if (!projectId) return null;
+  const canonicalProvider = String(row.canonicalProvider ?? "internal");
+  const mirrors = Array.isArray(row.mirrors)
+    ? row.mirrors
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter((value) => value === "internal" || value === "notion" || value === "vibe" || value === "linear")
+    : [];
+  const conflictPolicy = String(row.conflictPolicy ?? "canonical_wins");
+  return {
+    projectId,
+    canonicalProvider:
+      canonicalProvider === "notion" || canonicalProvider === "vibe" || canonicalProvider === "linear"
+        ? canonicalProvider
+        : "internal",
+    mirrors,
+    writeBackEnabled: row.writeBackEnabled === true,
+    conflictPolicy: conflictPolicy === "newest_wins" ? "newest_wins" : "canonical_wins",
+  };
+}
+
+export function hashSchemaVersion(input: string): string {
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash * 31 + input.charCodeAt(index)) | 0;
+  }
+  return `schema-${Math.abs(hash)}`;
+}
+
+export function toProviderIndexProfile(entry: unknown): ProviderIndexProfile | null {
+  const row = asRecord(entry);
+  const projectId = String(row.projectId ?? "").trim();
+  const provider = String(row.provider ?? "notion");
+  const entityId = String(row.entityId ?? "").trim();
+  if (!projectId || !entityId) return null;
+  const fields = Array.isArray(row.fieldMappings)
+    ? row.fieldMappings
+        .map((field) => {
+          const value = asRecord(field);
+          const name = String(value.name ?? "").trim();
+          const type = String(value.type ?? "").trim();
+          if (!name || !type) return null;
+          return {
+            name,
+            type,
+            description: typeof value.description === "string" ? value.description : undefined,
+            options: Array.isArray(value.options)
+              ? value.options.filter((item): item is string => typeof item === "string")
+              : undefined,
+          };
+        })
+        .filter((value): value is NonNullable<typeof value> => value !== null)
+    : [];
+  const schemaPayload = JSON.stringify({
+    provider,
+    entityId,
+    fields: fields.map((field) => ({ name: field.name, type: field.type })),
+  });
+  return {
+    profileId: String(row.profileId ?? `${projectId}:${provider}:${entityId}`),
+    projectId,
+    provider: provider === "internal" || provider === "vibe" || provider === "linear" ? provider : "notion",
+    entityId,
+    entityName: String(row.entityName ?? entityId),
+    toolNamingPrefix: typeof row.toolNamingPrefix === "string" ? row.toolNamingPrefix : undefined,
+    fetchCommandHints: Array.isArray(row.fetchCommandHints)
+      ? row.fetchCommandHints.filter((item): item is string => typeof item === "string")
+      : [],
+    fieldMappings: fields,
+    schemaVersion: String(row.schemaVersion ?? hashSchemaVersion(schemaPayload)),
+    updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : Date.now(),
+  };
+}
+
+export function resolveCanonicalWriteProvider(
+  policy: FederationProjectPolicy | null,
+  fallback: FederatedTaskModel["provider"],
+): FederatedTaskModel["provider"] {
+  if (!policy) return fallback;
+  return policy.canonicalProvider;
 }
 
 function toHeartbeatProfile(entry: unknown): HeartbeatProfileModel | null {
@@ -423,6 +528,11 @@ function toOfficeObjectSidecar(entry: unknown): OfficeObjectSidecarModel | null 
   };
 }
 
+function toCanonicalOfficeObjectId(id: string): string {
+  const trimmed = id.trim();
+  return trimmed.startsWith("office-") ? trimmed.slice("office-".length) : trimmed;
+}
+
 function normalizeCompanyModel(value: unknown): CompanyModel {
   const row = asRecord(value);
   const departments = normalizeArray(row.departments, toDepartment);
@@ -430,6 +540,8 @@ function normalizeCompanyModel(value: unknown): CompanyModel {
   const agents = normalizeArray(row.agents, toCompanyAgent);
   const roleSlots = normalizeArray(row.roleSlots, toRoleSlot);
   const tasks = normalizeArray(row.tasks, toTask);
+  const federationPolicies = normalizeArray(row.federationPolicies, toFederationPolicy);
+  const providerIndexProfiles = normalizeArray(row.providerIndexProfiles, toProviderIndexProfile);
   const heartbeatProfiles = normalizeArray(row.heartbeatProfiles, toHeartbeatProfile);
   const channelBindings = normalizeArray(row.channelBindings, toChannelBinding);
   const officeObjects = normalizeArray(row.officeObjects, toOfficeObject);
@@ -441,6 +553,8 @@ function normalizeCompanyModel(value: unknown): CompanyModel {
     agents: agents.length > 0 ? agents : DEFAULT_COMPANY_MODEL.agents,
     roleSlots,
     tasks,
+    federationPolicies,
+    providerIndexProfiles,
     heartbeatProfiles: heartbeatProfiles.length > 0 ? heartbeatProfiles : DEFAULT_COMPANY_MODEL.heartbeatProfiles,
     channelBindings,
     heartbeatRuntime: {
@@ -585,6 +699,31 @@ export class OpenClawAdapter {
       throw new Error(`request_failed:${path}:${response.status}`);
     }
     return (await response.json()) as Json;
+  }
+
+  private async invokeGatewayMethod(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<{ ok: boolean; payload: Json; error?: string }> {
+    try {
+      const response = await fetch(`${this.gatewayUrl}/openclaw/gateway/method`, {
+        method: "POST",
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({ method, params }),
+      });
+      if (!response.ok) {
+        return { ok: false, payload: {}, error: `gateway_method_failed:${method}:${response.status}` };
+      }
+      const payload = (await response.json()) as Json;
+      const ok = payload.ok === false ? false : true;
+      return {
+        ok,
+        payload,
+        error: typeof payload.error === "string" ? payload.error : undefined,
+      };
+    } catch {
+      return { ok: false, payload: {}, error: `gateway_method_unreachable:${method}` };
+    }
   }
 
   async listAgents(): Promise<AgentCardModel[]> {
@@ -821,6 +960,142 @@ export class OpenClawAdapter {
     return this.saveCompanyModel({ ...company, channelBindings: nextBindings });
   }
 
+  async listFederatedTasks(input: { projectId?: string; provider?: FederatedTaskModel["provider"] } = {}): Promise<FederatedTaskModel[]> {
+    const company = await this.getCompanyModel();
+    return company.tasks.filter((task) => {
+      if (input.projectId && task.projectId !== input.projectId) return false;
+      if (input.provider && task.provider !== input.provider) return false;
+      return true;
+    });
+  }
+
+  async getFederationPolicy(projectId: string): Promise<FederationProjectPolicy> {
+    const company = await this.getCompanyModel();
+    const existing = company.federationPolicies.find((policy) => policy.projectId === projectId);
+    if (existing) return existing;
+    return {
+      projectId,
+      canonicalProvider: "internal",
+      mirrors: [],
+      writeBackEnabled: false,
+      conflictPolicy: "canonical_wins",
+    };
+  }
+
+  async upsertFederationPolicy(
+    input: FederationProjectPolicy,
+  ): Promise<{ ok: boolean; company: CompanyModel; error?: string }> {
+    const company = await this.getCompanyModel();
+    const nextPolicies = company.federationPolicies.filter((policy) => policy.projectId !== input.projectId);
+    nextPolicies.push(input);
+    return this.saveCompanyModel({ ...company, federationPolicies: nextPolicies });
+  }
+
+  async upsertProviderIndexProfile(
+    input: ProviderIndexProfile,
+  ): Promise<{ ok: boolean; company: CompanyModel; error?: string }> {
+    const company = await this.getCompanyModel();
+    const nextProfiles = company.providerIndexProfiles.filter((profile) => profile.profileId !== input.profileId);
+    nextProfiles.push(input);
+    return this.saveCompanyModel({ ...company, providerIndexProfiles: nextProfiles });
+  }
+
+  async bootstrapNotionProfile(databaseId: string): Promise<{ ok: boolean; profile?: ProviderIndexProfile; error?: string }> {
+    const normalizedDatabaseId = databaseId.trim();
+    if (!normalizedDatabaseId) return { ok: false, error: "database_id_required" };
+    const gatewayResult = await this.invokeGatewayMethod("notion-shell.profile.bootstrap", {
+      databaseId: normalizedDatabaseId,
+    });
+    if (!gatewayResult.ok) return { ok: false, error: gatewayResult.error ?? "profile_bootstrap_failed" };
+    const profile = gatewayResult.payload.profile && typeof gatewayResult.payload.profile === "object"
+      ? (gatewayResult.payload.profile as Record<string, unknown>)
+      : null;
+    if (!profile) return { ok: false, error: "profile_payload_missing" };
+    const hydrated = toProviderIndexProfile({
+      projectId: String(profile.projectId ?? ""),
+      provider: "notion",
+      entityId: String(profile.entityId ?? normalizedDatabaseId),
+      entityName: String(profile.entityName ?? normalizedDatabaseId),
+      fieldMappings: Array.isArray(profile.fieldMappings) ? profile.fieldMappings : [],
+      fetchCommandHints: ["notion-shell.tasks.list", "notion-shell.tasks.sync", "notion-shell.profile.bootstrap"],
+    });
+    if (!hydrated) return { ok: false, error: "profile_payload_invalid" };
+    return { ok: true, profile: hydrated };
+  }
+
+  async updateFederatedTask(
+    taskId: string,
+    updates: Partial<Pick<FederatedTaskModel, "title" | "status" | "priority" | "ownerAgentId">>,
+  ): Promise<{ ok: boolean; task?: FederatedTaskModel; error?: string }> {
+    const company = await this.getCompanyModel();
+    const current = company.tasks.find((task) => task.id === taskId);
+    if (!current) return { ok: false, error: "task_not_found" };
+    const policy = await this.getFederationPolicy(current.projectId);
+    const writeProvider = resolveCanonicalWriteProvider(policy, current.canonicalProvider);
+
+    if (writeProvider !== "internal" && policy.writeBackEnabled) {
+      const methodName = writeProvider === "notion" ? "notion-shell.tasks.update" : "";
+      if (methodName) {
+        const gatewayResult = await this.invokeGatewayMethod(methodName, { taskId, updates });
+        if (!gatewayResult.ok) {
+          const failedTask: FederatedTaskModel = {
+            ...current,
+            syncState: "error",
+            syncError: gatewayResult.error ?? "external_write_failed",
+            updatedAt: Date.now(),
+          };
+          const failedTasks = company.tasks.map((task) => (task.id === taskId ? failedTask : task));
+          await this.saveCompanyModel({ ...company, tasks: failedTasks });
+          return { ok: false, task: failedTask, error: failedTask.syncError };
+        }
+      }
+    }
+
+    const nextTask: FederatedTaskModel = {
+      ...current,
+      ...updates,
+      canonicalProvider: writeProvider,
+      syncState: "healthy",
+      syncError: undefined,
+      updatedAt: Date.now(),
+    };
+    const nextTasks = company.tasks.map((task) => (task.id === taskId ? nextTask : task));
+    const saved = await this.saveCompanyModel({ ...company, tasks: nextTasks });
+    return { ok: saved.ok, task: nextTask, error: saved.error };
+  }
+
+  async manualResync(projectId: string, provider?: FederatedTaskModel["provider"]): Promise<{ ok: boolean; error?: string }> {
+    const company = await this.getCompanyModel();
+    const nextTasks = company.tasks.map((task) => {
+      if (task.projectId !== projectId) return task;
+      if (provider && task.provider !== provider) return task;
+      return { ...task, syncState: "pending" as const, syncError: undefined, updatedAt: Date.now() };
+    });
+    const initialSave = await this.saveCompanyModel({ ...company, tasks: nextTasks });
+    if (!initialSave.ok) return { ok: false, error: initialSave.error };
+
+    if (provider === "notion" || provider === undefined) {
+      const gatewayResult = await this.invokeGatewayMethod("notion-shell.tasks.sync", { projectId });
+      if (!gatewayResult.ok) {
+        const failedTasks = nextTasks.map((task) =>
+          task.projectId === projectId && (!provider || task.provider === provider)
+            ? { ...task, syncState: "error" as const, syncError: gatewayResult.error ?? "sync_failed", updatedAt: Date.now() }
+            : task,
+        );
+        await this.saveCompanyModel({ ...company, tasks: failedTasks });
+        return { ok: false, error: gatewayResult.error ?? "sync_failed" };
+      }
+    }
+
+    const reconciledTasks = nextTasks.map((task) => {
+      if (task.projectId !== projectId) return task;
+      if (provider && task.provider !== provider) return task;
+      return { ...task, syncState: "healthy" as const, syncError: undefined, updatedAt: Date.now() };
+    });
+    const finalSave = await this.saveCompanyModel({ ...company, tasks: reconciledTasks });
+    return { ok: finalSave.ok, error: finalSave.error };
+  }
+
   async getOfficeObjects(): Promise<OfficeObjectSidecarModel[]> {
     try {
       const payload = await this.readJson("/openclaw/office-objects");
@@ -848,6 +1123,7 @@ export class OpenClawAdapter {
     const cleaned = normalizeArray(objects, toOfficeObjectSidecar);
     let ok = false;
     let error: string | undefined;
+    let serverPersisted = false;
     try {
       const response = await fetch(`${this.stateUrl}/openclaw/office-objects`, {
         method: "POST",
@@ -856,6 +1132,7 @@ export class OpenClawAdapter {
       });
       if (response.ok) {
         ok = true;
+        serverPersisted = true;
       } else {
         error = `office_objects_save_failed:${response.status}`;
       }
@@ -865,9 +1142,16 @@ export class OpenClawAdapter {
     if (typeof window !== "undefined") {
       try {
         window.localStorage.setItem(OFFICE_OBJECTS_STORAGE_KEY, JSON.stringify(cleaned));
-        ok = true;
+        // Keep local cache warm, but do not report success unless server persisted.
+        if (!serverPersisted) {
+          ok = false;
+        }
       } catch {
-        if (!ok) error = "office_objects_local_persist_failed";
+        if (serverPersisted) {
+          ok = true;
+        } else {
+          error = "office_objects_local_persist_failed";
+        }
       }
     }
     return { ok, objects: cleaned, error };
@@ -875,14 +1159,16 @@ export class OpenClawAdapter {
 
   async upsertOfficeObject(object: OfficeObjectSidecarModel): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
     const current = await this.getOfficeObjects();
-    const next = current.filter((item) => item.id !== object.id);
+    const canonicalId = toCanonicalOfficeObjectId(object.id);
+    const next = current.filter((item) => toCanonicalOfficeObjectId(item.id) !== canonicalId);
     next.push(object);
     return this.saveOfficeObjects(next);
   }
 
   async deleteOfficeObject(objectId: string): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
     const current = await this.getOfficeObjects();
-    const next = current.filter((item) => item.id !== objectId);
+    const canonicalId = toCanonicalOfficeObjectId(objectId);
+    const next = current.filter((item) => toCanonicalOfficeObjectId(item.id) !== canonicalId);
     return this.saveOfficeObjects(next);
   }
 

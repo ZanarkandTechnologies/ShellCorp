@@ -1,15 +1,19 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { HALF_FLOOR } from "@/constants";
 import { getAbsoluteDeskPosition, getDeskRotation, getEmployeePositionAtDesk } from "@/convex/utils/layout";
+import { normalizeOfficeObjectId } from "@/features/office-system/components/office-object-id";
 import { gatewayBase, stateBase } from "@/lib/gateway-config";
 import { OpenClawAdapter } from "@/lib/openclaw-adapter";
 import type { Company, DeskLayoutData, EmployeeData, OfficeObject, TeamData } from "@/lib/types";
 import type {
   AgentCardModel,
   CompanyModel,
+  FederatedTaskProvider,
+  FederationProjectPolicy,
+  ProviderIndexProfile,
   ProjectWorkloadSummary,
   ReconciliationWarning,
   UnifiedOfficeModel,
@@ -24,6 +28,11 @@ interface OfficeDataContextType {
   companyModel: CompanyModel | null;
   workload: ProjectWorkloadSummary[];
   warnings: ReconciliationWarning[];
+  refresh: () => Promise<void>;
+  manualResync: (projectId: string, provider?: FederatedTaskProvider) => Promise<{ ok: boolean; error?: string }>;
+  upsertFederationPolicy: (policy: FederationProjectPolicy) => Promise<{ ok: boolean; error?: string }>;
+  upsertProviderIndexProfile: (profile: ProviderIndexProfile) => Promise<{ ok: boolean; error?: string }>;
+  bootstrapNotionProfile: (projectId: string, databaseId: string, toolNamingPrefix?: string) => Promise<{ ok: boolean; error?: string }>;
   isLoading: boolean;
 }
 
@@ -49,13 +58,55 @@ function deriveCeoAnchor(objects: UnifiedOfficeModel["officeObjects"]): [number,
   return clampClusterPosition(anchored).position;
 }
 
+function shouldReplaceCanonicalSidecarObject(
+  current: UnifiedOfficeModel["officeObjects"][number],
+  next: UnifiedOfficeModel["officeObjects"][number],
+  canonicalId: string,
+): boolean {
+  const currentIsCanonical = current.id === canonicalId;
+  const nextIsCanonical = next.id === canonicalId;
+  if (currentIsCanonical !== nextIsCanonical) return nextIsCanonical;
+  return false;
+}
+
+function dedupeCanonicalSidecarObjects(
+  objects: UnifiedOfficeModel["officeObjects"],
+): UnifiedOfficeModel["officeObjects"] {
+  const byCanonicalId = new Map<string, UnifiedOfficeModel["officeObjects"][number]>();
+  for (const object of objects) {
+    const canonicalId = normalizeOfficeObjectId(object.id);
+    const existing = byCanonicalId.get(canonicalId);
+    if (!existing) {
+      byCanonicalId.set(canonicalId, object);
+      continue;
+    }
+    if (shouldReplaceCanonicalSidecarObject(existing, object, canonicalId)) {
+      byCanonicalId.set(canonicalId, object);
+    }
+  }
+  return [...byCanonicalId.values()];
+}
+
+function resolveTeamClusterTeamId(object: UnifiedOfficeModel["officeObjects"][number]): string | null {
+  const metadataTeamId = object.metadata && typeof object.metadata.teamId === "string" ? object.metadata.teamId.trim() : "";
+  if (metadataTeamId) return metadataTeamId;
+  const candidates = [object.id, object.identifier].filter((value): value is string => typeof value === "string");
+  for (const candidate of candidates) {
+    const trimmed = candidate.trim();
+    if (trimmed.startsWith("cluster-team-")) {
+      return trimmed.replace(/^cluster-/, "");
+    }
+  }
+  return null;
+}
+
 function buildDefaultFurnitureObjects(companyId: string): OfficeObject[] {
   return [
-    { _id: "office-plant-1", companyId, meshType: "plant", position: [-14, 0, -14], rotation: [0, 0, 0] },
-    { _id: "office-plant-2", companyId, meshType: "plant", position: [14, 0, -14], rotation: [0, 0, 0] },
-    { _id: "office-bookshelf-1", companyId, meshType: "bookshelf", position: [0, 0, -15], rotation: [0, 0, 0] },
-    { _id: "office-couch-1", companyId, meshType: "couch", position: [12, 0, -14], rotation: [0, Math.PI, 0] },
-    { _id: "office-pantry-1", companyId, meshType: "pantry", position: [-12, 0, -14], rotation: [0, 0, 0] },
+    { _id: "plant-1", companyId, meshType: "plant", position: [-14, 0, -14], rotation: [0, 0, 0] },
+    { _id: "plant-2", companyId, meshType: "plant", position: [14, 0, -14], rotation: [0, 0, 0] },
+    { _id: "bookshelf-1", companyId, meshType: "bookshelf", position: [0, 0, -15], rotation: [0, 0, 0] },
+    { _id: "couch-1", companyId, meshType: "couch", position: [12, 0, -14], rotation: [0, Math.PI, 0] },
+    { _id: "pantry-1", companyId, meshType: "pantry", position: [-12, 0, -14], rotation: [0, 0, 0] },
   ];
 }
 
@@ -114,6 +165,11 @@ function fallbackData(): OfficeDataContextType {
     companyModel: null,
     workload: [],
     warnings: [],
+    refresh: async () => {},
+    manualResync: async () => ({ ok: false, error: "adapter_unavailable" }),
+    upsertFederationPolicy: async () => ({ ok: false, error: "adapter_unavailable" }),
+    upsertProviderIndexProfile: async () => ({ ok: false, error: "adapter_unavailable" }),
+    bootstrapNotionProfile: async () => ({ ok: false, error: "adapter_unavailable" }),
     isLoading: false,
   };
 }
@@ -121,7 +177,7 @@ function fallbackData(): OfficeDataContextType {
 function toOfficeData(unified: UnifiedOfficeModel): OfficeDataContextType {
   const runtimeAgents = unified.runtimeAgents;
   const configuredAgents = unified.configuredAgents;
-  const sidecarObjects = unified.officeObjects ?? [];
+  const sidecarObjects = dedupeCanonicalSidecarObjects(unified.officeObjects ?? []);
   const companyModel = unified.company;
   const workload = unified.workload;
   const warnings = unified.warnings;
@@ -135,9 +191,12 @@ function toOfficeData(unified: UnifiedOfficeModel): OfficeDataContextType {
   const teams: TeamData[] = [];
   const projectList = companyModel.projects ?? [];
   const companyAgents = companyModel.agents ?? [];
-  const teamClusterAnchors = sidecarObjects
-    .filter((object) => object.meshType === "team-cluster")
-    .map((object) => clampClusterPosition(object.position).position);
+  const teamClusterAnchorsByTeamId = new Map<string, [number, number, number]>();
+  for (const object of sidecarObjects.filter((entry) => entry.meshType === "team-cluster")) {
+    const resolvedTeamId = resolveTeamClusterTeamId(object);
+    if (!resolvedTeamId) continue;
+    teamClusterAnchorsByTeamId.set(resolvedTeamId, clampClusterPosition(object.position).position);
+  }
   const ceoAnchor = deriveCeoAnchor(sidecarObjects);
 
   teams.push({
@@ -157,7 +216,7 @@ function toOfficeData(unified: UnifiedOfficeModel): OfficeDataContextType {
       const projectAgents = companyAgents.filter((agent) => agent.projectId === project.id);
       const summary = workload.find((item) => item.projectId === project.id);
       const fallbackAnchor: [number, number, number] = [projectIndex * 9 - 4, 0, 8];
-      const clusterPosition = teamClusterAnchors[projectIndex] ?? clampClusterPosition(fallbackAnchor).position;
+      const clusterPosition = teamClusterAnchorsByTeamId.get(teamId) ?? clampClusterPosition(fallbackAnchor).position;
       teams.push({
         _id: teamId,
         companyId,
@@ -278,7 +337,7 @@ function toOfficeData(unified: UnifiedOfficeModel): OfficeDataContextType {
   const sidecarFurniture: OfficeObject[] = sidecarObjects
     .filter((item) => item.meshType !== "team-cluster")
     .map((item) => ({
-      _id: `office-${item.id}`,
+      _id: normalizeOfficeObjectId(item.id),
       companyId,
       meshType: item.meshType,
       position: item.position,
@@ -296,35 +355,118 @@ function toOfficeData(unified: UnifiedOfficeModel): OfficeDataContextType {
     companyModel: unified.company,
     workload,
     warnings,
+    refresh: async () => {},
+    manualResync: async () => ({ ok: false, error: "adapter_unavailable" }),
+    upsertFederationPolicy: async () => ({ ok: false, error: "adapter_unavailable" }),
+    upsertProviderIndexProfile: async () => ({ ok: false, error: "adapter_unavailable" }),
+    bootstrapNotionProfile: async () => ({ ok: false, error: "adapter_unavailable" }),
     isLoading: false,
   };
 }
 
 export function OfficeDataProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [value, setValue] = useState<OfficeDataContextType>({ ...fallbackData(), isLoading: true });
+  const adapterRef = useRef<OpenClawAdapter | null>(null);
+  const cancelledRef = useRef(false);
+
+  const load = async (): Promise<void> => {
+    const adapter = adapterRef.current;
+    if (!adapter) return;
+    try {
+      const unified = await adapter.getUnifiedOfficeModel();
+      if (cancelledRef.current) return;
+      setValue((current) => {
+        const next = toOfficeData(unified);
+        return {
+          ...next,
+          refresh: current.refresh,
+          manualResync: current.manualResync,
+          upsertFederationPolicy: current.upsertFederationPolicy,
+          upsertProviderIndexProfile: current.upsertProviderIndexProfile,
+          bootstrapNotionProfile: current.bootstrapNotionProfile,
+        };
+      });
+    } catch {
+      if (cancelledRef.current) return;
+      setValue((current) => ({
+        ...fallbackData(),
+        refresh: current.refresh,
+        manualResync: current.manualResync,
+        upsertFederationPolicy: current.upsertFederationPolicy,
+        upsertProviderIndexProfile: current.upsertProviderIndexProfile,
+        bootstrapNotionProfile: current.bootstrapNotionProfile,
+      }));
+    }
+  };
 
   useEffect(() => {
-    const adapter = new OpenClawAdapter(gatewayBase, stateBase);
-    let cancelled = false;
+    adapterRef.current = new OpenClawAdapter(gatewayBase, stateBase);
+    cancelledRef.current = false;
 
-    async function load(): Promise<void> {
-      try {
-        const unified = await adapter.getUnifiedOfficeModel();
-        if (cancelled) return;
-        setValue(toOfficeData(unified));
-      } catch {
-        if (cancelled) return;
-        setValue(fallbackData());
-      }
+    async function refresh(): Promise<void> {
+      await load();
     }
 
+    async function manualResync(projectId: string, provider?: FederatedTaskProvider): Promise<{ ok: boolean; error?: string }> {
+      const adapter = adapterRef.current;
+      if (!adapter) return { ok: false, error: "adapter_unavailable" };
+      const result = await adapter.manualResync(projectId, provider);
+      await load();
+      return result;
+    }
+
+    async function upsertFederationPolicy(policy: FederationProjectPolicy): Promise<{ ok: boolean; error?: string }> {
+      const adapter = adapterRef.current;
+      if (!adapter) return { ok: false, error: "adapter_unavailable" };
+      const result = await adapter.upsertFederationPolicy(policy);
+      await load();
+      return { ok: result.ok, error: result.error };
+    }
+
+    async function upsertProviderIndexProfile(profile: ProviderIndexProfile): Promise<{ ok: boolean; error?: string }> {
+      const adapter = adapterRef.current;
+      if (!adapter) return { ok: false, error: "adapter_unavailable" };
+      const result = await adapter.upsertProviderIndexProfile(profile);
+      await load();
+      return { ok: result.ok, error: result.error };
+    }
+
+    async function bootstrapNotionProfile(
+      projectId: string,
+      databaseId: string,
+      toolNamingPrefix?: string,
+    ): Promise<{ ok: boolean; error?: string }> {
+      const adapter = adapterRef.current;
+      if (!adapter) return { ok: false, error: "adapter_unavailable" };
+      const bootstrapped = await adapter.bootstrapNotionProfile(databaseId);
+      if (!bootstrapped.ok || !bootstrapped.profile) return { ok: false, error: bootstrapped.error };
+      const upsertResult = await adapter.upsertProviderIndexProfile({
+        ...bootstrapped.profile,
+        profileId: `${projectId}:notion:${bootstrapped.profile.entityId}`,
+        projectId,
+        toolNamingPrefix: toolNamingPrefix?.trim() ? toolNamingPrefix.trim() : bootstrapped.profile.toolNamingPrefix,
+        updatedAt: Date.now(),
+      });
+      await load();
+      return { ok: upsertResult.ok, error: upsertResult.error };
+    }
+
+    setValue((current) => ({
+      ...current,
+      refresh,
+      manualResync,
+      upsertFederationPolicy,
+      upsertProviderIndexProfile,
+      bootstrapNotionProfile,
+      isLoading: true,
+    }));
     void load();
     const timer = setInterval(() => {
       void load();
     }, 15000);
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       clearInterval(timer);
     };
   }, []);
