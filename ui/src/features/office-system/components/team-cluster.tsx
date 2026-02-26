@@ -22,7 +22,7 @@ import Desk from './desk';
 import { InteractiveObject } from './interactive-object';
 import { useAppStore } from '@/lib/app-store';
 import { Text, Html } from '@react-three/drei';
-import { getDeskPosition, getDeskRotation } from '@/convex/utils/layout';
+import { getClusterAnchor, getDeskPosition, getDeskRotation } from '@/convex/utils/layout';
 
 // Constants
 const MAX_DESKS_PER_TEAM = 6;
@@ -145,13 +145,32 @@ export default function TeamCluster({
 
     // Desk layout (auto-calculates positions based on team center)
     const desksWithPositions = useMemo(() => {
-        const clusterPos = team.clusterPosition || [0, 0, 0];
-        return desks.map((desk) => ({
+        // TeamCluster is already transformed by wrapper position; keep desks local.
+        const clusterPos: [number, number, number] = [0, 0, 0];
+        const orderedDesks = desks
+            .map((desk, originalIndex) => ({
+                desk,
+                originalIndex,
+                // Missing/duplicate indices can happen after sidecar edits.
+                // Sort by persisted index, then normalize to compact 0..N-1.
+                persistedIndex: Number.isFinite(desk.deskIndex) ? (desk.deskIndex as number) : Number.MAX_SAFE_INTEGER,
+            }))
+            .sort((a, b) =>
+                a.persistedIndex === b.persistedIndex
+                    ? a.originalIndex - b.originalIndex
+                    : a.persistedIndex - b.persistedIndex,
+            );
+        return orderedDesks.map(({ desk }, layoutIndex) => ({
             id: desk.id,
-            position: getDeskPosition(clusterPos, desk.deskIndex ?? 0, desks.length),
-            rotationY: getDeskRotation(desk.deskIndex ?? 0, desks.length),
+            position: getDeskPosition(clusterPos, layoutIndex, orderedDesks.length),
+            rotationY: getDeskRotation(layoutIndex, orderedDesks.length),
         }));
-    }, [desks, team.clusterPosition]);
+    }, [desks]);
+
+    const signboardPosition = useMemo<[number, number, number]>(() => {
+        const [anchorX, , anchorZ] = getClusterAnchor(desksWithPositions.length);
+        return [anchorX, 0.8, anchorZ];
+    }, [desksWithPositions.length]);
 
     // Render conditions
     const showFlag = desks.length === 0;
@@ -220,7 +239,7 @@ export default function TeamCluster({
 
                 {/* Mini Signboard Banner - Always visible (except for CEO/Management team) */}
                 {team.name !== "CEO" && (
-                    <group name="team-signboard" position={[0, 0.8, 0]}>
+                    <group name="team-signboard" position={signboardPosition}>
                         {/* Signboard Post */}
                         <mesh position={[0, 0, 0]} castShadow>
                             <cylinderGeometry args={[0.03, 0.03, 0.8, 8]} />
