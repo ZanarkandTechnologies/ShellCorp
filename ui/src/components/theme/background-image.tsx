@@ -3,6 +3,7 @@ import { useState } from "react";
 interface BackgroundImageProps {
   src: string;
   alt: string;
+  priority?: boolean;
   className?: string;
 }
 

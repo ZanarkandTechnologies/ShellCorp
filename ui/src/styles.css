@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 @source "../node_modules/streamdown/dist/index.js";
@@ -7,8 +8,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: Geist Mono, ui-monospace, monospace;
-  --font-mono: JetBrains Mono, monospace;
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -103,9 +104,9 @@
   --sidebar-border: oklch(0.9276 0.0058 264.5313);
   --sidebar-ring: oklch(0.6716 0.1368 48.5130);
   --destructive-foreground: oklch(0.9851 0 0);
-  --font-sans: Geist Mono, ui-monospace, monospace;
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
   --font-serif: serif;
-  --font-mono: JetBrains Mono, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --shadow-color: #000000;
   --shadow-opacity: 0.05;
   --shadow-blur: 4px;
@@ -159,9 +160,9 @@
   --sidebar-ring: oklch(0.7214 0.1337 49.9802);
   --destructive-foreground: oklch(0.1797 0.0043 308.1928);
   --radius: 0.75rem;
-  --font-sans: Geist Mono, ui-monospace, monospace;
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
   --font-serif: serif;
-  --font-mono: JetBrains Mono, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --shadow-color: #000000;
   --shadow-opacity: 0.05;
   --shadow-blur: 4px;
@@ -185,7 +186,8 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
     letter-spacing: var(--tracking-normal);
   }
 }
@@ -399,8 +401,6 @@
 .officeShell {
   position: relative;
   width: 100%;
-  height: 70vh;
+  height: 100%;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
 }

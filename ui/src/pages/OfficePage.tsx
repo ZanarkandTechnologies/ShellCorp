@@ -1,19 +1,21 @@
+import React from "react";
 import { Link } from "react-router-dom";
 
-import { App } from "@/App";
+import OfficeSimulation from "@/components/office-simulation";
 import { Button } from "@/components/ui/button";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { OfficeDataProvider } from "@/providers/office-data-provider";
 
-export function OfficePage(): JSX.Element {
+export function OfficePage(): React.JSX.Element {
   return (
-    <main className="min-h-screen">
-      <div className="p-3 border-b bg-background/80 backdrop-blur">
-        <Link to="/">
-          <Button variant="outline" size="sm">
-            Back to Landing
-          </Button>
-        </Link>
-      </div>
-      <App initialTab="office" />
+    <main className="w-[100dvw] h-[100dvh] relative">
+      <OfficeDataProvider>
+        <SidebarProvider defaultOpen={false}>
+          <SidebarInset className="h-[100dvh]">
+            <OfficeSimulation />
+          </SidebarInset>
+        </SidebarProvider>
+      </OfficeDataProvider>
     </main>
   );
 }
