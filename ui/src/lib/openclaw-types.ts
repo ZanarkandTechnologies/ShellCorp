@@ -64,6 +64,36 @@ export interface MemoryItemModel {
   ts: number;
 }
 
+export type AgentMemoryEntryType =
+  | "discovery"
+  | "decision"
+  | "problem"
+  | "solution"
+  | "pattern"
+  | "warning"
+  | "success"
+  | "refactor"
+  | "bugfix"
+  | "feature";
+
+export interface AgentMemorySource {
+  sourcePath: string;
+  lineNumber: number;
+}
+
+export interface AgentMemoryEntry {
+  id: string;
+  agentId: string;
+  source: AgentMemorySource;
+  rawText: string;
+  text: string;
+  ts?: number;
+  type?: AgentMemoryEntryType;
+  memId?: string;
+  tags: string[];
+  metadata?: Record<string, unknown>;
+}
+
 export interface ChatSendRequest {
   agentId: string;
   sessionKey: string;
@@ -110,6 +140,27 @@ export interface CompanyAgentModel {
   heartbeatProfileId: string;
   isCeo?: boolean;
   lifecycleState: AgentLifecycleState;
+}
+
+export interface CompanyOfficeObjectModel {
+  id: string;
+  identifier?: string;
+  meshType: "team-cluster" | "plant" | "couch" | "bookshelf" | "pantry" | "glass-wall";
+  position: [number, number, number];
+  rotation?: [number, number, number];
+  scale?: [number, number, number];
+  projectId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface OfficeObjectSidecarModel {
+  id: string;
+  identifier: string;
+  meshType: CompanyOfficeObjectModel["meshType"];
+  position: [number, number, number];
+  rotation?: [number, number, number];
+  scale?: [number, number, number];
+  metadata?: Record<string, unknown>;
 }
 
 export interface RoleSlotModel {
@@ -164,14 +215,17 @@ export interface CompanyModel {
   heartbeatProfiles: HeartbeatProfileModel[];
   channelBindings: ChannelBindingModel[];
   heartbeatRuntime: HeartbeatRuntimeModel;
+  officeObjects?: CompanyOfficeObjectModel[];
 }
 
 export interface ReconciliationWarning {
   code:
     | "missing_runtime_agent"
-    | "unmapped_runtime_agent"
+    | "runtime_not_in_sidecar"
+    | "sidecar_not_in_config"
     | "role_slot_deficit"
-    | "channel_binding_missing_target";
+    | "channel_binding_missing_target"
+    | "configured_agent_not_running";
   message: string;
 }
 
@@ -185,8 +239,24 @@ export interface ProjectWorkloadSummary {
 export interface UnifiedOfficeModel {
   company: CompanyModel;
   runtimeAgents: AgentCardModel[];
+  configuredAgents: AgentCardModel[];
+  officeObjects: OfficeObjectSidecarModel[];
   memory: MemoryItemModel[];
   skills: SkillItemModel[];
   workload: ProjectWorkloadSummary[];
   warnings: ReconciliationWarning[];
+  diagnostics: {
+    configAgentCount: number;
+    runtimeAgentCount: number;
+    sidecarAgentCount: number;
+    missingRuntimeAgentIds: string[];
+    unmappedRuntimeAgentIds: string[];
+    invalidOfficeObjects: string[];
+    duplicateOfficeObjectIds: string[];
+    officeObjectCount: number;
+    clampedClusterCount: number;
+    outOfBoundsClusterObjectIds: string[];
+    ceoAnchorMode: "glass-derived" | "fallback";
+    source: "gateway" | "localStorage" | "default";
+  };
 }

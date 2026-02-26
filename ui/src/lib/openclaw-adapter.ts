@@ -4,8 +4,10 @@
  * Maps OpenClaw-backed HTTP surfaces into Shell Company UI contracts.
  */
 import type {
+  AgentMemoryEntry,
   AgentCardModel,
   ChatSendRequest,
+  CompanyOfficeObjectModel,
   CompanyModel,
   DepartmentModel,
   HeartbeatProfileModel,
@@ -23,7 +25,9 @@ import type {
   SkillItemModel,
   CompanyAgentModel,
   ChannelBindingModel,
+  OfficeObjectSidecarModel,
 } from "./openclaw-types";
+import { buildGatewayHeaders } from "./gateway-config";
 
 type Json = Record<string, unknown>;
 
@@ -80,12 +84,14 @@ function toTimeline(agentId: string, sessionKey: string, payload: unknown): Sess
       const event = item as Json;
       const ts = typeof event.ts === "number" ? event.ts : Date.now();
       const type = String(event.type ?? "status");
+      const normalizedType: SessionTimelineModel["events"][number]["type"] =
+        type === "message" || type === "tool" ? type : "status";
       const role = String(event.role ?? "system");
       const text = String(event.text ?? event.content ?? "");
       if (!text.trim()) return null;
       return {
         ts,
-        type: type === "message" || type === "tool" ? type : "status",
+        type: normalizedType,
         role,
         text,
         raw: event,
@@ -130,7 +136,50 @@ function toMemory(entry: unknown): MemoryItemModel | null {
   };
 }
 
+function toAgentMemoryEntry(agentId: string, entry: unknown): AgentMemoryEntry | null {
+  if (!entry || typeof entry !== "object") return null;
+  const row = entry as Json;
+  const id = String(row.id ?? "").trim();
+  if (!id) return null;
+  const sourcePath = String(row.sourcePath ?? "").trim();
+  const lineNumber = typeof row.lineNumber === "number" ? row.lineNumber : Number.NaN;
+  const rawText = String(row.rawText ?? "").trim();
+  const text = String(row.text ?? row.rawText ?? "").trim();
+  if (!sourcePath || !Number.isFinite(lineNumber) || !rawText || !text) return null;
+  const type = String(row.type ?? "").trim();
+  const normalizedType =
+    type === "discovery" ||
+    type === "decision" ||
+    type === "problem" ||
+    type === "solution" ||
+    type === "pattern" ||
+    type === "warning" ||
+    type === "success" ||
+    type === "refactor" ||
+    type === "bugfix" ||
+    type === "feature"
+      ? type
+      : undefined;
+  return {
+    id,
+    agentId: String(row.agentId ?? agentId),
+    source: {
+      sourcePath,
+      lineNumber,
+    },
+    rawText,
+    text,
+    ts: typeof row.ts === "number" ? row.ts : typeof row.timestamp === "number" ? row.timestamp : undefined,
+    type: normalizedType,
+    memId: typeof row.memId === "string" ? row.memId : undefined,
+    tags: Array.isArray(row.tags) ? row.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : undefined,
+  };
+}
+
 const COMPANY_STORAGE_KEY = "shellcorp.company-model.v1";
+const OFFICE_OBJECTS_STORAGE_KEY = "shellcorp.office-objects.v1";
+const CLUSTER_BOUNDARY_LIMIT = 17.5;
 const DEFAULT_COMPANY_MODEL: CompanyModel = {
   version: 1,
   departments: [
@@ -293,6 +342,87 @@ function toChannelBinding(entry: unknown): ChannelBindingModel | null {
   };
 }
 
+function toOfficeObject(entry: unknown): CompanyOfficeObjectModel | null {
+  const row = asRecord(entry);
+  const id = String(row.id ?? "").trim();
+  const meshType = String(row.meshType ?? "");
+  if (!id) return null;
+  if (
+    meshType !== "team-cluster" &&
+    meshType !== "plant" &&
+    meshType !== "couch" &&
+    meshType !== "bookshelf" &&
+    meshType !== "pantry" &&
+    meshType !== "glass-wall"
+  ) {
+    return null;
+  }
+  const positionInput = Array.isArray(row.position) ? row.position : [];
+  if (positionInput.length !== 3 || positionInput.some((value) => typeof value !== "number")) return null;
+  const px = Number(positionInput[0]);
+  const py = Number(positionInput[1]);
+  const pz = Number(positionInput[2]);
+  if (!Number.isFinite(px) || !Number.isFinite(py) || !Number.isFinite(pz)) return null;
+  const rotationInput = Array.isArray(row.rotation) ? row.rotation : undefined;
+  const scaleInput = Array.isArray(row.scale) ? row.scale : undefined;
+  return {
+    id,
+    meshType,
+    position: [px, py, pz],
+    rotation:
+      rotationInput && rotationInput.length === 3 && rotationInput.every((value) => typeof value === "number")
+        ? [Number(rotationInput[0]), Number(rotationInput[1]), Number(rotationInput[2])]
+        : undefined,
+    scale:
+      scaleInput && scaleInput.length === 3 && scaleInput.every((value) => typeof value === "number")
+        ? [Number(scaleInput[0]), Number(scaleInput[1]), Number(scaleInput[2])]
+        : undefined,
+    projectId: typeof row.projectId === "string" ? row.projectId : undefined,
+    metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : undefined,
+  };
+}
+
+function toOfficeObjectSidecar(entry: unknown): OfficeObjectSidecarModel | null {
+  const row = asRecord(entry);
+  const id = String(row.id ?? row._id ?? row.identifier ?? "").trim();
+  const identifier = String(row.identifier ?? id).trim();
+  const meshType = String(row.meshType ?? "");
+  if (!id || !identifier) return null;
+  if (
+    meshType !== "team-cluster" &&
+    meshType !== "plant" &&
+    meshType !== "couch" &&
+    meshType !== "bookshelf" &&
+    meshType !== "pantry" &&
+    meshType !== "glass-wall"
+  ) {
+    return null;
+  }
+  const positionInput = Array.isArray(row.position) ? row.position : [];
+  if (positionInput.length !== 3 || positionInput.some((value) => typeof value !== "number")) return null;
+  const px = Number(positionInput[0]);
+  const py = Number(positionInput[1]);
+  const pz = Number(positionInput[2]);
+  if (!Number.isFinite(px) || !Number.isFinite(py) || !Number.isFinite(pz)) return null;
+  const rotationInput = Array.isArray(row.rotation) ? row.rotation : undefined;
+  const scaleInput = Array.isArray(row.scale) ? row.scale : undefined;
+  return {
+    id,
+    identifier,
+    meshType,
+    position: [px, py, pz],
+    rotation:
+      rotationInput && rotationInput.length === 3 && rotationInput.every((value) => typeof value === "number")
+        ? [Number(rotationInput[0]), Number(rotationInput[1]), Number(rotationInput[2])]
+        : undefined,
+    scale:
+      scaleInput && scaleInput.length === 3 && scaleInput.every((value) => typeof value === "number")
+        ? [Number(scaleInput[0]), Number(scaleInput[1]), Number(scaleInput[2])]
+        : undefined,
+    metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : undefined,
+  };
+}
+
 function normalizeCompanyModel(value: unknown): CompanyModel {
   const row = asRecord(value);
   const departments = normalizeArray(row.departments, toDepartment);
@@ -302,6 +432,7 @@ function normalizeCompanyModel(value: unknown): CompanyModel {
   const tasks = normalizeArray(row.tasks, toTask);
   const heartbeatProfiles = normalizeArray(row.heartbeatProfiles, toHeartbeatProfile);
   const channelBindings = normalizeArray(row.channelBindings, toChannelBinding);
+  const officeObjects = normalizeArray(row.officeObjects, toOfficeObject);
   const runtime = asRecord(row.heartbeatRuntime);
   return {
     version: Number(row.version ?? 1),
@@ -319,6 +450,7 @@ function normalizeCompanyModel(value: unknown): CompanyModel {
       cadenceMinutes: Math.max(1, Number(runtime.cadenceMinutes ?? DEFAULT_COMPANY_MODEL.heartbeatRuntime.cadenceMinutes)),
       notes: typeof runtime.notes === "string" ? runtime.notes : undefined,
     },
+    officeObjects,
   };
 }
 
@@ -333,13 +465,18 @@ function buildWorkload(company: CompanyModel): ProjectWorkloadSummary[] {
   });
 }
 
-function buildReconciliationWarnings(company: CompanyModel, runtimeAgents: AgentCardModel[]): ReconciliationWarning[] {
+function buildReconciliationWarnings(
+  company: CompanyModel,
+  runtimeAgents: AgentCardModel[],
+  configuredAgents: AgentCardModel[],
+): ReconciliationWarning[] {
   const warnings: ReconciliationWarning[] = [];
   const runtimeIds = new Set(runtimeAgents.map((agent) => agent.agentId));
+  const configuredIds = new Set(configuredAgents.map((agent) => agent.agentId));
   const metaIds = new Set(company.agents.map((agent) => agent.agentId));
 
   for (const metaAgent of company.agents) {
-    if (metaAgent.lifecycleState === "active" && !runtimeIds.has(metaAgent.agentId)) {
+    if (metaAgent.lifecycleState === "active" && configuredIds.has(metaAgent.agentId) && !runtimeIds.has(metaAgent.agentId)) {
       warnings.push({
         code: "missing_runtime_agent",
         message: `Expected active agent '${metaAgent.agentId}' is missing from OpenClaw runtime.`,
@@ -350,8 +487,17 @@ function buildReconciliationWarnings(company: CompanyModel, runtimeAgents: Agent
   for (const runtimeAgent of runtimeAgents) {
     if (!metaIds.has(runtimeAgent.agentId)) {
       warnings.push({
-        code: "unmapped_runtime_agent",
+        code: "runtime_not_in_sidecar",
         message: `Runtime agent '${runtimeAgent.agentId}' has no sidecar mapping.`,
+      });
+    }
+  }
+
+  for (const configuredAgent of configuredAgents) {
+    if (!runtimeIds.has(configuredAgent.agentId)) {
+      warnings.push({
+        code: "configured_agent_not_running",
+        message: `Configured agent '${configuredAgent.agentId}' exists in openclaw.json but is not currently running.`,
       });
     }
   }
@@ -382,16 +528,61 @@ function buildReconciliationWarnings(company: CompanyModel, runtimeAgents: Agent
     }
   }
 
+  for (const companyAgent of company.agents) {
+    if (!configuredIds.has(companyAgent.agentId)) {
+      warnings.push({
+        code: "sidecar_not_in_config",
+        message: `Company sidecar agent '${companyAgent.agentId}' is not present in openclaw.json agents.list.`,
+      });
+    }
+  }
+
   return warnings;
 }
 
+function parseConfiguredAgentsFromConfig(snapshot: OpenClawConfigSnapshot | null): AgentCardModel[] {
+  if (!snapshot) return [];
+  const root = asRecord(snapshot.config);
+  const agentsNode = asRecord(root.agents);
+  const list = Array.isArray(agentsNode.list) ? agentsNode.list : [];
+  return normalizeArray(list, (entry) => {
+    const row = asRecord(entry);
+    const id = String(row.id ?? row.agentId ?? "").trim();
+    if (!id) return null;
+    const sandbox = asRecord(row.sandbox);
+    const tools = asRecord(row.tools);
+    return {
+      agentId: id,
+      displayName: String(row.name ?? row.displayName ?? id),
+      workspacePath: String(row.workspace ?? row.workspacePath ?? ""),
+      agentDir: String(row.agentDir ?? ""),
+      sandboxMode: String(sandbox.mode ?? "off"),
+      toolPolicy: {
+        allow: Array.isArray(tools.allow) ? tools.allow.filter((item): item is string => typeof item === "string") : [],
+        deny: Array.isArray(tools.deny) ? tools.deny.filter((item): item is string => typeof item === "string") : [],
+      },
+      sessionCount: 0,
+    };
+  });
+}
+
 export class OpenClawAdapter {
-  constructor(private readonly baseUrl: string) {}
+  constructor(
+    private readonly gatewayUrl: string,
+    private readonly stateUrl: string = gatewayUrl,
+  ) {}
 
   private async readJson(path: string): Promise<Json> {
-    const response = await fetch(`${this.baseUrl}${path}`);
+    let response: Response;
+    try {
+      response = await fetch(`${this.stateUrl}${path}`, {
+        headers: buildGatewayHeaders(),
+      });
+    } catch {
+      throw new Error(`request_unreachable:${path}`);
+    }
     if (!response.ok) {
-      throw new Error(`request_failed:${path}`);
+      throw new Error(`request_failed:${path}:${response.status}`);
     }
     return (await response.json()) as Json;
   }
@@ -414,9 +605,9 @@ export class OpenClawAdapter {
   }
 
   async sendMessage(input: ChatSendRequest): Promise<{ ok: boolean; eventId?: string; error?: string }> {
-    const response = await fetch(`${this.baseUrl}/openclaw/chat/send`, {
+    const response = await fetch(`${this.gatewayUrl}/openclaw/chat/send`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: buildGatewayHeaders({ "content-type": "application/json" }),
       body: JSON.stringify(input),
     });
     if (!response.ok) {
@@ -440,6 +631,11 @@ export class OpenClawAdapter {
     return normalizeArray(payload.memory, toMemory);
   }
 
+  async listAgentMemoryEntries(agentId: string): Promise<AgentMemoryEntry[]> {
+    const payload = await this.readJson(`/openclaw/agents/${encodeURIComponent(agentId)}/memory-entries`);
+    return normalizeArray(payload.entries, (entry) => toAgentMemoryEntry(agentId, entry));
+  }
+
   async getConfigSnapshot(): Promise<OpenClawConfigSnapshot> {
     const payload = await this.readJson("/openclaw/config");
     const config = payload.config && typeof payload.config === "object" ? (payload.config as Record<string, unknown>) : {};
@@ -450,9 +646,9 @@ export class OpenClawAdapter {
   }
 
   async previewConfig(nextConfig: Record<string, unknown>): Promise<OpenClawConfigPreview> {
-    const response = await fetch(`${this.baseUrl}/openclaw/config/preview`, {
+    const response = await fetch(`${this.stateUrl}/openclaw/config/preview`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: buildGatewayHeaders({ "content-type": "application/json" }),
       body: JSON.stringify({ nextConfig }),
     });
     if (!response.ok) {
@@ -466,9 +662,9 @@ export class OpenClawAdapter {
   }
 
   async applyConfig(nextConfig: Record<string, unknown>, confirm: boolean): Promise<{ ok: boolean; error?: string }> {
-    const response = await fetch(`${this.baseUrl}/openclaw/config/apply`, {
+    const response = await fetch(`${this.stateUrl}/openclaw/config/apply`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: buildGatewayHeaders({ "content-type": "application/json" }),
       body: JSON.stringify({ nextConfig, confirm }),
     });
     if (!response.ok) {
@@ -482,9 +678,9 @@ export class OpenClawAdapter {
   }
 
   async rollbackConfig(): Promise<{ ok: boolean; error?: string }> {
-    const response = await fetch(`${this.baseUrl}/openclaw/config/rollback`, {
+    const response = await fetch(`${this.stateUrl}/openclaw/config/rollback`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: buildGatewayHeaders({ "content-type": "application/json" }),
     });
     if (!response.ok) {
       return { ok: false, error: `rollback_failed:${response.status}` };
@@ -496,36 +692,31 @@ export class OpenClawAdapter {
     };
   }
 
-  async getCompanyModel(): Promise<CompanyModel> {
+  private async getCompanyModelWithSource(): Promise<{ company: CompanyModel; source: "gateway" | "localStorage" | "default" }> {
     try {
       const payload = await this.readJson("/openclaw/company-model");
-      return normalizeCompanyModel(payload.company ?? payload);
+      return { company: normalizeCompanyModel(payload.company ?? payload), source: "gateway" };
     } catch {
-      // Fall through to static/local sources.
-    }
-
-    try {
-      const response = await fetch("/company.json");
-      if (response.ok) {
-        const payload = (await response.json()) as unknown;
-        return normalizeCompanyModel(payload);
-      }
-    } catch {
-      // Fall through.
+      // Fall through to local sources.
     }
 
     if (typeof window !== "undefined") {
       try {
         const raw = window.localStorage.getItem(COMPANY_STORAGE_KEY);
         if (raw) {
-          return normalizeCompanyModel(JSON.parse(raw));
+          return { company: normalizeCompanyModel(JSON.parse(raw)), source: "localStorage" };
         }
       } catch {
         // ignore parsing/storage errors
       }
     }
 
-    return DEFAULT_COMPANY_MODEL;
+    return { company: DEFAULT_COMPANY_MODEL, source: "default" };
+  }
+
+  async getCompanyModel(): Promise<CompanyModel> {
+    const result = await this.getCompanyModelWithSource();
+    return result.company;
   }
 
   async saveCompanyModel(input: CompanyModel): Promise<{ ok: boolean; company: CompanyModel; error?: string }> {
@@ -534,9 +725,9 @@ export class OpenClawAdapter {
     let error: string | undefined;
 
     try {
-      const response = await fetch(`${this.baseUrl}/openclaw/company-model`, {
+      const response = await fetch(`${this.stateUrl}/openclaw/company-model`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
         body: JSON.stringify({ company }),
       });
       if (response.ok) {
@@ -630,22 +821,141 @@ export class OpenClawAdapter {
     return this.saveCompanyModel({ ...company, channelBindings: nextBindings });
   }
 
+  async getOfficeObjects(): Promise<OfficeObjectSidecarModel[]> {
+    try {
+      const payload = await this.readJson("/openclaw/office-objects");
+      const objects = normalizeArray(payload.objects ?? payload.officeObjects ?? payload, toOfficeObjectSidecar);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(OFFICE_OBJECTS_STORAGE_KEY, JSON.stringify(objects));
+      }
+      return objects;
+    } catch {
+      if (typeof window !== "undefined") {
+        try {
+          const raw = window.localStorage.getItem(OFFICE_OBJECTS_STORAGE_KEY);
+          if (raw) {
+            return normalizeArray(JSON.parse(raw), toOfficeObjectSidecar);
+          }
+        } catch {
+          // ignore parsing/storage errors
+        }
+      }
+      return [];
+    }
+  }
+
+  async saveOfficeObjects(objects: OfficeObjectSidecarModel[]): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
+    const cleaned = normalizeArray(objects, toOfficeObjectSidecar);
+    let ok = false;
+    let error: string | undefined;
+    try {
+      const response = await fetch(`${this.stateUrl}/openclaw/office-objects`, {
+        method: "POST",
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({ objects: cleaned }),
+      });
+      if (response.ok) {
+        ok = true;
+      } else {
+        error = `office_objects_save_failed:${response.status}`;
+      }
+    } catch {
+      error = "office_objects_save_unavailable";
+    }
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(OFFICE_OBJECTS_STORAGE_KEY, JSON.stringify(cleaned));
+        ok = true;
+      } catch {
+        if (!ok) error = "office_objects_local_persist_failed";
+      }
+    }
+    return { ok, objects: cleaned, error };
+  }
+
+  async upsertOfficeObject(object: OfficeObjectSidecarModel): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
+    const current = await this.getOfficeObjects();
+    const next = current.filter((item) => item.id !== object.id);
+    next.push(object);
+    return this.saveOfficeObjects(next);
+  }
+
+  async deleteOfficeObject(objectId: string): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
+    const current = await this.getOfficeObjects();
+    const next = current.filter((item) => item.id !== objectId);
+    return this.saveOfficeObjects(next);
+  }
+
   async getUnifiedOfficeModel(): Promise<UnifiedOfficeModel> {
-    const [runtimeAgents, memory, skills, company] = await Promise.all([
+    const [runtimeAgents, memory, skills, companyResult, configSnapshot, officeObjects] = await Promise.all([
       this.listAgents().catch(() => []),
       this.listMemory().catch(() => []),
       this.listSkills().catch(() => []),
-      this.getCompanyModel().catch(() => DEFAULT_COMPANY_MODEL),
+      this.getCompanyModelWithSource().catch(() => ({ company: DEFAULT_COMPANY_MODEL, source: "default" as const })),
+      this.getConfigSnapshot().catch(() => null),
+      this.getOfficeObjects().catch(() => []),
     ]);
-    const warnings = buildReconciliationWarnings(company, runtimeAgents);
+    const company = companyResult.company;
+    const configuredAgents = parseConfiguredAgentsFromConfig(configSnapshot);
+    const warnings = buildReconciliationWarnings(company, runtimeAgents, configuredAgents);
     const workload = buildWorkload(company);
+    const seenOfficeIds = new Set<string>();
+    const duplicateOfficeObjectIds: string[] = [];
+    const invalidOfficeObjects: string[] = [];
+    for (const object of officeObjects) {
+      if (seenOfficeIds.has(object.id)) {
+        duplicateOfficeObjectIds.push(object.id);
+        invalidOfficeObjects.push(`${object.id}:duplicate_id`);
+      } else {
+        seenOfficeIds.add(object.id);
+      }
+      if (
+        object.meshType === "team-cluster" &&
+        (!object.metadata || typeof object.metadata.teamId !== "string" || !String(object.metadata.teamId).trim())
+      ) {
+        invalidOfficeObjects.push(`${object.id}:missing_team_cluster_metadata`);
+      }
+    }
+    const outOfBoundsClusterObjectIds = officeObjects
+      .filter((object) => object.meshType === "team-cluster")
+      .filter(
+        (object) =>
+          object.position[0] < -CLUSTER_BOUNDARY_LIMIT ||
+          object.position[0] > CLUSTER_BOUNDARY_LIMIT ||
+          object.position[2] < -CLUSTER_BOUNDARY_LIMIT ||
+          object.position[2] > CLUSTER_BOUNDARY_LIMIT,
+      )
+      .map((object) => object.id);
+    const ceoAnchorMode = officeObjects.some((object) => object.meshType === "glass-wall") ? "glass-derived" : "fallback";
+    const missingRuntimeAgentIds = configuredAgents
+      .map((agent) => agent.agentId)
+      .filter((agentId) => !runtimeAgents.some((runtimeAgent) => runtimeAgent.agentId === agentId));
+    const unmappedRuntimeAgentIds = runtimeAgents
+      .map((agent) => agent.agentId)
+      .filter((agentId) => !company.agents.some((metaAgent) => metaAgent.agentId === agentId));
     return {
       company,
       runtimeAgents,
+      configuredAgents,
+      officeObjects,
       memory,
       skills,
       warnings,
       workload,
+      diagnostics: {
+        configAgentCount: configuredAgents.length,
+        runtimeAgentCount: runtimeAgents.length,
+        sidecarAgentCount: company.agents.length,
+        missingRuntimeAgentIds,
+        unmappedRuntimeAgentIds,
+        invalidOfficeObjects,
+        duplicateOfficeObjectIds,
+        officeObjectCount: officeObjects.length,
+        clampedClusterCount: outOfBoundsClusterObjectIds.length,
+        outOfBoundsClusterObjectIds,
+        ceoAnchorMode,
+        source: companyResult.source,
+      },
     };
   }
 }
