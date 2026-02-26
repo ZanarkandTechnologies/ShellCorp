@@ -31,6 +31,26 @@ By default, the UI expects an OpenClaw-compatible gateway endpoint at:
 
 - `http://127.0.0.1:8787` (override via `VITE_GATEWAY_URL`)
 
+### Quick Start Templates (OpenClaw + Sidecar)
+
+For teams onboarding agents/operators, copy these template files and adjust ids/paths:
+
+- `templates/openclaw/openclaw.template.json` -> `~/.openclaw/openclaw.json`
+- `templates/openclaw/agents.list.template.json` -> `openclaw.json.agents.list` (reference snippet)
+- `templates/sidecar/company.template.json` -> `~/.openclaw/company.json` or `workspace/office/company.json`
+- `templates/sidecar/office-objects.template.json` -> `officeObjects.json` (or merge into `company.json.officeObjects`)
+
+Example bootstrap:
+
+```bash
+mkdir -p ~/.openclaw
+cp templates/openclaw/openclaw.template.json ~/.openclaw/openclaw.json
+cp templates/sidecar/company.template.json ~/.openclaw/company.json
+cp templates/sidecar/office-objects.template.json ./officeObjects.json
+```
+
+`openclaw.json` must include `agents.list` entries with stable `id`, `workspace`, sandbox mode, and tool policy so the UI can reconcile configured vs runtime agents.
+
 ## Architecture Summary
 
 - `ui/src/**` contains the gamified office and operational panels.

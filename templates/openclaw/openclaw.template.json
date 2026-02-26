@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "agents": {
+    "list": [
+      {
+        "id": "main",
+        "name": "CEO Agent",
+        "workspace": "/srv/agents/main",
+        "sandbox": {
+          "mode": "off"
+        },
+        "tools": {
+          "allow": [
+            "bash",
+            "read",
+            "write"
+          ],
+          "deny": []
+        }
+      },
+      {
+        "id": "shellcorp-builder",
+        "name": "ShellCorp Builder",
+        "workspace": "/srv/agents/shellcorp-builder",
+        "sandbox": {
+          "mode": "workspace-write"
+        },
+        "tools": {
+          "allow": [
+            "bash",
+            "read",
+            "write"
+          ],
+          "deny": []
+        }
+      },
+      {
+        "id": "shellcorp-pm",
+        "name": "ShellCorp PM",
+        "workspace": "/srv/agents/shellcorp-pm",
+        "sandbox": {
+          "mode": "workspace-write"
+        },
+        "tools": {
+          "allow": [
+            "read",
+            "write"
+          ],
+          "deny": [
+            "bash"
+          ]
+        }
+      }
+    ]
+  },
+  "plugins": {
+    "load": {
+      "paths": [
+        "./extensions/notion"
+      ]
+    }
+  }
+}

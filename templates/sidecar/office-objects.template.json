@@ -1,0 +1,158 @@
+[
+  {
+    "id": "team-shellcorp",
+    "identifier": "team-proj-shellcorp",
+    "meshType": "team-cluster",
+    "position": [
+      -12,
+      0,
+      -5
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "metadata": {
+      "teamId": "team-proj-shellcorp"
+    }
+  },
+  {
+    "id": "team-growth",
+    "identifier": "team-proj-growth",
+    "meshType": "team-cluster",
+    "position": [
+      0,
+      0,
+      5
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "metadata": {
+      "teamId": "team-proj-growth"
+    }
+  },
+  {
+    "id": "ceo-wall-left",
+    "identifier": "ceo-wall-left",
+    "meshType": "glass-wall",
+    "position": [
+      -2,
+      0,
+      15
+    ],
+    "rotation": [
+      0,
+      1.5707963267948966,
+      0
+    ]
+  },
+  {
+    "id": "ceo-wall-right",
+    "identifier": "ceo-wall-right",
+    "meshType": "glass-wall",
+    "position": [
+      2,
+      0,
+      15
+    ],
+    "rotation": [
+      0,
+      1.5707963267948966,
+      0
+    ]
+  },
+  {
+    "id": "ceo-wall-front",
+    "identifier": "ceo-wall-front",
+    "meshType": "glass-wall",
+    "position": [
+      0,
+      0,
+      13
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "id": "bookshelf-back",
+    "identifier": "bookshelf-back",
+    "meshType": "bookshelf",
+    "position": [
+      0,
+      0,
+      -15
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "id": "pantry-back-left",
+    "identifier": "pantry-back-left",
+    "meshType": "pantry",
+    "position": [
+      -12,
+      0,
+      -14
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "id": "couch-back-right",
+    "identifier": "couch-back-right",
+    "meshType": "couch",
+    "position": [
+      12,
+      0,
+      -14
+    ],
+    "rotation": [
+      0,
+      3.1415926535,
+      0
+    ]
+  },
+  {
+    "id": "plant-nw",
+    "identifier": "plant-nw",
+    "meshType": "plant",
+    "position": [
+      -14,
+      0,
+      -14
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "id": "plant-ne",
+    "identifier": "plant-ne",
+    "meshType": "plant",
+    "position": [
+      14,
+      0,
+      -14
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ]
+  }
+]

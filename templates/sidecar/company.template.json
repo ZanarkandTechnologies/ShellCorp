@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "departments": [
+    {
+      "id": "dept-ceo",
+      "name": "CEO Office",
+      "description": "Executive control and company direction.",
+      "goal": "Maximize profitable outcomes."
+    },
+    {
+      "id": "dept-products",
+      "name": "Product Studio",
+      "description": "Delivery teams for product projects.",
+      "goal": "Ship features that move core KPIs."
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj-shellcorp",
+      "departmentId": "dept-products",
+      "name": "ShellCorp",
+      "githubUrl": "https://github.com/your-org/shellcorp",
+      "status": "active",
+      "goal": "Operate an OpenClaw-native AI office.",
+      "kpis": [
+        "weekly_shipped_tickets",
+        "closed_vs_open_ticket_ratio"
+      ]
+    }
+  ],
+  "agents": [
+    {
+      "agentId": "main",
+      "role": "ceo",
+      "heartbeatProfileId": "hb-ceo",
+      "isCeo": true,
+      "lifecycleState": "active"
+    },
+    {
+      "agentId": "shellcorp-builder",
+      "role": "builder",
+      "projectId": "proj-shellcorp",
+      "heartbeatProfileId": "hb-builder",
+      "lifecycleState": "active"
+    },
+    {
+      "agentId": "shellcorp-pm",
+      "role": "pm",
+      "projectId": "proj-shellcorp",
+      "heartbeatProfileId": "hb-pm",
+      "lifecycleState": "active"
+    }
+  ],
+  "roleSlots": [
+    {
+      "projectId": "proj-shellcorp",
+      "role": "builder",
+      "desiredCount": 1,
+      "spawnPolicy": "queue_pressure"
+    },
+    {
+      "projectId": "proj-shellcorp",
+      "role": "pm",
+      "desiredCount": 1,
+      "spawnPolicy": "queue_pressure"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-shellcorp-001",
+      "projectId": "proj-shellcorp",
+      "title": "Ship project topology MVP.",
+      "status": "in_progress",
+      "ownerAgentId": "shellcorp-builder",
+      "priority": "high"
+    }
+  ],
+  "heartbeatProfiles": [
+    {
+      "id": "hb-ceo",
+      "role": "ceo",
+      "cadenceMinutes": 15,
+      "teamDescription": "Executive command center.",
+      "productDetails": "Cross-project strategy and arbitration.",
+      "goal": "Keep all projects aligned to business goals."
+    },
+    {
+      "id": "hb-builder",
+      "role": "builder",
+      "cadenceMinutes": 10,
+      "teamDescription": "Engineering execution.",
+      "productDetails": "Implement tickets and reduce defect rate.",
+      "goal": "Increase delivered value per sprint."
+    },
+    {
+      "id": "hb-pm",
+      "role": "pm",
+      "cadenceMinutes": 10,
+      "teamDescription": "Roadmap and customer communication.",
+      "productDetails": "Prioritization, status reporting, and support routing.",
+      "goal": "Keep roadmap and stakeholders in sync."
+    }
+  ],
+  "channelBindings": [
+    {
+      "platform": "slack",
+      "externalChannelId": "C_CUSTOMER_SUPPORT",
+      "projectId": "proj-shellcorp",
+      "agentRole": "pm",
+      "routingMode": "default_pm"
+    }
+  ],
+  "heartbeatRuntime": {
+    "enabled": true,
+    "pluginId": "shellcorp-heartbeat",
+    "serviceId": "company-heartbeat-loop",
+    "cadenceMinutes": 10,
+    "notes": "Run heartbeat loop via OpenClaw plugin runtime."
+  },
+  "officeObjects": [
+    {
+      "id": "plant-nw",
+      "meshType": "plant",
+      "position": [
+        -14,
+        0,
+        -14
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}
