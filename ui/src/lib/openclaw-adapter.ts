@@ -29,6 +29,8 @@ import type {
   CompanyAgentModel,
   ChannelBindingModel,
   OfficeObjectSidecarModel,
+  OfficeSettingsModel,
+  MeshAssetModel,
 } from "./openclaw-types";
 import { buildGatewayHeaders } from "./gateway-config";
 
@@ -136,6 +138,36 @@ function toMemory(entry: unknown): MemoryItemModel | null {
     summary,
     level: row.level === "warning" || row.level === "critical" ? row.level : "info",
     ts: typeof row.ts === "number" ? row.ts : Date.now(),
+  };
+}
+
+function toOfficeSettings(entry: unknown): OfficeSettingsModel {
+  const row = entry && typeof entry === "object" ? (entry as Json) : {};
+  const meshAssetDir =
+    typeof row.meshAssetDir === "string" && row.meshAssetDir.trim() ? row.meshAssetDir.trim() : "";
+  return { meshAssetDir };
+}
+
+function toMeshAsset(entry: unknown): MeshAssetModel | null {
+  if (!entry || typeof entry !== "object") return null;
+  const row = entry as Json;
+  const assetId = String(row.assetId ?? "").trim();
+  const label = String(row.label ?? assetId).trim();
+  const localPath = String(row.localPath ?? "").trim();
+  const publicPath = String(row.publicPath ?? "").trim();
+  const fileName = String(row.fileName ?? assetId).trim();
+  if (!assetId || !localPath || !publicPath || !fileName) return null;
+  return {
+    assetId,
+    label,
+    localPath,
+    publicPath,
+    fileName,
+    fileSizeBytes: Number(row.fileSizeBytes ?? 0),
+    sourceType: row.sourceType === "downloaded" ? "downloaded" : "local",
+    validated: row.validated !== false,
+    addedAt: Number(row.addedAt ?? Date.now()),
+    sourceUrl: typeof row.sourceUrl === "string" ? row.sourceUrl : undefined,
   };
 }
 
@@ -458,7 +490,8 @@ function toOfficeObject(entry: unknown): CompanyOfficeObjectModel | null {
     meshType !== "couch" &&
     meshType !== "bookshelf" &&
     meshType !== "pantry" &&
-    meshType !== "glass-wall"
+    meshType !== "glass-wall" &&
+    meshType !== "custom-mesh"
   ) {
     return null;
   }
@@ -499,7 +532,8 @@ function toOfficeObjectSidecar(entry: unknown): OfficeObjectSidecarModel | null 
     meshType !== "couch" &&
     meshType !== "bookshelf" &&
     meshType !== "pantry" &&
-    meshType !== "glass-wall"
+    meshType !== "glass-wall" &&
+    meshType !== "custom-mesh"
   ) {
     return null;
   }
@@ -744,11 +778,16 @@ export class OpenClawAdapter {
   }
 
   async sendMessage(input: ChatSendRequest): Promise<{ ok: boolean; eventId?: string; error?: string }> {
-    const response = await fetch(`${this.gatewayUrl}/openclaw/chat/send`, {
-      method: "POST",
-      headers: buildGatewayHeaders({ "content-type": "application/json" }),
-      body: JSON.stringify(input),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.stateUrl}/openclaw/chat/send`, {
+        method: "POST",
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify(input),
+      });
+    } catch {
+      return { ok: false, error: "send_unreachable" };
+    }
     if (!response.ok) {
       return { ok: false, error: `send_failed:${response.status}` };
     }
@@ -1116,6 +1155,67 @@ export class OpenClawAdapter {
         }
       }
       return [];
+    }
+  }
+
+  async getOfficeSettings(): Promise<OfficeSettingsModel> {
+    try {
+      const payload = await this.readJson("/openclaw/office-settings");
+      return toOfficeSettings(payload.settings ?? payload);
+    } catch {
+      return { meshAssetDir: "" };
+    }
+  }
+
+  async saveOfficeSettings(settings: OfficeSettingsModel): Promise<{ ok: boolean; settings: OfficeSettingsModel; error?: string }> {
+    const normalized = toOfficeSettings(settings);
+    try {
+      const response = await fetch(`${this.stateUrl}/openclaw/office-settings`, {
+        method: "POST",
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({ settings: normalized }),
+      });
+      if (!response.ok) {
+        return { ok: false, settings: normalized, error: `office_settings_save_failed:${response.status}` };
+      }
+      const payload = (await response.json()) as Json;
+      return { ok: true, settings: toOfficeSettings(payload.settings ?? normalized) };
+    } catch {
+      return { ok: false, settings: normalized, error: "office_settings_save_unavailable" };
+    }
+  }
+
+  async listMeshAssets(): Promise<{ assets: MeshAssetModel[]; meshAssetDir: string }> {
+    try {
+      const payload = await this.readJson("/openclaw/mesh-assets");
+      return {
+        assets: normalizeArray(payload.assets, toMeshAsset),
+        meshAssetDir: String(payload.meshAssetDir ?? ""),
+      };
+    } catch {
+      return { assets: [], meshAssetDir: "" };
+    }
+  }
+
+  async downloadMeshAsset(input: { url: string; label?: string }): Promise<{ ok: boolean; asset?: MeshAssetModel; error?: string }> {
+    try {
+      const response = await fetch(`${this.stateUrl}/openclaw/mesh-assets/download`, {
+        method: "POST",
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify(input),
+      });
+      if (!response.ok) {
+        return { ok: false, error: `mesh_download_failed:${response.status}` };
+      }
+      const payload = (await response.json()) as Json;
+      if (payload.ok === false) {
+        return { ok: false, error: typeof payload.error === "string" ? payload.error : "mesh_download_failed" };
+      }
+      const asset = toMeshAsset(payload.asset);
+      if (!asset) return { ok: false, error: "mesh_asset_invalid" };
+      return { ok: true, asset };
+    } catch {
+      return { ok: false, error: "mesh_download_unavailable" };
     }
   }
 
