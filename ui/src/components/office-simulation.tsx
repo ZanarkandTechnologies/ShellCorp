@@ -1,5 +1,5 @@
 import OfficeScene from './office-scene';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { TeamOptionsDialog } from './dialogs/team-options-dialog';
 import SettingsDialog from './dialogs/settings-dialog';
 import { LogsDrawer } from './hud/logs-drawer';
@@ -15,6 +15,7 @@ import { ManageAgentModal } from '@/features/office-system/components/manage-age
 import { SkillsPanel } from '@/features/office-system/components/skills-panel';
 import { TrainingModal } from '@/features/self-improvement-system/components/training-modal';
 import { TeamPanel } from '@/features/team-system/components/team-panel';
+import { preloadMeshes } from '@/features/office-system/systems/mesh-cache';
 
 // Main Office Simulation Component
 export default function OfficeSimulation() {
@@ -41,10 +42,28 @@ export default function OfficeSimulation() {
     // Get company ID from the first team (all teams should have same companyId)
     const companyId = company?._id;
 
-    if (isLoading) {
+    const customMeshUrls = useMemo(() => {
+        return officeObjects
+            .filter((obj) => obj.meshType === "custom-mesh")
+            .map((obj) => typeof obj.metadata?.meshPublicPath === "string" ? obj.metadata.meshPublicPath : "")
+            .filter(Boolean);
+    }, [officeObjects]);
+
+    const [meshesReady, setMeshesReady] = useState(customMeshUrls.length === 0);
+
+    useEffect(() => {
+        if (customMeshUrls.length === 0) {
+            setMeshesReady(true);
+            return;
+        }
+        setMeshesReady(false);
+        preloadMeshes(customMeshUrls).then(() => setMeshesReady(true));
+    }, [customMeshUrls]);
+
+    if (isLoading || !meshesReady) {
         return (
             <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div>Loading office data...</div>
+                <div>{isLoading ? "Loading office data..." : "Loading custom meshes..."}</div>
             </div>
         );
     }
