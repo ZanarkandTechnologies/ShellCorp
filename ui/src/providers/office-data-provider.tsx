@@ -342,6 +342,7 @@ function toOfficeData(unified: UnifiedOfficeModel): OfficeDataContextType {
       meshType: item.meshType,
       position: item.position,
       rotation: item.rotation ?? [0, 0, 0],
+      scale: item.scale,
       metadata: { ...(item.metadata ?? {}) },
     }));
   const officeObjects = [...clusterObjects, ...(sidecarFurniture.length > 0 ? sidecarFurniture : buildDefaultFurnitureObjects(companyId))];

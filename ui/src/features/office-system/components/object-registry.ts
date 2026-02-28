@@ -17,11 +17,13 @@
 import { GameObjectDefinition } from "../definitions";
 import { DeskPrefab } from "../prefabs/desk-prefab";
 import { TeamClusterPrefab } from "../prefabs/team-cluster-prefab";
+import { CustomMeshPrefab } from "../prefabs/custom-mesh-prefab";
 
 // Registry mapping item types to their full Prefab Definitions
 export const OBJECT_REGISTRY: Record<string, GameObjectDefinition> = {
     "desk": DeskPrefab,
     "team-cluster": TeamClusterPrefab,
+    "custom-mesh": CustomMeshPrefab,
     // Add new items here:
     // "plant": PlantPrefab,
 };

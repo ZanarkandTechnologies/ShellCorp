@@ -14,12 +14,14 @@ import Plant from '@/features/office-system/components/plant';
 import Couch from '@/features/office-system/components/couch';
 import Bookshelf from '@/features/office-system/components/bookshelf';
 import Pantry from '@/features/office-system/components/pantry';
+import CustomMeshObject from '@/features/office-system/components/custom-mesh-object';
 import {
     WALL_THICKNESS,
     WALL_HEIGHT,
     FLOOR_SIZE,
     HALF_FLOOR,
 } from '@/constants';
+import { getOfficeTheme } from '@/config/office-theme';
 import { initializeGrid } from '@/features/nav-system/pathfinding/a-star-pathfinding';
 import { SmartGrid } from './debug/unified-grid-helper';
 import { DestinationDebugger } from './debug/destination-debugger';
@@ -206,26 +208,24 @@ const SceneContents = ({
     const unregisterObject = useObjectRegistrationStore(state => state.unregisterObject);
     const getObjects = useObjectRegistrationStore(state => state.getObjects);
 
-    // Get theme colors for walls and floor
-    const [floorColor, setFloorColor] = useState<THREE.Color>(new THREE.Color('#f5f5f5'));
-    const [wallColor, setWallColor] = useState<THREE.Color>(new THREE.Color('#e5e5e5'));
+    // Detect if we're in dark mode for lighting/background adjustments.
+    const [isDarkMode, setIsDarkMode] = useState(false);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
-            // Retro Cement Vibe: Distinct gray floor with nice lighting
-            const updateColors = () => {
-                // Floor: distinct cement gray (#cbd5e1 is Slate-300)
-                // Deeper gray for that retro concrete feel
-                setFloorColor(new THREE.Color('#d9dddc'));
+            const root = document.documentElement;
+            setIsDarkMode(root.classList.contains('dark'));
 
-                // Walls: Keep pure white for clean look
-                setWallColor(new THREE.Color('#d9dddc'));
-            };
+            const observer = new MutationObserver(() => {
+                setIsDarkMode(root.classList.contains('dark'));
+            });
 
-            updateColors();
-            // We don't need to listen for theme changes for the floor itself if we want it consistent
+            observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+            return () => observer.disconnect();
         }
     }, []);
+
+    const officeTheme = useMemo(() => getOfficeTheme(isDarkMode), [isDarkMode]);
 
     // Use animation state to prevent scene updates during transitions
     const sceneBuilderMode = isAnimatingCamera ? false : isBuilderMode;
@@ -438,6 +438,21 @@ const SceneContents = ({
                         </group>
                     )
 
+                case 'custom-mesh':
+                    return (
+                        <group key={obj._id} ref={setRef} name={`obstacle-custom-mesh-${obj._id}`}>
+                            <CustomMeshObject
+                                objectId={obj._id}
+                                position={obj.position as [number, number, number]}
+                                rotation={obj.rotation as [number, number, number]}
+                                scale={obj.scale as [number, number, number] | undefined}
+                                companyId={companyId}
+                                meshUrl={typeof obj.metadata?.meshPublicPath === "string" ? obj.metadata.meshPublicPath : ""}
+                                label={typeof obj.metadata?.displayName === "string" ? obj.metadata.displayName : undefined}
+                            />
+                        </group>
+                    );
+
                 default:
                     console.warn(`Unknown meshType: ${obj.meshType}`);
                     return null;
@@ -574,7 +589,7 @@ const SceneContents = ({
                 name="floor"
                 onClick={handleBackgroundClick}
             >
-                <meshStandardMaterial color={floorColor} />
+                <meshStandardMaterial color={officeTheme.scene.floor} />
             </Box>
 
             <Box
@@ -585,7 +600,7 @@ const SceneContents = ({
                 name="wall-back"
                 onClick={handleBackgroundClick}
             >
-                <meshStandardMaterial color={wallColor} />
+                <meshStandardMaterial color={officeTheme.scene.walls} />
             </Box>
             <Box
                 args={[FLOOR_SIZE, WALL_HEIGHT, WALL_THICKNESS]}
@@ -595,7 +610,7 @@ const SceneContents = ({
                 name="wall-front"
                 onClick={handleBackgroundClick}
             >
-                <meshStandardMaterial color={wallColor} />
+                <meshStandardMaterial color={officeTheme.scene.walls} />
             </Box>
             <Box
                 args={[WALL_THICKNESS, WALL_HEIGHT, FLOOR_SIZE + WALL_THICKNESS]}
@@ -605,7 +620,7 @@ const SceneContents = ({
                 name="wall-left"
                 onClick={handleBackgroundClick}
             >
-                <meshStandardMaterial color={wallColor} />
+                <meshStandardMaterial color={officeTheme.scene.walls} />
             </Box>
             <Box
                 args={[WALL_THICKNESS, WALL_HEIGHT, FLOOR_SIZE + WALL_THICKNESS]}
@@ -615,42 +630,25 @@ const SceneContents = ({
                 name="wall-right"
                 onClick={handleBackgroundClick}
             >
-                <meshStandardMaterial color={wallColor} />
+                <meshStandardMaterial color={officeTheme.scene.walls} />
             </Box>
 
         </>
-    }, [floorColor, wallColor, handleBackgroundClick])
-
-    // Detect if we're in dark mode for lighting adjustments
-    const [isDarkMode, setIsDarkMode] = useState(false);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const root = document.documentElement;
-            setIsDarkMode(root.classList.contains('dark'));
-
-            const observer = new MutationObserver(() => {
-                setIsDarkMode(root.classList.contains('dark'));
-            });
-
-            observer.observe(root, { attributes: true, attributeFilter: ['class'] });
-            return () => observer.disconnect();
-        }
-    }, []);
+    }, [officeTheme.scene.floor, officeTheme.scene.walls, handleBackgroundClick])
 
     return (
         <>
             {/* Ambient lighting - pure white everywhere */}
             <ambientLight
                 intensity={0.9}
-                color={'#ffffff'}
+                color={officeTheme.lighting.ambient}
             />
 
             {/* Main directional light - bright and clean */}
             <directionalLight
                 position={[0, 20, 5]}
                 intensity={1.5}
-                color={'#ffffff'}
+                color={officeTheme.lighting.directional}
                 castShadow
                 shadow-mapSize-width={sceneBuilderMode ? 1024 : 2048}
                 shadow-mapSize-height={sceneBuilderMode ? 1024 : 2048}
@@ -665,12 +663,12 @@ const SceneContents = ({
             <pointLight
                 position={[-10, 10, -10]}
                 intensity={0.5}
-                color={'#eef2ff'}
+                color={officeTheme.lighting.point}
             />
             <pointLight
                 position={[10, 10, 10]}
                 intensity={0.5}
-                color={'#eef2ff'}
+                color={officeTheme.lighting.point}
             />
 
             <OrbitControls
@@ -733,28 +731,20 @@ const SceneContents = ({
 }
 
 const OfficeScene = memo((props: SceneContentsProps) => {
-    const [bgColor, setBgColor] = useState('#d0e0f0');
+    const [bgColor, setBgColor] = useState(getOfficeTheme(false).scene.background);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const root = document.documentElement;
             const isDark = root.classList.contains('dark');
 
-            // Day/Night sky colors for the office
-            if (isDark) {
-                // Luxurious night office - deep warm charcoal with subtle amber glow
-                setBgColor('#1a1612');
-            } else {
-                // New York morning - soft golden hour with peachy undertones
-                setBgColor('#e8dcc4');
-            }
+            setBgColor(getOfficeTheme(isDark).scene.background);
 
             // Listen for theme changes
             const observer = new MutationObserver((mutations) => {
                 mutations.forEach((mutation) => {
                     if (mutation.attributeName === 'class') {
-                        const isDark = root.classList.contains('dark');
-                        setBgColor(isDark ? '#1a1612' : '#e8dcc4');
+                        setBgColor(getOfficeTheme(root.classList.contains('dark')).scene.background);
                     }
                 });
             });
