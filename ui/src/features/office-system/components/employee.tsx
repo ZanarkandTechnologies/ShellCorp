@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
-import { Box, Edges, Html } from "@react-three/drei";
+import { Box, Edges, Html, Sphere, Cylinder, Cone } from "@react-three/drei";
 import {
     HAIR_COLORS, HAIR_WIDTH, HAIR_HEIGHT,
     HEAD_HEIGHT, HEAD_WIDTH,
     PANTS_COLORS, SHIRT_COLORS, SKIN_COLORS,
     TOTAL_HEIGHT,
     BODY_HEIGHT, LEG_HEIGHT, BODY_WIDTH,
-    IDLE_DESTINATIONS
+    IDLE_DESTINATIONS,
+    TEAM_PLUMBOB_COLORS,
 } from "@/constants";
 import type { Group } from "three";
 import * as THREE from 'three';
@@ -145,38 +146,164 @@ const PropellerHat = () => {
     return (
         <group position={[0, HAIR_HEIGHT / 2 + hatHeight / 2, 0]}>
             {/* Cap (Blue/Red/Yellow/Green quadrants simulated by small boxes) */}
+            {/* OpenClaw-themed hat quadrants */}
             <group>
                 <Box args={[hatWidth / 2, hatHeight, hatWidth / 2]} position={[-hatWidth / 4, 0, -hatWidth / 4]}>
-                    <meshStandardMaterial color="#4285F4" /> {/* Blue */}
+                    <meshStandardMaterial color="#CC2200" /> {/* Deep red */}
                 </Box>
                 <Box args={[hatWidth / 2, hatHeight, hatWidth / 2]} position={[hatWidth / 4, 0, -hatWidth / 4]}>
-                    <meshStandardMaterial color="#EA4335" /> {/* Red */}
+                    <meshStandardMaterial color="#FF4500" /> {/* Orange-red */}
                 </Box>
                 <Box args={[hatWidth / 2, hatHeight, hatWidth / 2]} position={[-hatWidth / 4, 0, hatWidth / 4]}>
-                    <meshStandardMaterial color="#FBBC05" /> {/* Yellow */}
+                    <meshStandardMaterial color="#FF6B3D" /> {/* Bright orange */}
                 </Box>
                 <Box args={[hatWidth / 2, hatHeight, hatWidth / 2]} position={[hatWidth / 4, 0, hatWidth / 4]}>
-                    <meshStandardMaterial color="#34A853" /> {/* Green */}
+                    <meshStandardMaterial color="#D4380D" /> {/* Burnt orange */}
                 </Box>
             </group>
 
             {/* Stem */}
             <Box args={[0.01, 0.08, 0.01]} position={[0, hatHeight, 0]}>
-                <meshStandardMaterial color="#FFFFFF" />
+                <meshStandardMaterial color="#FFD700" /> {/* Gold stem */}
             </Box>
 
             {/* Propeller */}
             <group ref={propellerRef} position={[0, hatHeight + 0.08, 0]}>
                 <Box args={[0.2, 0.005, 0.02]}>
-                    <meshStandardMaterial color="#EA4335" /> {/* Red Blade */}
+                    <meshStandardMaterial color="#FF4500" /> {/* Orange blade */}
                 </Box>
                 <Box args={[0.02, 0.005, 0.2]}>
-                    <meshStandardMaterial color="#4285F4" /> {/* Blue Blade */}
+                    <meshStandardMaterial color="#CC2200" /> {/* Red blade */}
                 </Box>
             </group>
         </group>
     );
 };
+
+/** Lobster claws — two pincers flanking the body */
+const LobsterClaws = memo(function LobsterClaws({ color }: { color: string }) {
+    const clawY = LEG_HEIGHT + BODY_HEIGHT * 0.5; // Mid-body height
+    const clawOffsetX = BODY_WIDTH / 2 + 0.08; // Just outside the body
+    const pincerGap = 0.025;
+
+    const Pincer = ({ side }: { side: 1 | -1 }) => (
+        <group position={[side * clawOffsetX, clawY - TOTAL_HEIGHT / 2, 0.02]}>
+            {/* Upper pincer */}
+            <Box args={[0.14, 0.05, 0.16]} position={[side * 0.04, pincerGap, 0]} castShadow>
+                <meshStandardMaterial color={color} />
+            </Box>
+            {/* Lower pincer (slightly smaller) */}
+            <Box args={[0.12, 0.04, 0.14]} position={[side * 0.03, -pincerGap - 0.03, 0]} castShadow>
+                <meshStandardMaterial color={color} />
+            </Box>
+        </group>
+    );
+
+    return (
+        <>
+            <Pincer side={1} />
+            <Pincer side={-1} />
+        </>
+    );
+});
+
+/** Antennae — two thin stalks angled outward from top of head */
+const LobsterAntennae = memo(function LobsterAntennae() {
+    const antennaY = LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT + HAIR_HEIGHT - TOTAL_HEIGHT / 2;
+    const antennaColor = "#FF8C00"; // Lighter orange
+
+    return (
+        <>
+            {/* Left antenna — angled outward */}
+            <group position={[-HEAD_WIDTH * 0.25, antennaY, HEAD_WIDTH * 0.15]} rotation={[0.15, 0, -0.25]}>
+                <Box args={[0.02, 0.22, 0.02]} position={[0, 0.11, 0]} castShadow>
+                    <meshStandardMaterial color={antennaColor} />
+                </Box>
+            </group>
+            {/* Right antenna — angled outward */}
+            <group position={[HEAD_WIDTH * 0.25, antennaY, HEAD_WIDTH * 0.15]} rotation={[0.15, 0, 0.25]}>
+                <Box args={[0.02, 0.22, 0.02]} position={[0, 0.11, 0]} castShadow>
+                    <meshStandardMaterial color={antennaColor} />
+                </Box>
+            </group>
+        </>
+    );
+});
+
+/** Eye stalks — two small cylinders with spheres on top */
+const LobsterEyes = memo(function LobsterEyes() {
+    const eyeBaseY = LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT * 0.6 - TOTAL_HEIGHT / 2;
+    const eyeSpacing = HEAD_WIDTH * 0.3;
+
+    const EyeStalk = ({ offsetX }: { offsetX: number }) => (
+        <group position={[offsetX, eyeBaseY, HEAD_WIDTH * 0.35]}>
+            {/* Stalk */}
+            <Cylinder args={[0.015, 0.015, 0.08, 6]} position={[0, 0.04, 0]} castShadow>
+                <meshStandardMaterial color="#FF8C00" />
+            </Cylinder>
+            {/* Eyeball */}
+            <Sphere args={[0.03, 8, 8]} position={[0, 0.1, 0]} castShadow>
+                <meshStandardMaterial color="#FFFFFF" />
+            </Sphere>
+            {/* Pupil */}
+            <Sphere args={[0.016, 6, 6]} position={[0, 0.1, 0.02]} castShadow>
+                <meshStandardMaterial color="#111111" />
+            </Sphere>
+        </group>
+    );
+
+    return (
+        <>
+            <EyeStalk offsetX={-eyeSpacing} />
+            <EyeStalk offsetX={eyeSpacing} />
+        </>
+    );
+});
+
+/** Simple hash to derive a deterministic index from a string */
+function hashString(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+}
+
+/** Sims-style plumbob diamond floating above the agent, colored by team */
+const TeamPlumbob = memo(function TeamPlumbob({ teamId }: { teamId?: string }) {
+    const diamondRef = useRef<THREE.Group>(null);
+
+    // Derive color from teamId; fallback to classic green if no team
+    const color = useMemo(() => {
+        if (!teamId) return "#00E676";
+        return TEAM_PLUMBOB_COLORS[hashString(teamId) % TEAM_PLUMBOB_COLORS.length];
+    }, [teamId]);
+
+    // Slow rotation + gentle bob
+    useFrame((state) => {
+        if (diamondRef.current) {
+            diamondRef.current.rotation.y += 0.015;
+            diamondRef.current.position.y = TOTAL_HEIGHT / 2 + 0.55 + Math.sin(state.clock.elapsedTime * 1.5) * 0.04;
+        }
+    });
+
+    const coneRadius = 0.12;
+    const coneHeight = 0.18;
+
+    return (
+        <group ref={diamondRef} position={[0, TOTAL_HEIGHT / 2 + 0.55, 0]}>
+            {/* Upper cone (point up) */}
+            <Cone args={[coneRadius, coneHeight, 4]} position={[0, coneHeight / 2, 0]} rotation={[0, Math.PI / 4, 0]}>
+                <meshStandardMaterial color={color} transparent opacity={0.85} emissive={color} emissiveIntensity={0.3} />
+            </Cone>
+            {/* Lower cone (point down) */}
+            <Cone args={[coneRadius, coneHeight, 4]} position={[0, -coneHeight / 2, 0]} rotation={[Math.PI, Math.PI / 4, 0]}>
+                <meshStandardMaterial color={color} transparent opacity={0.85} emissive={color} emissiveIntensity={0.3} />
+            </Cone>
+        </group>
+    );
+});
 
 const Employee = memo(function Employee({
     _id: id,
@@ -278,7 +405,7 @@ const Employee = memo(function Employee({
         pants: getRandomItem(PANTS_COLORS),
     }), []);
     const finalColors = useMemo(() => isCEO ? {
-        hair: "#FFD700", skin: getRandomItem(SKIN_COLORS), shirt: "#4B0082", pants: "#000000",
+        hair: "#FFD700", skin: "#FF5722", shirt: "#CC2200", pants: "#8B0000",
     } : colors, [isCEO, colors]);
 
     // Release destination reservations when component unmounts
@@ -703,6 +830,14 @@ const Employee = memo(function Employee({
                     {/* Propeller Hat for Supervisors */}
                     {isSupervisor && <PropellerHat />}
                 </group>
+
+                {/* Lobster Features */}
+                <LobsterClaws color={finalColors.shirt} />
+                <LobsterAntennae />
+                <LobsterEyes />
+
+                {/* Sims-style team plumbob */}
+                <TeamPlumbob teamId={teamId} />
 
                 {/* Selection Highlight */}
                 {(isHovered || isSelected) && (
