@@ -29,6 +29,7 @@ import type {
   CompanyAgentModel,
   ChannelBindingModel,
   OfficeObjectSidecarModel,
+  PendingApprovalModel,
   OfficeSettingsModel,
   MeshAssetModel,
 } from "./openclaw-types";
@@ -209,6 +210,29 @@ function toAgentMemoryEntry(agentId: string, entry: unknown): AgentMemoryEntry |
     memId: typeof row.memId === "string" ? row.memId : undefined,
     tags: Array.isArray(row.tags) ? row.tags.filter((tag): tag is string => typeof tag === "string") : [],
     metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : undefined,
+  };
+}
+
+const VALID_ACTION_TYPES = new Set(["tool_call", "external_message", "deploy", "delete", "write", "config_change"]);
+const VALID_RISK_LEVELS = new Set(["low", "medium", "high", "critical"]);
+
+function toPendingApproval(entry: unknown): PendingApprovalModel | null {
+  if (!entry || typeof entry !== "object") return null;
+  const row = entry as Json;
+  const id = String(row.id ?? "").trim();
+  if (!id) return null;
+  const actionType = String(row.actionType ?? "tool_call");
+  const riskLevel = String(row.riskLevel ?? "medium");
+  return {
+    id,
+    agentId: String(row.agentId ?? "").trim(),
+    actionType: VALID_ACTION_TYPES.has(actionType) ? (actionType as PendingApprovalModel["actionType"]) : "tool_call",
+    toolName: typeof row.toolName === "string" ? row.toolName : undefined,
+    description: String(row.description ?? ""),
+    riskLevel: VALID_RISK_LEVELS.has(riskLevel) ? (riskLevel as PendingApprovalModel["riskLevel"]) : "medium",
+    createdAt: typeof row.createdAt === "number" ? row.createdAt : Date.now(),
+    context: typeof row.context === "string" ? row.context : undefined,
+    status: row.status === "approved" || row.status === "rejected" ? row.status : "pending",
   };
 }
 
@@ -1343,5 +1367,28 @@ export class OpenClawAdapter {
         source: companyResult.source,
       },
     };
+  }
+
+  async getPendingApprovals(): Promise<PendingApprovalModel[]> {
+    try {
+      const payload = await this.readJson("/openclaw/pending-approvals");
+      return normalizeArray(payload.approvals, toPendingApproval);
+    } catch {
+      return [];
+    }
+  }
+
+  async resolveApproval(id: string, decision: "approved" | "rejected"): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${this.stateUrl}/openclaw/pending-approvals/resolve`, {
+        method: "POST",
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({ id, decision }),
+      });
+      const payload = (await response.json()) as Json;
+      return { ok: payload.ok === true, error: typeof payload.error === "string" ? payload.error : undefined };
+    } catch {
+      return { ok: false, error: "resolve_request_failed" };
+    }
   }
 }

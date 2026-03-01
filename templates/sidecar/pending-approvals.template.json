@@ -1,0 +1,54 @@
+[
+  {
+    "id": "approval-001",
+    "agentId": "shellcorp-builder",
+    "actionType": "tool_call",
+    "toolName": "bash",
+    "description": "Run deployment script: ./deploy.sh --env production --force",
+    "riskLevel": "critical",
+    "createdAt": 1740700800000,
+    "context": "Builder agent wants to deploy latest changes to production. This will overwrite the current live build.",
+    "status": "pending"
+  },
+  {
+    "id": "approval-002",
+    "agentId": "shellcorp-pm",
+    "actionType": "external_message",
+    "description": "Send Slack message to #general channel: \"Sprint review scheduled for Friday 3pm — all hands required.\"",
+    "riskLevel": "medium",
+    "createdAt": 1740700500000,
+    "context": "PM agent wants to broadcast a team-wide announcement via Slack.",
+    "status": "pending"
+  },
+  {
+    "id": "approval-003",
+    "agentId": "shellcorp-builder",
+    "actionType": "delete",
+    "toolName": "bash",
+    "description": "Delete stale feature branch: git push origin --delete feature/legacy-auth",
+    "riskLevel": "high",
+    "createdAt": 1740700200000,
+    "context": "Builder agent identified an abandoned feature branch with no recent commits. Requests cleanup.",
+    "status": "pending"
+  },
+  {
+    "id": "approval-004",
+    "agentId": "main",
+    "actionType": "config_change",
+    "description": "Update agent tool policy: grant shellcorp-builder access to 'docker' tool",
+    "riskLevel": "high",
+    "createdAt": 1740699900000,
+    "context": "CEO agent recommends expanding Builder's toolset to include Docker for containerized deployments.",
+    "status": "pending"
+  },
+  {
+    "id": "approval-005",
+    "agentId": "shellcorp-pm",
+    "actionType": "write",
+    "description": "Create new Notion page: Q1 2026 Roadmap with 12 epics and milestone dates",
+    "riskLevel": "low",
+    "createdAt": 1740699600000,
+    "context": "PM agent has drafted a quarterly roadmap based on current project goals and wants to publish it.",
+    "status": "pending"
+  }
+]
