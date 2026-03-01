@@ -1,20 +1,29 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile, stat } from "node:fs/promises";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 type JsonObject = Record<string, unknown>;
 type MemoryEntryType = "discovery" | "decision" | "problem" | "solution" | "pattern" | "warning" | "success" | "refactor" | "bugfix" | "feature";
+type TaskProvider = "internal" | "notion" | "vibe" | "linear";
+type TaskSyncState = "healthy" | "pending" | "conflict" | "error";
 
 const OPENCLAW_HOME = process.env.OPENCLAW_STATE_DIR || path.join(process.env.HOME || "", ".openclaw");
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || path.join(OPENCLAW_HOME, "openclaw.json");
 const COMPANY_MODEL_PATH = path.join(OPENCLAW_HOME, "company.json");
 const OFFICE_OBJECTS_PATH = path.join(OPENCLAW_HOME, "office-objects.json");
+const OFFICE_SETTINGS_PATH = path.join(OPENCLAW_HOME, "office.json");
 const OFFICE_OBJECTS_TEMPLATE_PATH = path.resolve(__dirname, "../officeObjects.json");
 const PENDING_APPROVALS_PATH = path.join(OPENCLAW_HOME, "pending-approvals.json");
 const PENDING_APPROVALS_TEMPLATE_PATH = path.resolve(__dirname, "../templates/sidecar/pending-approvals.template.json");
+const DEFAULT_MESH_ASSET_DIR = path.join(OPENCLAW_HOME, "assets", "meshes");
+const MESH_EXTENSIONS = new Set([".glb", ".gltf"]);
+
+interface OfficeSettings {
+  meshAssetDir?: string;
+}
 
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
   try {
@@ -45,6 +54,84 @@ async function readBody(req: { on: (name: string, cb: (chunk?: Buffer) => void) 
   } catch {
     return {};
   }
+}
+
+function normalizeOfficeSettings(input: unknown): OfficeSettings {
+  const row = input && typeof input === "object" ? (input as JsonObject) : {};
+  const meshAssetDir =
+    typeof row.meshAssetDir === "string" && row.meshAssetDir.trim()
+      ? path.resolve(row.meshAssetDir.trim())
+      : DEFAULT_MESH_ASSET_DIR;
+  return { meshAssetDir };
+}
+
+async function readOfficeSettings(): Promise<OfficeSettings> {
+  const raw = await readJsonFile<OfficeSettings>(OFFICE_SETTINGS_PATH, { meshAssetDir: DEFAULT_MESH_ASSET_DIR });
+  return normalizeOfficeSettings(raw);
+}
+
+function asMeshPublicPath(fileName: string): string {
+  return `/openclaw/assets/meshes/${encodeURIComponent(fileName)}`;
+}
+
+function sanitizeLabelToFileBase(label: string): string {
+  const cleaned = label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || `mesh-${Date.now()}`;
+}
+
+async function toUniqueFilePath(baseDir: string, desiredName: string): Promise<string> {
+  const ext = path.extname(desiredName);
+  const baseName = path.basename(desiredName, ext);
+  let attempt = 0;
+  while (attempt < 1000) {
+    const suffix = attempt === 0 ? "" : `-${attempt}`;
+    const candidate = path.join(baseDir, `${baseName}${suffix}${ext}`);
+    try {
+      await stat(candidate);
+      attempt += 1;
+    } catch {
+      return candidate;
+    }
+  }
+  return path.join(baseDir, `${baseName}-${Date.now()}${ext}`);
+}
+
+async function listMeshAssets(meshAssetDir: string): Promise<JsonObject[]> {
+  await mkdir(meshAssetDir, { recursive: true });
+  const rows = await readdir(meshAssetDir, { withFileTypes: true });
+  const assets = await Promise.all(
+    rows
+      .filter((row) => row.isFile())
+      .map(async (row) => {
+        const ext = path.extname(row.name).toLowerCase();
+        if (!MESH_EXTENSIONS.has(ext)) return null;
+        const filePath = path.join(meshAssetDir, row.name);
+        const fileStat = await stat(filePath);
+        return {
+          assetId: row.name,
+          label: path.basename(row.name, ext),
+          localPath: filePath,
+          publicPath: asMeshPublicPath(row.name),
+          fileName: row.name,
+          fileSizeBytes: fileStat.size,
+          sourceType: "local",
+          validated: true,
+          addedAt: fileStat.mtimeMs,
+        } satisfies JsonObject;
+      }),
+  );
+  return assets.filter((asset): asset is JsonObject => asset !== null);
+}
+
+function inferMeshExtensionFromUrl(rawUrl: string): ".glb" | ".gltf" {
+  const pathname = new URL(rawUrl).pathname.toLowerCase();
+  if (pathname.endsWith(".gltf")) return ".gltf";
+  return ".glb";
 }
 
 function normalizeAgentsFromConfig(config: JsonObject): JsonObject[] {
@@ -231,6 +318,72 @@ async function readAgentSessionsIndex(agentId: string): Promise<Record<string, J
   return rows;
 }
 
+function resolveSessionTranscriptPath(agentId: string, sessionRow: JsonObject): string | null {
+  const sessionsDir = path.join(OPENCLAW_HOME, "agents", agentId, "sessions");
+  const directTranscriptPath = String(sessionRow.transcriptPath ?? "").trim();
+  if (directTranscriptPath) {
+    return path.isAbsolute(directTranscriptPath) ? directTranscriptPath : path.join(sessionsDir, directTranscriptPath);
+  }
+  const sessionId = String(sessionRow.sessionId ?? "").trim();
+  if (!sessionId) return null;
+  return path.join(sessionsDir, `${sessionId}.jsonl`);
+}
+
+function extractTextFromTranscriptMessage(message: JsonObject): string {
+  const content = Array.isArray(message.content) ? message.content : [];
+  const chunks = content
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const row = item as JsonObject;
+      if (typeof row.text === "string") return row.text;
+      if (typeof row.content === "string") return row.content;
+      return "";
+    })
+    .filter(Boolean);
+  if (chunks.length > 0) return chunks.join("\n");
+  if (typeof message.text === "string") return message.text;
+  return "";
+}
+
+async function readSessionTimelineEvents(agentId: string, sessionKey: string, limit: number): Promise<JsonObject[]> {
+  const sessions = await readAgentSessionsIndex(agentId);
+  const sessionRow = sessions[sessionKey];
+  if (!sessionRow) return [];
+  const transcriptPath = resolveSessionTranscriptPath(agentId, sessionRow);
+  if (!transcriptPath || !existsSync(transcriptPath)) return [];
+  let raw = "";
+  try {
+    raw = await readFile(transcriptPath, "utf-8");
+  } catch {
+    return [];
+  }
+  const lines = raw
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const events: JsonObject[] = [];
+  for (const line of lines) {
+    try {
+      const row = JSON.parse(line) as JsonObject;
+      if (row.type !== "message") continue;
+      const msg = row.message && typeof row.message === "object" ? (row.message as JsonObject) : null;
+      if (!msg) continue;
+      const text = extractTextFromTranscriptMessage(msg).trim();
+      if (!text) continue;
+      const tsRaw = typeof row.timestamp === "string" ? Date.parse(row.timestamp) : Number.NaN;
+      events.push({
+        ts: Number.isFinite(tsRaw) ? tsRaw : Date.now(),
+        type: "message",
+        role: String(msg.role ?? "assistant"),
+        text,
+      });
+    } catch {
+      // Skip malformed transcript lines.
+    }
+  }
+  return events.slice(Math.max(0, events.length - Math.max(1, limit)));
+}
+
 function normalizeOfficeObjects(objects: unknown[]): JsonObject[] {
   return objects
     .filter((entry) => entry && typeof entry === "object")
@@ -252,6 +405,48 @@ function normalizeOfficeObjects(objects: unknown[]): JsonObject[] {
         rotation,
         ...(scale ? { scale } : {}),
         metadata,
+      } satisfies JsonObject;
+    })
+    .filter((entry): entry is JsonObject => entry !== null);
+}
+
+function normalizeProvider(value: unknown): TaskProvider {
+  const provider = String(value ?? "internal");
+  if (provider === "notion" || provider === "vibe" || provider === "linear") return provider;
+  return "internal";
+}
+
+function normalizeSyncState(value: unknown): TaskSyncState {
+  const syncState = String(value ?? "healthy");
+  if (syncState === "pending" || syncState === "conflict" || syncState === "error") return syncState;
+  return "healthy";
+}
+
+function normalizeFederatedTasks(tasks: unknown[]): JsonObject[] {
+  return tasks
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => {
+      const row = entry as JsonObject;
+      const id = String(row.id ?? row.taskId ?? "").trim();
+      const projectId = String(row.projectId ?? "").trim();
+      const title = String(row.title ?? "").trim();
+      if (!id || !projectId || !title) return null;
+      const status = String(row.status ?? "todo");
+      const priority = String(row.priority ?? "medium");
+      const provider = normalizeProvider(row.provider ?? row.sourceProvider);
+      return {
+        id,
+        projectId,
+        title,
+        status: status === "in_progress" || status === "blocked" || status === "done" ? status : "todo",
+        ownerAgentId: typeof row.ownerAgentId === "string" ? row.ownerAgentId : undefined,
+        priority: priority === "low" || priority === "high" ? priority : "medium",
+        provider,
+        canonicalProvider: normalizeProvider(row.canonicalProvider ?? provider),
+        providerUrl: typeof row.providerUrl === "string" ? row.providerUrl : "",
+        syncState: normalizeSyncState(row.syncState),
+        syncError: typeof row.syncError === "string" ? row.syncError : undefined,
+        updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : Date.now(),
       } satisfies JsonObject;
     })
     .filter((entry): entry is JsonObject => entry !== null);
@@ -340,20 +535,66 @@ function shellcorpStateBridge() {
 
         const eventsMatch = pathname.match(/^\/openclaw\/agents\/([^/]+)\/sessions\/([^/]+)\/events$/);
         if (method === "GET" && eventsMatch) {
+          const agentId = decodeURIComponent(eventsMatch[1]);
           const sessionKey = decodeURIComponent(eventsMatch[2]);
+          const requestedLimit = Number(url.searchParams.get("limit") ?? "200");
+          const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(500, Math.floor(requestedLimit))) : 200;
+          const events = await readSessionTimelineEvents(agentId, sessionKey, limit);
           writeJson(res, 200, {
             timeline: {
+              agentId,
               sessionKey,
-              events: [
-                {
-                  ts: Date.now(),
-                  type: "status",
-                  role: "system",
-                  text: "Timeline bridge active. Event stream hydration is deferred in this slice.",
-                },
-              ],
+              events,
             },
           });
+          return;
+        }
+
+        if (method === "POST" && pathname === "/openclaw/chat/send") {
+          const body = (await readBody(req)) as JsonObject;
+          const agentId = String(body.agentId ?? "").trim();
+          const sessionKey = String(body.sessionKey ?? "").trim();
+          const message = String(body.message ?? "").trim();
+          if (!agentId || !sessionKey || !message) {
+            writeJson(res, 400, { ok: false, error: "chat_send_invalid_payload" });
+            return;
+          }
+          const sessions = await readAgentSessionsIndex(agentId);
+          const sessionRow = sessions[sessionKey];
+          if (!sessionRow) {
+            writeJson(res, 404, { ok: false, error: "chat_send_session_not_found" });
+            return;
+          }
+          const transcriptPath = resolveSessionTranscriptPath(agentId, sessionRow);
+          if (!transcriptPath) {
+            writeJson(res, 404, { ok: false, error: "chat_send_transcript_missing" });
+            return;
+          }
+          const nowIso = new Date().toISOString();
+          const eventId = `ui-${Date.now().toString(36)}`;
+          const payload = {
+            type: "message",
+            id: eventId,
+            parentId: null,
+            timestamp: nowIso,
+            message: {
+              role: "user",
+              content: [{ type: "text", text: message }],
+              timestamp: Date.now(),
+            },
+          };
+          await mkdir(path.dirname(transcriptPath), { recursive: true });
+          const existingTranscript = existsSync(transcriptPath) ? await readFile(transcriptPath, "utf-8") : "";
+          const nextTranscript = `${existingTranscript}${existingTranscript.endsWith("\n") || existingTranscript.length === 0 ? "" : "\n"}${JSON.stringify(payload)}\n`;
+          await writeFile(transcriptPath, nextTranscript, "utf-8");
+          sessions[sessionKey] = {
+            ...sessionRow,
+            updatedAt: Date.now(),
+            lastTo: "ShellCorp UI",
+          };
+          const sessionsPath = path.join(OPENCLAW_HOME, "agents", agentId, "sessions", "sessions.json");
+          await writeFile(sessionsPath, `${JSON.stringify(sessions, null, 2)}\n`, "utf-8");
+          writeJson(res, 200, { ok: true, eventId });
           return;
         }
 
@@ -387,6 +628,116 @@ function shellcorpStateBridge() {
           return;
         }
 
+        if (method === "GET" && pathname === "/openclaw/office-settings") {
+          const settings = await readOfficeSettings();
+          writeJson(res, 200, { settings });
+          return;
+        }
+
+        if (method === "POST" && pathname === "/openclaw/office-settings") {
+          const body = (await readBody(req)) as JsonObject;
+          const settings = normalizeOfficeSettings(body.settings ?? body);
+          await mkdir(path.dirname(OFFICE_SETTINGS_PATH), { recursive: true });
+          await writeFile(OFFICE_SETTINGS_PATH, `${JSON.stringify(settings, null, 2)}\n`, "utf-8");
+          writeJson(res, 200, { ok: true, settings });
+          return;
+        }
+
+        if (method === "GET" && pathname === "/openclaw/mesh-assets") {
+          const settings = await readOfficeSettings();
+          const assets = await listMeshAssets(settings.meshAssetDir ?? DEFAULT_MESH_ASSET_DIR);
+          writeJson(res, 200, { assets, meshAssetDir: settings.meshAssetDir ?? DEFAULT_MESH_ASSET_DIR });
+          return;
+        }
+
+        if (method === "POST" && pathname === "/openclaw/mesh-assets/download") {
+          const body = (await readBody(req)) as JsonObject;
+          const sourceUrl = typeof body.url === "string" ? body.url.trim() : "";
+          const label = typeof body.label === "string" ? body.label : "";
+          if (!sourceUrl) {
+            writeJson(res, 400, { ok: false, error: "mesh_url_required" });
+            return;
+          }
+          let parsedUrl: URL;
+          try {
+            parsedUrl = new URL(sourceUrl);
+          } catch {
+            writeJson(res, 400, { ok: false, error: "mesh_url_invalid" });
+            return;
+          }
+          if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+            writeJson(res, 400, { ok: false, error: "mesh_url_protocol_invalid" });
+            return;
+          }
+
+          const settings = await readOfficeSettings();
+          const meshAssetDir = settings.meshAssetDir ?? DEFAULT_MESH_ASSET_DIR;
+          await mkdir(meshAssetDir, { recursive: true });
+          const ext = inferMeshExtensionFromUrl(sourceUrl);
+          const desiredName = `${sanitizeLabelToFileBase(label || path.basename(parsedUrl.pathname, path.extname(parsedUrl.pathname)))}${ext}`;
+          const targetPath = await toUniqueFilePath(meshAssetDir, desiredName);
+
+          let response: Response;
+          try {
+            response = await fetch(sourceUrl);
+          } catch {
+            writeJson(res, 502, { ok: false, error: "mesh_download_unreachable" });
+            return;
+          }
+          if (!response.ok) {
+            writeJson(res, 502, { ok: false, error: `mesh_download_failed:${response.status}` });
+            return;
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          await writeFile(targetPath, buffer);
+          const fileName = path.basename(targetPath);
+          const fileStat = await stat(targetPath);
+
+          writeJson(res, 200, {
+            ok: true,
+            asset: {
+              assetId: fileName,
+              label: path.basename(fileName, path.extname(fileName)),
+              sourceUrl,
+              localPath: targetPath,
+              publicPath: asMeshPublicPath(fileName),
+              fileName,
+              fileSizeBytes: fileStat.size,
+              sourceType: "downloaded",
+              validated: true,
+              addedAt: fileStat.mtimeMs,
+            },
+          });
+          return;
+        }
+
+        const meshAssetMatch = pathname.match(/^\/openclaw\/assets\/meshes\/([^/]+)$/);
+        if (method === "GET" && meshAssetMatch) {
+          const fileName = decodeURIComponent(meshAssetMatch[1]);
+          if (fileName.includes("/") || fileName.includes("\\") || fileName.includes("..")) {
+            writeJson(res, 400, { ok: false, error: "mesh_asset_path_invalid" });
+            return;
+          }
+          const settings = await readOfficeSettings();
+          const meshAssetDir = settings.meshAssetDir ?? DEFAULT_MESH_ASSET_DIR;
+          const filePath = path.join(meshAssetDir, fileName);
+          const ext = path.extname(fileName).toLowerCase();
+          if (!MESH_EXTENSIONS.has(ext)) {
+            writeJson(res, 400, { ok: false, error: "mesh_asset_extension_invalid" });
+            return;
+          }
+          try {
+            const bytes = await readFile(filePath);
+            res.setHeader("content-type", ext === ".gltf" ? "model/gltf+json" : "model/gltf-binary");
+            (res as { statusCode?: number }).statusCode = 200;
+            (res as { end: (body: Buffer) => void }).end(bytes);
+          } catch {
+            writeJson(res, 404, { ok: false, error: "mesh_asset_not_found" });
+          }
+          return;
+        }
+
         if (method === "POST" && pathname === "/openclaw/office-objects") {
           const body = (await readBody(req)) as JsonObject;
           const input = Array.isArray(body.objects) ? body.objects : [];
@@ -400,9 +751,91 @@ function shellcorpStateBridge() {
         if (method === "POST" && pathname === "/openclaw/company-model") {
           const body = (await readBody(req)) as JsonObject;
           const company = (body.company as JsonObject | undefined) ?? {};
+          const tasks = Array.isArray(company.tasks) ? normalizeFederatedTasks(company.tasks) : [];
           await mkdir(path.dirname(COMPANY_MODEL_PATH), { recursive: true });
-          await writeFile(COMPANY_MODEL_PATH, `${JSON.stringify(company, null, 2)}\n`, "utf-8");
-          writeJson(res, 200, { ok: true, company });
+          const normalizedCompany = {
+            ...company,
+            tasks,
+            federationPolicies: Array.isArray(company.federationPolicies) ? company.federationPolicies : [],
+            providerIndexProfiles: Array.isArray(company.providerIndexProfiles) ? company.providerIndexProfiles : [],
+          };
+          await writeFile(COMPANY_MODEL_PATH, `${JSON.stringify(normalizedCompany, null, 2)}\n`, "utf-8");
+          writeJson(res, 200, { ok: true, company: normalizedCompany });
+          return;
+        }
+
+        if (method === "POST" && pathname === "/openclaw/gateway/method") {
+          const body = (await readBody(req)) as JsonObject;
+          const methodName = String(body.method ?? "").trim();
+          const params = (body.params && typeof body.params === "object" ? body.params : {}) as JsonObject;
+          const company = await readJsonFile<JsonObject>(COMPANY_MODEL_PATH, {});
+          const tasks = normalizeFederatedTasks(Array.isArray(company.tasks) ? company.tasks : []);
+
+          if (methodName === "notion-shell.tasks.update") {
+            const taskId = String(params.taskId ?? "").trim();
+            const updates = (params.updates && typeof params.updates === "object" ? params.updates : {}) as JsonObject;
+            const target = tasks.find((task) => String(task.id) === taskId);
+            if (!target) {
+              writeJson(res, 404, { ok: false, error: "task_not_found" });
+              return;
+            }
+            target.status =
+              updates.status === "in_progress" || updates.status === "blocked" || updates.status === "done"
+                ? updates.status
+                : target.status;
+            target.updatedAt = Date.now();
+            target.syncState = "healthy";
+            const nextCompany = { ...company, tasks };
+            await mkdir(path.dirname(COMPANY_MODEL_PATH), { recursive: true });
+            await writeFile(COMPANY_MODEL_PATH, `${JSON.stringify(nextCompany, null, 2)}\n`, "utf-8");
+            writeJson(res, 200, { ok: true, taskId });
+            return;
+          }
+
+          if (methodName === "notion-shell.tasks.sync") {
+            const projectId = String(params.projectId ?? "").trim();
+            const databaseId = String(params.databaseId ?? "").trim();
+            const touched = tasks
+              .filter((task) => String(task.projectId) === projectId)
+              .filter((task) => String(task.provider) === "notion");
+            for (const task of touched) {
+              task.syncState = "healthy";
+              task.syncError = undefined;
+              task.updatedAt = Date.now();
+              if (!task.providerUrl && databaseId) {
+                task.providerUrl = `https://www.notion.so/${databaseId.replace(/-/g, "")}`;
+              }
+            }
+            const nextCompany = { ...company, tasks };
+            await mkdir(path.dirname(COMPANY_MODEL_PATH), { recursive: true });
+            await writeFile(COMPANY_MODEL_PATH, `${JSON.stringify(nextCompany, null, 2)}\n`, "utf-8");
+            writeJson(res, 200, { ok: true, synced: touched.length, tasks: touched });
+            return;
+          }
+
+          if (methodName === "notion-shell.profile.bootstrap") {
+            const databaseId = String(params.databaseId ?? "").trim();
+            if (!databaseId) {
+              writeJson(res, 400, { ok: false, error: "database_id_required" });
+              return;
+            }
+            writeJson(res, 200, {
+              ok: true,
+              profile: {
+                provider: "notion",
+                entityId: databaseId,
+                entityName: `Notion ${databaseId.slice(0, 8)}`,
+                fieldMappings: [
+                  { name: "Name", type: "title" },
+                  { name: "Status", type: "status", options: ["To Do", "In Progress", "Blocked", "Done"] },
+                  { name: "Priority", type: "select", options: ["low", "medium", "high"] },
+                ],
+              },
+            });
+            return;
+          }
+
+          writeJson(res, 404, { ok: false, error: `gateway_method_not_found:${methodName}` });
           return;
         }
 

@@ -113,6 +113,9 @@ export interface OpenClawConfigPreview {
 
 export type AgentRole = "ceo" | "builder" | "growth_marketer" | "pm";
 export type TaskStatus = "todo" | "in_progress" | "blocked" | "done";
+export type FederatedTaskProvider = "internal" | "notion" | "vibe" | "linear";
+export type TaskSyncState = "healthy" | "pending" | "conflict" | "error";
+export type FederationConflictPolicy = "canonical_wins" | "newest_wins";
 export type ProjectStatus = "active" | "paused" | "archived";
 export type AgentLifecycleState = "active" | "idle" | "pending_spawn" | "retired";
 
@@ -145,7 +148,7 @@ export interface CompanyAgentModel {
 export interface CompanyOfficeObjectModel {
   id: string;
   identifier?: string;
-  meshType: "team-cluster" | "plant" | "couch" | "bookshelf" | "pantry" | "glass-wall";
+  meshType: "team-cluster" | "plant" | "couch" | "bookshelf" | "pantry" | "glass-wall" | "custom-mesh";
   position: [number, number, number];
   rotation?: [number, number, number];
   scale?: [number, number, number];
@@ -163,6 +166,23 @@ export interface OfficeObjectSidecarModel {
   metadata?: Record<string, unknown>;
 }
 
+export interface OfficeSettingsModel {
+  meshAssetDir: string;
+}
+
+export interface MeshAssetModel {
+  assetId: string;
+  label: string;
+  localPath: string;
+  publicPath: string;
+  fileName: string;
+  fileSizeBytes: number;
+  sourceType: "local" | "downloaded";
+  validated: boolean;
+  addedAt: number;
+  sourceUrl?: string;
+}
+
 export interface RoleSlotModel {
   projectId: string;
   role: Exclude<AgentRole, "ceo">;
@@ -177,6 +197,43 @@ export interface TaskModel {
   status: TaskStatus;
   ownerAgentId?: string;
   priority: "low" | "medium" | "high";
+}
+
+export interface FederatedTaskModel extends TaskModel {
+  provider: FederatedTaskProvider;
+  canonicalProvider: FederatedTaskProvider;
+  providerUrl?: string;
+  syncState: TaskSyncState;
+  syncError?: string;
+  updatedAt: number;
+}
+
+export interface FederationProjectPolicy {
+  projectId: string;
+  canonicalProvider: FederatedTaskProvider;
+  mirrors: FederatedTaskProvider[];
+  writeBackEnabled: boolean;
+  conflictPolicy: FederationConflictPolicy;
+}
+
+export interface ProviderIndexField {
+  name: string;
+  type: string;
+  description?: string;
+  options?: string[];
+}
+
+export interface ProviderIndexProfile {
+  profileId: string;
+  projectId: string;
+  provider: FederatedTaskProvider;
+  entityId: string;
+  entityName: string;
+  toolNamingPrefix?: string;
+  fetchCommandHints: string[];
+  fieldMappings: ProviderIndexField[];
+  schemaVersion: string;
+  updatedAt: number;
 }
 
 export interface HeartbeatProfileModel {
@@ -211,7 +268,9 @@ export interface CompanyModel {
   projects: ProjectModel[];
   agents: CompanyAgentModel[];
   roleSlots: RoleSlotModel[];
-  tasks: TaskModel[];
+  tasks: FederatedTaskModel[];
+  federationPolicies: FederationProjectPolicy[];
+  providerIndexProfiles: ProviderIndexProfile[];
   heartbeatProfiles: HeartbeatProfileModel[];
   channelBindings: ChannelBindingModel[];
   heartbeatRuntime: HeartbeatRuntimeModel;
