@@ -13,6 +13,8 @@ const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || path.join(OPENC
 const COMPANY_MODEL_PATH = path.join(OPENCLAW_HOME, "company.json");
 const OFFICE_OBJECTS_PATH = path.join(OPENCLAW_HOME, "office-objects.json");
 const OFFICE_OBJECTS_TEMPLATE_PATH = path.resolve(__dirname, "../officeObjects.json");
+const PENDING_APPROVALS_PATH = path.join(OPENCLAW_HOME, "pending-approvals.json");
+const PENDING_APPROVALS_TEMPLATE_PATH = path.resolve(__dirname, "../templates/sidecar/pending-approvals.template.json");
 
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
   try {
@@ -431,6 +433,52 @@ function shellcorpStateBridge() {
           }
           const backupContent = await readFile(backupPath, "utf-8");
           await writeFile(OPENCLAW_CONFIG_PATH, backupContent, "utf-8");
+          writeJson(res, 200, { ok: true });
+          return;
+        }
+
+        if (method === "GET" && pathname === "/openclaw/pending-approvals") {
+          let approvals = await readJsonFile<unknown[]>(PENDING_APPROVALS_PATH, []);
+          if (!Array.isArray(approvals)) approvals = [];
+          if (approvals.length === 0) {
+            const seeded = await readJsonFile<unknown[]>(PENDING_APPROVALS_TEMPLATE_PATH, []);
+            if (Array.isArray(seeded) && seeded.length > 0) {
+              approvals = seeded;
+              await mkdir(path.dirname(PENDING_APPROVALS_PATH), { recursive: true });
+              await writeFile(PENDING_APPROVALS_PATH, `${JSON.stringify(approvals, null, 2)}\n`, "utf-8");
+            }
+          }
+          const pending = approvals.filter(
+            (entry) => entry && typeof entry === "object" && (entry as JsonObject).status === "pending",
+          );
+          writeJson(res, 200, { approvals: pending });
+          return;
+        }
+
+        if (method === "POST" && pathname === "/openclaw/pending-approvals/resolve") {
+          const body = (await readBody(req)) as JsonObject;
+          const approvalId = String(body.id ?? "").trim();
+          const decision = String(body.decision ?? "").trim();
+          if (!approvalId || (decision !== "approved" && decision !== "rejected")) {
+            writeJson(res, 400, { ok: false, error: "invalid_request: need id and decision (approved|rejected)" });
+            return;
+          }
+          let approvals = await readJsonFile<unknown[]>(PENDING_APPROVALS_PATH, []);
+          if (!Array.isArray(approvals)) approvals = [];
+          let found = false;
+          const updated = approvals.map((entry) => {
+            if (entry && typeof entry === "object" && (entry as JsonObject).id === approvalId) {
+              found = true;
+              return { ...(entry as JsonObject), status: decision, resolvedAt: Date.now() };
+            }
+            return entry;
+          });
+          if (!found) {
+            writeJson(res, 404, { ok: false, error: "approval_not_found" });
+            return;
+          }
+          await mkdir(path.dirname(PENDING_APPROVALS_PATH), { recursive: true });
+          await writeFile(PENDING_APPROVALS_PATH, `${JSON.stringify(updated, null, 2)}\n`, "utf-8");
           writeJson(res, 200, { ok: true });
           return;
         }
