@@ -43,22 +43,38 @@ export default function OfficeSimulation() {
     const companyId = company?._id;
 
     const customMeshUrls = useMemo(() => {
-        return officeObjects
+        const urls = officeObjects
             .filter((obj) => obj.meshType === "custom-mesh")
             .map((obj) => typeof obj.metadata?.meshPublicPath === "string" ? obj.metadata.meshPublicPath : "")
             .filter(Boolean);
+        // Keep signature stable across periodic provider refreshes.
+        return [...new Set(urls)].sort();
     }, [officeObjects]);
 
-    const [meshesReady, setMeshesReady] = useState(customMeshUrls.length === 0);
+    const customMeshSignature = useMemo(() => customMeshUrls.join("|"), [customMeshUrls]);
+    const [loadedMeshSignature, setLoadedMeshSignature] = useState<string>(() => (customMeshUrls.length === 0 ? "" : "__pending__"));
+    const meshesReady = customMeshUrls.length === 0 || loadedMeshSignature === customMeshSignature;
 
     useEffect(() => {
         if (customMeshUrls.length === 0) {
-            setMeshesReady(true);
+            setLoadedMeshSignature("");
             return;
         }
-        setMeshesReady(false);
-        preloadMeshes(customMeshUrls).then(() => setMeshesReady(true));
-    }, [customMeshUrls]);
+        if (loadedMeshSignature === customMeshSignature) {
+            return;
+        }
+        let cancelled = false;
+        preloadMeshes(customMeshUrls)
+            .catch(() => {
+                // Allow scene render even if a preload fails; mesh components have local fallbacks.
+            })
+            .finally(() => {
+                if (!cancelled) setLoadedMeshSignature(customMeshSignature);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [customMeshUrls, customMeshSignature, loadedMeshSignature]);
 
     if (isLoading || !meshesReady) {
         return (
