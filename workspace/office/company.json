@@ -1,0 +1,247 @@
+{
+  "version": 1,
+  "departments": [
+    {
+      "id": "dept-ceo",
+      "name": "CEO Office",
+      "description": "Personal command center and executive oversight.",
+      "goal": "Keep the company aligned and profitable."
+    },
+    {
+      "id": "dept-products",
+      "name": "Product Studio",
+      "description": "Project teams that execute product goals.",
+      "goal": "Ship and grow profitable products."
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj-shellcorp",
+      "departmentId": "dept-products",
+      "name": "ShellCorp",
+      "githubUrl": "https://github.com/your-org/shellcorp",
+      "status": "active",
+      "goal": "Build an OpenClaw-native AI office control center.",
+      "kpis": [
+        "weekly_shipped_tickets",
+        "customer_response_time_minutes",
+        "closed_vs_open_ticket_ratio"
+      ]
+    },
+    {
+      "id": "proj-turbolearn",
+      "departmentId": "dept-products",
+      "name": "TurboLearn",
+      "githubUrl": "https://github.com/your-org/turbolearn",
+      "status": "active",
+      "goal": "Launch a profitable AI learning assistant for busy founders.",
+      "kpis": [
+        "weekly_active_learners",
+        "trial_to_paid_conversion",
+        "support_reply_sla_minutes"
+      ]
+    }
+  ],
+  "agents": [
+    {
+      "agentId": "main",
+      "role": "ceo",
+      "heartbeatProfileId": "hb-ceo",
+      "isCeo": true,
+      "lifecycleState": "active"
+    },
+    {
+      "agentId": "shellcorp-builder",
+      "role": "builder",
+      "projectId": "proj-shellcorp",
+      "heartbeatProfileId": "hb-builder",
+      "lifecycleState": "active"
+    },
+    {
+      "agentId": "shellcorp-growth",
+      "role": "growth_marketer",
+      "projectId": "proj-shellcorp",
+      "heartbeatProfileId": "hb-growth",
+      "lifecycleState": "active"
+    },
+    {
+      "agentId": "shellcorp-pm",
+      "role": "pm",
+      "projectId": "proj-shellcorp",
+      "heartbeatProfileId": "hb-pm",
+      "lifecycleState": "active"
+    },
+    {
+      "agentId": "turbolearn-builder",
+      "role": "builder",
+      "projectId": "proj-turbolearn",
+      "heartbeatProfileId": "hb-builder",
+      "lifecycleState": "active"
+    },
+    {
+      "agentId": "turbolearn-growth",
+      "role": "growth_marketer",
+      "projectId": "proj-turbolearn",
+      "heartbeatProfileId": "hb-growth",
+      "lifecycleState": "pending_spawn"
+    },
+    {
+      "agentId": "turbolearn-pm",
+      "role": "pm",
+      "projectId": "proj-turbolearn",
+      "heartbeatProfileId": "hb-pm",
+      "lifecycleState": "active"
+    }
+  ],
+  "roleSlots": [
+    {
+      "projectId": "proj-shellcorp",
+      "role": "builder",
+      "desiredCount": 1,
+      "spawnPolicy": "queue_pressure"
+    },
+    {
+      "projectId": "proj-shellcorp",
+      "role": "growth_marketer",
+      "desiredCount": 1,
+      "spawnPolicy": "queue_pressure"
+    },
+    {
+      "projectId": "proj-shellcorp",
+      "role": "pm",
+      "desiredCount": 1,
+      "spawnPolicy": "queue_pressure"
+    },
+    {
+      "projectId": "proj-turbolearn",
+      "role": "builder",
+      "desiredCount": 1,
+      "spawnPolicy": "queue_pressure"
+    },
+    {
+      "projectId": "proj-turbolearn",
+      "role": "growth_marketer",
+      "desiredCount": 1,
+      "spawnPolicy": "queue_pressure"
+    },
+    {
+      "projectId": "proj-turbolearn",
+      "role": "pm",
+      "desiredCount": 1,
+      "spawnPolicy": "queue_pressure"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-shellcorp-001",
+      "projectId": "proj-shellcorp",
+      "title": "Ship project and agent topology MVP.",
+      "status": "in_progress",
+      "ownerAgentId": "shellcorp-builder",
+      "priority": "high"
+    },
+    {
+      "id": "task-shellcorp-002",
+      "projectId": "proj-shellcorp",
+      "title": "Define customer-facing support response templates.",
+      "status": "todo",
+      "ownerAgentId": "shellcorp-pm",
+      "priority": "medium"
+    },
+    {
+      "id": "task-turbolearn-001",
+      "projectId": "proj-turbolearn",
+      "title": "Ship onboarding flow MVP for first 50 users.",
+      "status": "in_progress",
+      "ownerAgentId": "turbolearn-builder",
+      "priority": "high"
+    },
+    {
+      "id": "task-turbolearn-002",
+      "projectId": "proj-turbolearn",
+      "title": "Prepare launch content and waitlist campaign.",
+      "status": "todo",
+      "ownerAgentId": "turbolearn-growth",
+      "priority": "medium"
+    },
+    {
+      "id": "task-turbolearn-003",
+      "projectId": "proj-turbolearn",
+      "title": "Handle inbound customer questions from Slack channel.",
+      "status": "todo",
+      "ownerAgentId": "turbolearn-pm",
+      "priority": "high"
+    }
+  ],
+  "heartbeatProfiles": [
+    {
+      "id": "hb-ceo",
+      "role": "ceo",
+      "cadenceMinutes": 15,
+      "teamDescription": "Executive oversight and company direction.",
+      "productDetails": "All projects and cross-team strategy.",
+      "goal": "Make decisions that maximize long-term profitability."
+    },
+    {
+      "id": "hb-builder",
+      "role": "builder",
+      "cadenceMinutes": 10,
+      "teamDescription": "Engineering execution for a single project.",
+      "productDetails": "Build and fix product capabilities from ticket queue.",
+      "goal": "Reduce open engineering tickets while preserving quality."
+    },
+    {
+      "id": "hb-growth",
+      "role": "growth_marketer",
+      "cadenceMinutes": 20,
+      "teamDescription": "Growth and distribution strategy.",
+      "productDetails": "Traffic, conversion, and funnel optimization.",
+      "goal": "Increase qualified demand and retained users."
+    },
+    {
+      "id": "hb-pm",
+      "role": "pm",
+      "cadenceMinutes": 10,
+      "teamDescription": "Project management and customer comms.",
+      "productDetails": "Roadmap, stakeholder updates, and support channels.",
+      "goal": "Keep roadmap and customers aligned with delivery."
+    }
+  ],
+  "channelBindings": [
+    {
+      "platform": "slack",
+      "externalChannelId": "C_CUSTOMER_SUPPORT",
+      "projectId": "proj-shellcorp",
+      "agentRole": "pm",
+      "routingMode": "default_pm"
+    },
+    {
+      "platform": "discord",
+      "externalChannelId": "123456789012345678",
+      "projectId": "proj-shellcorp",
+      "agentRole": "pm",
+      "routingMode": "default_pm"
+    },
+    {
+      "platform": "slack",
+      "externalChannelId": "C_TURBOLEARN_CUSTOMERS",
+      "projectId": "proj-turbolearn",
+      "agentRole": "pm",
+      "routingMode": "default_pm"
+    },
+    {
+      "platform": "discord",
+      "externalChannelId": "223456789012345679",
+      "projectId": "proj-turbolearn",
+      "agentRole": "pm",
+      "routingMode": "default_pm"
+    }
+  ],
+  "heartbeatRuntime": {
+    "enabled": true,
+    "pluginId": "shellcorp-heartbeat",
+    "serviceId": "company-heartbeat-loop",
+    "cadenceMinutes": 10,
+    "notes": "Run heartbeat execution inside OpenClaw plugin service/hooks so all sessions route through gateway."
+  }
+}
