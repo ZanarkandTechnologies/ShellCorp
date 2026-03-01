@@ -1,0 +1,22 @@
+{
+  "id": "notion-shell",
+  "name": "Shell Company Notion",
+  "version": "0.1.0",
+  "description": "Notion channel and helper methods for Shell Company MVP.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "defaultAccountId": {
+        "type": "string",
+        "default": "default"
+      }
+    }
+  },
+  "uiHints": {
+    "defaultAccountId": {
+      "label": "Default Notion Account ID",
+      "placeholder": "default"
+    }
+  }
+}
