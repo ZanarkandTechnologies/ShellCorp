@@ -13,6 +13,7 @@ import type {
   CompanyModel,
   FederatedTaskProvider,
   FederationProjectPolicy,
+  PendingApprovalModel,
   ProviderIndexProfile,
   ProjectWorkloadSummary,
   ReconciliationWarning,
@@ -174,7 +175,7 @@ function fallbackData(): OfficeDataContextType {
   };
 }
 
-function toOfficeData(unified: UnifiedOfficeModel): OfficeDataContextType {
+function toOfficeData(unified: UnifiedOfficeModel, pendingApprovals: PendingApprovalModel[] = []): OfficeDataContextType {
   const runtimeAgents = unified.runtimeAgents;
   const configuredAgents = unified.configuredAgents;
   const sidecarObjects = dedupeCanonicalSidecarObjects(unified.officeObjects ?? []);
@@ -276,6 +277,16 @@ function toOfficeData(unified: UnifiedOfficeModel): OfficeDataContextType {
   }
   const teamDeskCursor = new Map<string, number>();
 
+  // Build approval counts per agent for notification badges
+  const approvalsByAgent = new Map<string, { count: number; maxRisk: number }>();
+  for (const approval of pendingApprovals) {
+    const existing = approvalsByAgent.get(approval.agentId) ?? { count: 0, maxRisk: 0 };
+    existing.count += 1;
+    const riskValue = approval.riskLevel === "critical" ? 3 : approval.riskLevel === "high" ? 3 : approval.riskLevel === "medium" ? 2 : 1;
+    existing.maxRisk = Math.max(existing.maxRisk, riskValue);
+    approvalsByAgent.set(approval.agentId, existing);
+  }
+
   const employees: EmployeeData[] = agents.map((agent, index) => {
     const companyAgent = companyAgentsById.get(agent.agentId);
     const runtimeAgent = runtimeById.get(agent.agentId);
@@ -306,6 +317,7 @@ function toOfficeData(unified: UnifiedOfficeModel): OfficeDataContextType {
       : deskPosition && deskRotation != null
         ? getEmployeePositionAtDesk(deskPosition, deskRotation)
         : teamCenter;
+    const agentApprovals = approvalsByAgent.get(agent.agentId);
     return {
       _id: `employee-${agent.agentId}`,
       companyId,
@@ -321,6 +333,8 @@ function toOfficeData(unified: UnifiedOfficeModel): OfficeDataContextType {
       jobTitle: companyAgent?.role ? `${companyAgent.role} (${agent.agentId})` : `Configured Agent (${agent.agentId})`,
       status: !isRuntimeRunning ? "warning" : pressure === "high" ? "warning" : (runtimeAgent?.sessionCount ?? 0) > 0 ? "success" : "info",
       statusMessage: `${heartbeat?.goal ?? "No heartbeat profile"} | runtime=${isRuntimeRunning ? "running" : "not-running"} | sandbox=${agent.sandboxMode} | sessions=${runtimeAgent?.sessionCount ?? 0}`,
+      notificationCount: agentApprovals?.count,
+      notificationPriority: agentApprovals?.maxRisk,
     };
   });
 
@@ -373,10 +387,13 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
     const adapter = adapterRef.current;
     if (!adapter) return;
     try {
-      const unified = await adapter.getUnifiedOfficeModel();
+      const [unified, pendingApprovals] = await Promise.all([
+        adapter.getUnifiedOfficeModel(),
+        adapter.getPendingApprovals(),
+      ]);
       if (cancelledRef.current) return;
       setValue((current) => {
-        const next = toOfficeData(unified);
+        const next = toOfficeData(unified, pendingApprovals);
         return {
           ...next,
           refresh: current.refresh,

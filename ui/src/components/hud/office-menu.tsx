@@ -15,6 +15,7 @@ import {
     Users,
     UserSearch,
     Wrench,
+    ShieldCheck,
 } from "lucide-react";
 import { SpeedDial, type SpeedDialItem } from "@/components/ui/speed-dial";
 import { useNavigate } from "react-router-dom";
@@ -27,6 +28,9 @@ import { TeamManager } from "./team-manager";
 import { TeamDirectory } from "./team-directory";
 import { ToolManager } from "./tool-manager";
 import { SkillManager } from "./skill-manager";
+import { ApprovalQueue } from "./approval-queue";
+import { stateBase } from "@/lib/gateway-config";
+import { OpenClawAdapter } from "@/lib/openclaw-adapter";
 
 interface SpeedDialProps {
     className?: string;
@@ -57,6 +61,22 @@ export function OfficeMenu({
     const [isTeamDirectoryOpen, setIsTeamDirectoryOpen] = useState(false);
     const [isToolManagerOpen, setIsToolManagerOpen] = useState(false);
     const [isSkillManagerOpen, setIsSkillManagerOpen] = useState(false);
+    const [isApprovalQueueOpen, setIsApprovalQueueOpen] = useState(false);
+    const [approvalCount, setApprovalCount] = useState(0);
+
+    useEffect(() => {
+        const adapter = new OpenClawAdapter("", stateBase);
+        let cancelled = false;
+        const poll = async () => {
+            try {
+                const approvals = await adapter.getPendingApprovals();
+                if (!cancelled) setApprovalCount(approvals.length);
+            } catch { /* ignore */ }
+        };
+        void poll();
+        const timer = setInterval(() => void poll(), 10_000);
+        return () => { cancelled = true; clearInterval(timer); };
+    }, []);
     const apiRoot = api as unknown as {
         office_system?: {
             employees?: { createEmployee?: unknown };
@@ -79,6 +99,7 @@ export function OfficeMenu({
         setIsTeamDirectoryOpen(false);
         setIsToolManagerOpen(false);
         setIsSkillManagerOpen(false);
+        setIsApprovalQueueOpen(false);
     }, [placementMode.active]);
 
     // Handle builder mode toggle - let the scene handle animation
@@ -111,6 +132,16 @@ export function OfficeMenu({
             label: "User Tasks",
             onClick: () => setIsUserTasksOpen(true),
             color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
+        },
+        {
+            id: "approval-queue",
+            icon: ShieldCheck,
+            label: "Approvals",
+            onClick: () => setIsApprovalQueueOpen(true),
+            badge: approvalCount > 0 ? approvalCount : undefined,
+            color: approvalCount > 0
+                ? "bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30"
+                : "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
         },
         {
             id: "team-panel",
@@ -213,6 +244,7 @@ export function OfficeMenu({
         canOpenAgentManager,
         canOpenTeamManager,
         canOpenToolManager,
+        approvalCount,
     ]);
 
     return (
@@ -232,6 +264,7 @@ export function OfficeMenu({
             {isTeamDirectoryOpen ? <TeamDirectory isOpen={isTeamDirectoryOpen} onOpenChange={setIsTeamDirectoryOpen} /> : null}
             {isToolManagerOpen ? <ToolManager isOpen={isToolManagerOpen} onOpenChange={setIsToolManagerOpen} /> : null}
             {isSkillManagerOpen ? <SkillManager isOpen={isSkillManagerOpen} onOpenChange={setIsSkillManagerOpen} /> : null}
+            {isApprovalQueueOpen ? <ApprovalQueue isOpen={isApprovalQueueOpen} onOpenChange={setIsApprovalQueueOpen} /> : null}
         </>
     );
 }
