@@ -31,6 +31,7 @@ import { SkillManager } from "./skill-manager";
 import { ApprovalQueue } from "./approval-queue";
 import { stateBase } from "@/lib/gateway-config";
 import { OpenClawAdapter } from "@/lib/openclaw-adapter";
+import { useChatActions } from "@/features/chat-system/chat-store";
 
 interface SpeedDialProps {
     className?: string;
@@ -89,6 +90,7 @@ export function OfficeMenu({
     const canOpenAgentManager = Boolean(apiRoot.office_system?.employees?.createEmployee);
     const canOpenTeamManager = Boolean(apiRoot.office_system?.teams?.updateTeam);
     const canOpenToolManager = Boolean(apiRoot.agents_system?.tools?.toolConfigs?.listToolConfigs);
+    const { openEmployeeChat } = useChatActions();
 
     useEffect(() => {
         if (!placementMode.active) return;
@@ -160,6 +162,15 @@ export function OfficeMenu({
             icon: MessageSquare,
             label: "Agent Session Panel",
             onClick: () => setIsAgentSessionPanelOpen(true),
+            color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
+        },
+        {
+            id: "ceo-chat",
+            icon: MessageSquare,
+            label: "CEO Chat",
+            onClick: () => {
+                void openEmployeeChat("employee-main", true);
+            },
             color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
         },
         {
@@ -241,6 +252,7 @@ export function OfficeMenu({
         setIsSkillsPanelOpen,
         setKanbanFocusAgentId,
         setSelectedTeamId,
+        openEmployeeChat,
         canOpenAgentManager,
         canOpenTeamManager,
         canOpenToolManager,

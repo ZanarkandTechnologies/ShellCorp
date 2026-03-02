@@ -4,6 +4,7 @@ import { TeamOptionsDialog } from './dialogs/team-options-dialog';
 import SettingsDialog from './dialogs/settings-dialog';
 import { LogsDrawer } from './hud/logs-drawer';
 import { LogsToggleButton } from './hud/logs-toggle-button';
+import { GatewayStatusPill } from './hud/gateway-status-pill';
 import { OfficeMenu } from './hud/office-menu';
 import { useOfficeDataContext } from '@/providers/office-data-provider';
 import { useAppStore } from '@/lib/app-store';
@@ -134,6 +135,9 @@ export default function OfficeSimulation() {
 
             <div className="pointer-events-none absolute bottom-4 right-4 z-[65]">
                 <LogsToggleButton isOpen={isLogsDrawerOpen} onToggle={() => setIsLogsDrawerOpen((prev) => !prev)} />
+            </div>
+            <div className="pointer-events-none absolute bottom-4 left-4 z-[65]">
+                <GatewayStatusPill />
             </div>
 
             <LogsDrawer open={isLogsDrawerOpen} onOpenChange={setIsLogsDrawerOpen} gatewayBase={gatewayBase} />
