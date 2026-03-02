@@ -7,6 +7,8 @@ import { useOfficeDataContext } from "@/providers/office-data-provider";
 export function useChatContext(): {
     headerTitle: string;
     headerSubtitle?: string;
+    currentEmployeeId: string | null;
+    isEmployeeScopedChat: boolean;
 } {
     const currentEmployeeId = useChatStore((state) => state.currentEmployeeId);
     const currentTeamId = useChatStore((state) => state.currentTeamId);
@@ -32,6 +34,8 @@ export function useChatContext(): {
     return {
         headerTitle,
         headerSubtitle: employee?.jobTitle ?? (currentEmployeeId ? "Direct Message" : currentTeamId ? "Team Coordination" : undefined),
+        currentEmployeeId: currentEmployeeId ? String(currentEmployeeId) : null,
+        isEmployeeScopedChat: Boolean(currentEmployeeId),
     };
 }
 

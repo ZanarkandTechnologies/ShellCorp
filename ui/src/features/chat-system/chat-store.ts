@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { useAppStore } from "@/lib/app-store";
 
 type ChatMode = "Chat" | "Files" | "Config";
 
@@ -16,6 +17,9 @@ export type LocalChatThread = {
     _id: string;
     title: string;
     parentThreadId?: string;
+    agentId?: string;
+    sessionKey?: string;
+    isPendingNew?: boolean;
 };
 
 type ChatState = {
@@ -94,11 +98,21 @@ export function useChatActions(): {
         async openEmployeeChat(employeeId: string, openDialog = true): Promise<void> {
             setCurrentEmployeeId(employeeId);
             setCurrentTeamId(null);
+            const agentId = employeeId.startsWith("employee-") ? employeeId.slice("employee-".length) : null;
+            if (agentId) {
+                const appState = useAppStore.getState();
+                const isAgentSwitch = appState.selectedAgentId !== agentId;
+                appState.setSelectedAgentId(agentId);
+                // Only reset session context when switching to a different agent.
+                if (isAgentSwitch) {
+                    appState.setSelectedSessionKey(null);
+                }
+            }
             const existing = threads.find((thread) => thread._id === `dm-${employeeId}`);
             if (existing) {
                 setThreadId(existing._id);
             } else {
-                const next = { _id: `dm-${employeeId}`, title: `Chat ${employeeId}` };
+                const next = { _id: `dm-${employeeId}`, title: `Chat ${employeeId}`, agentId: agentId ?? undefined };
                 setThreads([next, ...threads]);
                 setThreadId(next._id);
             }

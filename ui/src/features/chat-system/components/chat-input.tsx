@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Loader2, Square, Sparkles } from "lucide-react";
 
 interface ChatInputProps {
     onSubmit: (message: { text: string }) => Promise<void>;
+    onAbort?: () => Promise<void>;
     submissionStatus: "submitted" | "streaming" | "ready";
+    isStreaming?: boolean;
 }
 
-export function ChatInput({ onSubmit, submissionStatus }: ChatInputProps) {
+export function ChatInput({ onSubmit, onAbort, submissionStatus, isStreaming }: ChatInputProps) {
     const [text, setText] = useState("");
 
     return (
@@ -19,6 +22,12 @@ export function ChatInput({ onSubmit, submissionStatus }: ChatInputProps) {
                         value={text}
                         onChange={(event) => setText(event.target.value)}
                     />
+                    {isStreaming && onAbort ? (
+                        <Button variant="outline" onClick={() => void onAbort()} type="button">
+                            <Square className="h-4 w-4 mr-1.5" />
+                            Stop
+                        </Button>
+                    ) : null}
                     <Button
                         onClick={async () => {
                             const trimmed = text.trim();
@@ -28,7 +37,15 @@ export function ChatInput({ onSubmit, submissionStatus }: ChatInputProps) {
                         }}
                         disabled={submissionStatus === "streaming" || !text.trim()}
                     >
-                        {submissionStatus === "streaming" ? "Sending..." : "Send"}
+                        {submissionStatus === "streaming" ? (
+                            <span className="inline-flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Sparkles className="h-4 w-4" />
+                                Sending...
+                            </span>
+                        ) : (
+                            "Send"
+                        )}
                     </Button>
                 </div>
             </div>

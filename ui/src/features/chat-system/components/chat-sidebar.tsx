@@ -21,6 +21,7 @@ interface ChatSidebarProps {
     onDeleteChat: (threadId: string) => void;
     sidebarOpen: boolean;
     isCreatingThread?: boolean;
+    disableNewThread?: boolean;
 }
 
 export function ChatSidebar({
@@ -31,6 +32,7 @@ export function ChatSidebar({
     onDeleteChat,
     sidebarOpen,
     isCreatingThread,
+    disableNewThread,
 }: ChatSidebarProps) {
     const [hoveredThread, setHoveredThread] = useState<string | null>(null);
 
@@ -40,7 +42,7 @@ export function ChatSidebar({
                 <>
                     <div className="p-4 border-b flex items-center justify-between">
                         <h2 className="font-semibold text-sm">Conversations</h2>
-                        <Button size="sm" variant="ghost" onClick={onNewThread} disabled={isCreatingThread} className="h-8 w-8 p-0">
+                        <Button size="sm" variant="ghost" onClick={onNewThread} disabled={isCreatingThread || disableNewThread} className="h-8 w-8 p-0">
                             <Plus className="h-4 w-4" />
                         </Button>
                     </div>

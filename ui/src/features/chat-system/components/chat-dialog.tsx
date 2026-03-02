@@ -1,10 +1,11 @@
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { useChatStore } from "@/features/chat-system/chat-store";
+import { useChatStore, type LocalChatMessage } from "@/features/chat-system/chat-store";
 import { useChatContext, useChatThreads, useChatMessages } from "@/features/chat-system/hooks";
 import { ChatSidebar } from "@/features/chat-system/components/chat-sidebar";
 import { ChatHeader } from "@/features/chat-system/components/chat-header";
 import { MessageRenderer } from "@/features/chat-system/components/message-renderer";
 import { ChatInput } from "@/features/chat-system/components/chat-input";
+import { Sparkles } from "lucide-react";
 
 /**
  * CHAT DIALOG
@@ -17,7 +18,7 @@ export default function ChatDialog() {
     const sidebarOpen = useChatStore((state) => state.sidebarOpen);
     const setSidebarOpen = useChatStore((state) => state.setSidebarOpen);
 
-    const { headerTitle, headerSubtitle } = useChatContext();
+    const { headerTitle, headerSubtitle, isEmployeeScopedChat } = useChatContext();
     const {
         threads,
         subthreadsMap,
@@ -26,8 +27,19 @@ export default function ChatDialog() {
         handleNewThread,
         handleDeleteThread,
         isCreatingThread,
+        agents,
+        selectedAgentId,
+        setSelectedAgentId,
     } = useChatThreads();
-    const { messages, handleSubmit, submissionStatus, isStreaming } = useChatMessages(threadId);
+    const { messages, handleSubmit, abort, submissionStatus, isStreaming, streamingText } = useChatMessages(threadId);
+    const streamingMessage: LocalChatMessage | null = streamingText.trim()
+        ? {
+              key: `stream-${threadId ?? "chat"}`,
+              role: "assistant",
+              text: streamingText,
+              createdAt: Date.now(),
+          }
+        : null;
 
     return (
         <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
@@ -43,6 +55,7 @@ export default function ChatDialog() {
                         onDeleteChat={handleDeleteThread}
                         sidebarOpen={sidebarOpen}
                         isCreatingThread={isCreatingThread}
+                        disableNewThread={isEmployeeScopedChat}
                     />
                     <div className="flex flex-col flex-1 h-full overflow-hidden relative">
                         <ChatHeader
@@ -51,6 +64,38 @@ export default function ChatDialog() {
                             title={headerTitle}
                             subtitle={headerSubtitle}
                         />
+                        {!isEmployeeScopedChat ? (
+                            <div className="px-4 py-2 border-b bg-background/80">
+                                <div className="container max-w-4xl mx-auto flex gap-2">
+                                    <select
+                                        className="rounded-md border bg-background px-2 py-1 text-sm"
+                                        value={selectedAgentId ?? ""}
+                                        onChange={(event) => setSelectedAgentId(event.target.value || null)}
+                                    >
+                                        <option value="">Select agent</option>
+                                        {agents.map((agent) => (
+                                            <option key={agent.agentId} value={agent.agentId}>
+                                                {agent.displayName} ({agent.agentId})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        className="rounded-md border bg-background px-2 py-1 text-sm"
+                                        value={threadId ?? ""}
+                                        onChange={(event) => {
+                                            if (event.target.value) setThreadId(event.target.value);
+                                        }}
+                                    >
+                                        <option value="">Select session</option>
+                                        {threads.map((thread) => (
+                                            <option key={thread._id} value={thread._id}>
+                                                {thread.title || thread._id}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        ) : null}
                         <div className="flex-1 overflow-hidden relative">
                             <div className="h-full overflow-y-auto">
                                 <div className="container max-w-4xl mx-auto px-4 pb-4">
@@ -72,10 +117,27 @@ export default function ChatDialog() {
                                             />
                                         ))
                                     )}
+                                    {streamingMessage ? (
+                                        <MessageRenderer
+                                            key={streamingMessage.key}
+                                            message={streamingMessage}
+                                            threadId={threadId || undefined}
+                                            isLatestMessage
+                                            isStreaming
+                                        />
+                                    ) : null}
+                                    {isStreaming && !streamingMessage ? (
+                                        <div className="mb-3 flex justify-start">
+                                            <div className="inline-flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+                                                <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                                                Assistant is thinking...
+                                            </div>
+                                        </div>
+                                    ) : null}
                                 </div>
                             </div>
                         </div>
-                        <ChatInput onSubmit={handleSubmit} submissionStatus={submissionStatus} />
+                        <ChatInput onSubmit={handleSubmit} onAbort={abort} submissionStatus={submissionStatus} isStreaming={isStreaming} />
                     </div>
                 </div>
             </DialogContent>
