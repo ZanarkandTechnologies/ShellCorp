@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 
 import { AppRouter } from "@/AppRouter";
 import { ThemeProvider } from "@/components/theme/theme-provider";
+import { GatewayProvider } from "@/providers/gateway-provider";
 import "./styles.css";
 
 document.documentElement.classList.add("dark");
@@ -12,9 +13,11 @@ document.documentElement.classList.add("dark");
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-      <BrowserRouter>
-        <AppRouter />
-      </BrowserRouter>
+      <GatewayProvider>
+        <BrowserRouter>
+          <AppRouter />
+        </BrowserRouter>
+      </GatewayProvider>
       <Toaster />
     </ThemeProvider>
   </React.StrictMode>,
