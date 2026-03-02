@@ -91,11 +91,11 @@ export function InteractiveObject({
     const objectIdString = `object-${objectId}`;
     const isSelected = selectedObjectId === objectIdString;
 
-    async function updateOfficeObjectPosition(input: {
+    const updateOfficeObjectPosition = useCallback(async (input: {
         id: string;
         position: [number, number, number];
         rotation?: [number, number, number];
-    }): Promise<void> {
+    }): Promise<void> => {
         const adapter = adapterRef.current;
         const current = await adapter.getOfficeObjects();
         const existing = current.find((item) => item.id === input.id);
@@ -112,14 +112,14 @@ export function InteractiveObject({
         if (!result.ok) {
             throw new Error(result.error ?? "office_object_update_failed");
         }
-    }
+    }, [objectType, initialRotation]);
 
-    async function deleteOfficeObject(input: { id: string }): Promise<void> {
+    const deleteOfficeObject = useCallback(async (input: { id: string }): Promise<void> => {
         const result = await adapterRef.current.deleteOfficeObject(input.id);
         if (!result.ok) {
             throw new Error(result.error ?? "office_object_delete_failed");
         }
-    }
+    }, []);
 
     // Initialize drag controller
     useEffect(() => {
