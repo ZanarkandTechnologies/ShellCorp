@@ -75,6 +75,47 @@ export function usePlacementSystem() {
         }
     }
 
+    async function placeGenericObject(input: {
+        type: string;
+        position: [number, number, number];
+        data: Record<string, unknown> | null;
+    }): Promise<void> {
+        const timestamp = Date.now();
+        const idBase =
+            typeof input.data?.meshAssetId === "string" && input.data.meshAssetId.trim()
+                ? input.data.meshAssetId.trim().replace(/[^a-zA-Z0-9-_]/g, "-")
+                : input.type;
+        const objectId = `${input.type}-${idBase}-${timestamp}`;
+        const rotationInput = Array.isArray(input.data?.rotation) ? input.data.rotation : undefined;
+        const rotation: [number, number, number] =
+            rotationInput &&
+            rotationInput.length === 3 &&
+            rotationInput.every((value) => typeof value === "number")
+                ? [rotationInput[0], rotationInput[1], rotationInput[2]]
+                : [0, 0, 0];
+        const scaleInput = Array.isArray(input.data?.scale) ? input.data.scale : undefined;
+        const scale: [number, number, number] | undefined =
+            scaleInput &&
+            scaleInput.length === 3 &&
+            scaleInput.every((value) => typeof value === "number")
+                ? [scaleInput[0], scaleInput[1], scaleInput[2]]
+                : undefined;
+
+        const metadata = input.data && typeof input.data === "object" ? { ...input.data } : {};
+        const result = await adapter.upsertOfficeObject({
+            id: objectId,
+            identifier: objectId,
+            meshType: "custom-mesh",
+            position: input.position,
+            rotation,
+            ...(scale ? { scale } : {}),
+            metadata,
+        });
+        if (!result.ok) {
+            throw new Error(result.error ?? "generic_object_place_failed");
+        }
+    }
+
     // Actions
     const startPlacement = useCallback((type: PlacementType, data: Record<string, unknown>) => {
         setPlacementMode({ active: true, type, data });
@@ -111,8 +152,11 @@ export function usePlacementSystem() {
                     break;
 
                 case "place_generic":
-                    // Future: await placeGenericObject(...)
-                    console.log("Placing generic object at", posArray);
+                    await placeGenericObject({
+                        type,
+                        position: posArray,
+                        data,
+                    });
                     break;
 
                 default:

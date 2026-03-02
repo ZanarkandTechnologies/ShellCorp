@@ -10,6 +10,7 @@ import { ContextMenu, MenuAction } from './context-menu';
 import { Move, RotateCw, RotateCcw, Trash2, Settings } from 'lucide-react';
 import { DraggableController } from '../controllers/draggable-controller';
 import { resolvePersistedOfficeObjectId } from './office-object-id';
+import { OFFICE_INTERACTION_COLORS } from '@/config/office-theme';
 
 interface InteractiveObjectProps {
     children: React.ReactNode;
@@ -108,7 +109,7 @@ export function InteractiveObject({
         const payload = {
             id: persistedId,
             identifier: existing?.identifier ?? persistedId,
-            meshType: (existing?.meshType ?? objectType) as "team-cluster" | "plant" | "couch" | "bookshelf" | "pantry" | "glass-wall",
+            meshType: (existing?.meshType ?? objectType) as "team-cluster" | "plant" | "couch" | "bookshelf" | "pantry" | "glass-wall" | "custom-mesh",
             position: input.position,
             rotation: input.rotation ?? existing?.rotation ?? initialRotation,
             scale: existing?.scale,
@@ -317,7 +318,7 @@ export function InteractiveObject({
             {showHoverEffect && (isHovered || isSelected) && (
                 <Edges
                     scale={1.05}
-                    color={isSelected ? "#00ff00" : "#ffffff"}
+                    color={isSelected ? OFFICE_INTERACTION_COLORS.selectionEdge : OFFICE_INTERACTION_COLORS.hoverEdge}
                     lineWidth={isSelected ? 2 : 1}
                 />
             )}
@@ -327,7 +328,7 @@ export function InteractiveObject({
                 <mesh position={[0, -0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
                     <circleGeometry args={[1.5, 32]} />
                     <meshBasicMaterial
-                        color="#ffff00"
+                        color={OFFICE_INTERACTION_COLORS.dragIndicator}
                         transparent
                         opacity={0.2}
                         side={THREE.DoubleSide}
