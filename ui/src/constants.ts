@@ -12,10 +12,23 @@ export const FLOOR_SIZE = 35;
 export const FLOOR_SIZE_FOR_DECOR = 35;
 export const HALF_FLOOR = FLOOR_SIZE_FOR_DECOR / 2;
 
-export const HAIR_COLORS = ["#000000", "#A52A2A", "#D2691E", "#FFD700", "#C0C0C0"];
-export const SKIN_COLORS = ["#F5F5DC", "#FFE4C4", "#FFDBAC", "#F5DEB3", "#D2B48C", "#CD853F"];
-export const SHIRT_COLORS = ["#FF0000", "#0000FF", "#008000", "#FFFF00", "#FFA500", "#800080", "#FFFFFF", "#808080"];
-export const PANTS_COLORS = ["#00008B", "#2F4F4F", "#000000", "#A0522D", "#808080"];
+// OpenClaw lobster-themed color palette
+export const HAIR_COLORS = ["#FF4500", "#FF6347", "#E84020", "#D4380D", "#CC3300"]; // Shell crown accents
+export const SKIN_COLORS = ["#E8512B", "#FF5722", "#FF6B3D", "#F44336", "#D84315"]; // Shell reds/oranges (head)
+export const SHIRT_COLORS = ["#CC2200", "#D4380D", "#E84020", "#B71C1C", "#C62828", "#DD2C00", "#BF360C", "#E65100"]; // Deep red/orange (body)
+export const PANTS_COLORS = ["#8B1A1A", "#7B1818", "#6D1515", "#5D1212", "#4E0F0F"]; // Dark crimson (legs)
+
+// Distinct team plumbob colors (high contrast against red/orange lobster bodies)
+export const TEAM_PLUMBOB_COLORS = [
+  "#00E676", // Green (classic Sims)
+  "#2979FF", // Blue
+  "#AA00FF", // Purple
+  "#00E5FF", // Cyan
+  "#FFD600", // Gold
+  "#FF4081", // Pink
+  "#76FF03", // Lime
+  "#FF9100", // Amber
+];
 
 export const BODY_WIDTH = EMPLOYEE_RADIUS * 2;
 export const LEG_HEIGHT = 0.35;

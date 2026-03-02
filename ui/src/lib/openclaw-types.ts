@@ -295,6 +295,22 @@ export interface ProjectWorkloadSummary {
   queuePressure: "low" | "medium" | "high";
 }
 
+export type ApprovalActionType = "tool_call" | "external_message" | "deploy" | "delete" | "write" | "config_change";
+export type ApprovalRiskLevel = "low" | "medium" | "high" | "critical";
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
+export interface PendingApprovalModel {
+  id: string;
+  agentId: string;
+  actionType: ApprovalActionType;
+  toolName?: string;
+  description: string;
+  riskLevel: ApprovalRiskLevel;
+  createdAt: number;
+  context?: string;
+  status: ApprovalStatus;
+}
+
 export interface UnifiedOfficeModel {
   company: CompanyModel;
   runtimeAgents: AgentCardModel[];
