@@ -1,6 +1,7 @@
 # HISTORY
 
-2026-02-25 20:10 +0800 | refactor | MEM-0100 | pivot,openclaw,ui | Hard pivot from custom Fahrenheit gateway/runtime to UI-first OpenClaw control center architecture.
+2026-03-03 | docs | MEM-0118 | qa,ui,docs | Added AI Office UI QA runbook (`docs/how-to/ai-office-ui-qa-runbook.md`) documenting Sims-like interaction model, employee/object/team click flows, top-left menu entrypoints, source-to-panel mapping, builder mode, and ASCII diagrams for browser-agent testing.
+2026-02-25 20:10 +0800 | refactor | MEM-0100 | pivot,openclaw,ui | Hard pivot from legacy custom gateway/runtime to UI-first OpenClaw control center architecture.
 2026-02-25 20:12 +0800 | feature | MEM-0101 | docs,specs | Added SC01-SC04 specs for OpenClaw state mapping, Notion plugin packaging, memory/skills UI, and chat bridge.
 2026-02-25 20:15 +0800 | feature | MEM-0102 | plugin,notion | Scaffolded in-repo OpenClaw Notion extension under `extensions/notion` with manifest and entrypoint.
 2026-02-25 20:18 +0800 | feature | MEM-0103 | ui,adapter | Implemented OpenClaw UI adapter contracts and rewired main app to agents/sessions/timeline/chat bridge with memory/skills views.
@@ -15,3 +16,7 @@
 2026-02-26 23:10 +0800 | feature | MEM-0112 | docs,phase2,lifecycle | Added `SC07` ticket-session lifecycle contract and founder-direction study (`ST01`) to capture explicit close/reopen and operator continuity behavior.
 2026-02-26 23:10 +0800 | feature | MEM-0113 | docs,phase2,context-tools | Added `SC08` provider indexing and deterministic generated skill/tool catalog spec for OpenClaw-compatible context amplification.
 2026-02-26 23:10 +0800 | feature | MEM-0114 | docs,phase2,autonomy,personalization | Added `SC09` personalization + mesh/image wrapper strategy, `SC10` heartbeat governance spec, and expected visual QA ASCII baselines for Kanban Federation and Agent Personalization Studio.
+2026-02-26 22:45 +0800 | feature | MEM-0115 | kanban,federation,ui | Implemented SC06 baseline federation contracts and Team Kanban observability controls (provider filter, canonical selector, sync badges, deep links, manual resync) with internal canonical default.
+2026-02-26 22:45 +0800 | feature | MEM-0116 | notion,plugin,context-tools | Extended in-repo Notion plugin with `tasks.list/create/update/sync` and `profile.bootstrap` gateway methods, and added project-level Notion provider profile bootstrap for deterministic skill/index metadata.
+2026-02-26 22:35 +0800 | fix | MEM-0115 | ui,office,placement,persistence | Fixed office-object placement persistence on reload by resolving UI/persisted ID mismatches, syncing local transform state from refreshed props, and reverting failed saves to last confirmed transforms; added targeted ID-resolution tests plus placement QA spec/report artifacts.
+2026-02-26 23:55 +0800 | feature | MEM-0117 | notion,webhook,hooks | Implemented comments-first Notion webhook integration runbook: added temporary FastAPI probe server for verification/payload capture, OpenClaw hooks config + transform artifacts for `/hooks/notion`, and deprecated `notion-shell.tasks.*` from active onboarding guidance.
