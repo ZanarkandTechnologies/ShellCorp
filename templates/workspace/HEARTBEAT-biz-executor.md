@@ -12,6 +12,11 @@ Resources snapshot: {resourcesSnapshot}
 Advisories: {resourceAdvisories}
 
 Your job:
+0. Use skill "status-self-reporter" to publish status transitions:
+   - planning at turn start
+   - executing before each major skill run
+   - blocked when inputs/resources are missing
+   - done at the end of this heartbeat turn
 1. Pick the highest-priority task from the kanban.
 2. Execute it using the correct capability skill.
 3. Use EXECUTE for content/product creation.

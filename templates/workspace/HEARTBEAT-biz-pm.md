@@ -11,6 +11,11 @@ Kanban: {openTasks} open, {inProgressTasks} in progress, {blockedTasks} blocked
 Resources snapshot: {resourcesSnapshot}
 
 Your job:
+0. Use skill "status-self-reporter" to publish status transitions:
+   - planning at turn start
+   - executing before major changes
+   - blocked when waiting on operator/input
+   - done when this heartbeat turn is complete
 1. Review current metrics and update the ledger if new revenue or costs are detected.
 2. Evaluate running experiments, close stale items, and record results.
 3. Course-correct when KPIs stagnate by creating or reprioritizing tasks.

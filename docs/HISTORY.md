@@ -1,5 +1,6 @@
 # HISTORY
 
+2026-03-04 19:30 +0000 | feature | MEM-0128 | status,convex,heartbeat | Added self-report status pipeline for agents via Convex `/status/report`, extended status/event contracts for explicit state transitions (`planning/executing/blocked/done`), added status reporter skill + heartbeat template cadence, and switched hook guidance to diagnostics-only default-disabled mode.
 2026-03-04 17:25 +0000 | feature | MEM-0127 | cli,office,doctor | Added `shellcorp office doctor` to detect invalid office objects (including custom meshes missing mesh path metadata and clusters mapped to missing/archived teams), with `--fix` cleanup mode to remove invalid entries from sidecar state.
 2026-03-04 17:10 +0000 | fix | MEM-0126 | cli,office,ui-parity | Fixed office placement/UI mismatch: `office add custom-mesh` now requires mesh path metadata for renderable assets, and `office add team-cluster` now creates/revives a real project-backed team mapping (`team-<projectId>`) so clusters appear in UI team surfaces.
 2026-03-04 16:45 +0000 | feature | MEM-0125 | cli,office,placement | Added deterministic empty-space placement for `shellcorp office add --auto-place`, enforced `--position` vs `--auto-place` flag validation, and made `office add`/`office move` collision-safe via shared XZ footprint occupancy checks with focused CLI/unit test coverage.
