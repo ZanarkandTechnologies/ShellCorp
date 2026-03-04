@@ -16,7 +16,6 @@ import {
 import { SpeedDial, type SpeedDialItem } from "@/components/ui/speed-dial";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "@/lib/app-store";
-import { api } from "@/convex/_generated/api";
 import { FurnitureShop } from "./furniture-shop";
 import { ApprovalQueue } from "./approval-queue";
 import { useChatActions } from "@/features/chat-system/chat-store";
@@ -63,17 +62,9 @@ export function OfficeMenu({
         const timer = setInterval(() => void poll(), 10_000);
         return () => { cancelled = true; clearInterval(timer); };
     }, [adapter]);
-    const apiRoot = api as unknown as {
-        office_system?: {
-            employees?: { createEmployee?: unknown };
-            teams?: { updateTeam?: unknown };
-        };
-        agents_system?: {
-            tools?: { toolConfigs?: { listToolConfigs?: unknown } };
-        };
-    };
-    const canOpenAgentManager = Boolean(apiRoot.office_system?.employees?.createEmployee);
-    const canOpenTeamManager = Boolean(apiRoot.office_system?.teams?.updateTeam);
+    // Legacy team/agent manager dialogs were intentionally stripped from this UI flow.
+    const canOpenAgentManager = false;
+    const canOpenTeamManager = false;
     const { openEmployeeChat } = useChatActions();
 
     useEffect(() => {

@@ -30,6 +30,6 @@ Upgrade UI memory and skill visibility for multi-agent operations while preservi
 
 ## Acceptance Criteria
 
-- UI renders memory and skills with no Convex dependency.
+- UI renders memory and skills with no legacy backend dependency.
 - Memory and skills views support at least one multi-agent setup.
 - Panels can refresh from live OpenClaw-backed data.

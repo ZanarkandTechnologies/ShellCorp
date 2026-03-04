@@ -1,5 +1,5 @@
 import { InteractiveObject } from './interactive-object';
-import type { Id } from '@/convex/_generated/dataModel';
+import type { Id } from "@/lib/entity-types";
 
 interface GlassWallProps {
     objectId: Id<"officeObjects">;

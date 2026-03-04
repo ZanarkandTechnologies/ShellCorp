@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Box } from "@react-three/drei";
 import * as THREE from "three";
 import { InteractiveObject } from "./interactive-object";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Id } from "@/lib/entity-types";
 import {
   type CachedMesh,
   getMesh,

@@ -20,7 +20,7 @@ import { getRandomItem } from "@/lib/utils";
 import { ContextMenu } from "./context-menu";
 import { MessageSquare, Monitor, UserCog, CheckSquare, Book, Brain } from 'lucide-react';
 import { useAppStore } from "@/lib/app-store";
-import { Id } from "@/convex/_generated/dataModel";
+import type { Id } from "@/lib/entity-types";
 
 interface EmployeeProps {
     _id: Id<"employees">;
@@ -40,6 +40,8 @@ interface EmployeeProps {
     teamId?: string;
     notificationCount?: number;
     notificationPriority?: number;
+    heartbeatState?: "running" | "ok" | "no_work" | "error" | "idle";
+    heartbeatBubbles?: Array<{ label: string; weight?: number }>;
     profileImageUrl?: string; // Profile image URL for expert imports (displayed as head texture)
 }
 
@@ -324,6 +326,8 @@ const Employee = memo(function Employee({
     teamId,
     notificationCount = 0,
     notificationPriority = 0,
+    heartbeatState,
+    heartbeatBubbles = [],
 }: EmployeeProps) {
     const groupRef = useRef<Group>(null);
     const initialPositionRef = useRef<THREE.Vector3>(new THREE.Vector3(position[0], TOTAL_HEIGHT / 2, position[2]));
@@ -854,6 +858,8 @@ const Employee = memo(function Employee({
                     message={statusMessage}
                     visible={currentStatus !== 'none'}
                     notificationCount={effectiveNotificationCount}
+                    mode={heartbeatState && heartbeatState !== "idle" && effectiveNotificationCount === 0 ? "heartbeatBubbles" : "single"}
+                    bubbles={heartbeatBubbles}
                 />
 
                 {/* Employee Label - Show on hover or when highlighted */}

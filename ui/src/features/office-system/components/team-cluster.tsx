@@ -15,14 +15,14 @@
  * - Desks auto-arrange using layout utility functions
  */
 import { useState, useMemo } from 'react';
-import type { Id } from '@/convex/_generated/dataModel';
+import type { Id } from "@/lib/entity-types";
 import type { TeamData, DeskLayoutData } from '@/lib/types';
 import type { ThreeEvent } from '@react-three/fiber';
 import Desk from './desk';
 import { InteractiveObject } from './interactive-object';
 import { useAppStore } from '@/lib/app-store';
 import { Text, Html } from '@react-three/drei';
-import { getClusterAnchor, getDeskPosition, getDeskRotation } from '@/convex/utils/layout';
+import { getClusterAnchor, getDeskPosition, getDeskRotation } from "@/features/office-system/utils/layout";
 
 // Constants
 const MAX_DESKS_PER_TEAM = 6;

@@ -12,7 +12,7 @@
  * - Use `solveClusterLayout()` for generic cluster meshes.
  * - Use compatibility adapters (`getDeskPosition`, `getDeskRotation`) for desk code.
  */
-import { DESK_DEPTH, DESK_WIDTH, EMPLOYEE_RADIUS } from "../../constants";
+import { DESK_DEPTH, DESK_WIDTH, EMPLOYEE_RADIUS } from "@/constants";
 
 export type LayoutOddStrategy = "tail-centroid";
 export type LayoutAnchorMode = "centroid" | "frontWeighted";

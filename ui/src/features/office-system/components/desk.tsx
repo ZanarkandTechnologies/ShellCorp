@@ -9,7 +9,7 @@
  * ARCHITECTURE:
  * -------------
  * - **Content Component**: Pure visual rendering of a desk (table + computer)
- * - **Positioning**: Calculated by `convex/utils/layout.ts` based on team's desk count
+ * - **Positioning**: Calculated by `features/office-system/utils/layout.ts` based on team's desk count
  * - **No Database Entry**: Only the team's `deskCount` is stored, not individual desk positions
  * 
  * VISUAL FEATURES:

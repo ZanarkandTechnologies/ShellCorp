@@ -88,4 +88,4 @@ For SC06, source-of-truth is **canonical-provider-per-project**:
 - Operators can view one unified board with tasks from at least internal + one external provider.
 - Per-project canonical provider policy is enforced for all writes.
 - Sync errors/conflicts are visible and actionable in UI.
-- No dependence on Convex-only task infrastructure in ShellCorp.
+- No dependence on legacy task infrastructure in ShellCorp.

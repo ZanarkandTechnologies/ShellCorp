@@ -4,7 +4,7 @@
  * USER TASKS PANEL
  * ================
  *
- * ShellCorp currently runs without the Convex user task backend in this
+ * ShellCorp currently runs without the user task backend in this
  * workspace mode. Keep this panel available from the HUD, but render a
  * safe placeholder instead of attempting unavailable API calls.
  */

@@ -142,7 +142,7 @@ export default function OfficeSimulation() {
 
             <LogsDrawer open={isLogsDrawerOpen} onOpenChange={setIsLogsDrawerOpen} gatewayBase={gatewayBase} />
 
-            {/* Team Options Dialog - rendered outside Canvas to access ConvexProvider */}
+            {/* Team options dialog rendered outside Canvas for stable layering */}
             {activeTeamForOptions && (
                 <TeamOptionsDialog
                     team={activeTeamForOptions}

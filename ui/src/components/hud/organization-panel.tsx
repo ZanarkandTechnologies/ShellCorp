@@ -1,10 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation } from "convex/react";
-import type { Id } from "@/convex/_generated/dataModel";
-import { api } from "@/convex/_generated/api";
-import { Building2, Briefcase, MapPin, Search, User, UserPlus, UserSearch, Users, X } from "lucide-react";
+import type { Id } from "@/lib/entity-types";
+import { Building2, Briefcase, MapPin, Search, User, UserSearch, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -19,7 +17,7 @@ import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { useAppStore } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { UI_Z } from "@/lib/z-index";
-import type { TeamData, EmployeeData } from "@/lib/types";
+import type { EmployeeData } from "@/lib/types";
 
 interface OrganizationPanelProps {
   isOpen: boolean;
@@ -175,265 +173,17 @@ function CreateTeamTabContent({ onDone }: { onDone?: () => void }): React.JSX.El
 }
 
 function RecruitAgentTabContent({ canOpen }: { canOpen: boolean }): React.JSX.Element {
-  const { company, teams, employees, desks } = useOfficeDataContext();
-  const createEmployee = useMutation(api.office_system.employees.createEmployee);
-  const [name, setName] = useState("");
-  const [teamId, setTeamId] = useState("");
-  const [jobTitle, setJobTitle] = useState("");
-  const [deskId, setDeskId] = useState("");
-  const [status, setStatus] = useState<string>("");
-
-  const availableDesks = useMemo(() => {
-    const occupiedDeskIds = new Set<string>();
-    employees.forEach((employee: EmployeeData) => {
-      if (employee.deskId) occupiedDeskIds.add(employee.deskId);
-    });
-    return desks.filter((desk) => !occupiedDeskIds.has(desk.id));
-  }, [desks, employees]);
-
-  const teamDesks = useMemo(() => {
-    if (!teamId) return [];
-    const teamName = teams.find((team) => team._id === teamId)?.name;
-    if (!teamName) return [];
-    return availableDesks.filter((desk) => desk.team === teamName || desk.team === "Unassigned");
-  }, [availableDesks, teamId, teams]);
-
-  const handleSubmit = async (): Promise<void> => {
-    if (!company || !teamId || !name.trim() || !jobTitle.trim()) return;
-    setStatus("");
-    try {
-      await createEmployee({
-        name: name.trim(),
-        teamId: teamId as Id<"teams">,
-        companyId: company._id,
-        jobTitle: jobTitle.trim(),
-        jobDescription: "New hire",
-        gender: Math.random() > 0.5 ? "male" : "female",
-        background: "New hire",
-        personality: "Helpful",
-        status: "none",
-        statusMessage: "",
-        isSupervisor: false,
-        deskId: deskId ? (deskId as Id<"desks">) : undefined,
-      });
-      setName("");
-      setTeamId("");
-      setJobTitle("");
-      setDeskId("");
-      setStatus("Agent recruited.");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to recruit agent.");
-    }
-  };
-
   if (!canOpen) {
     return <p className="text-sm text-muted-foreground">Recruit Agent is unavailable in the current backend mode.</p>;
   }
-
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-4 items-center gap-3">
-        <Label className="text-right">Name</Label>
-        <Input value={name} onChange={(event) => setName(event.target.value)} className="col-span-3" />
-      </div>
-      <div className="grid grid-cols-4 items-center gap-3">
-        <Label className="text-right">Team</Label>
-        <div className="col-span-3">
-          <Select value={teamId} onValueChange={setTeamId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select Team" />
-            </SelectTrigger>
-            <SelectContent>
-              {teams.map((team) => (
-                <SelectItem key={team._id} value={team._id}>
-                  {team.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="grid grid-cols-4 items-center gap-3">
-        <Label className="text-right">Role</Label>
-        <Input value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} className="col-span-3" />
-      </div>
-      <div className="grid grid-cols-4 items-center gap-3">
-        <Label className="text-right">Desk</Label>
-        <div className="col-span-3">
-          <Select value={deskId} onValueChange={setDeskId} disabled={!teamId}>
-            <SelectTrigger>
-              <SelectValue placeholder={!teamId ? "Select Team First" : "Assign Desk (Optional)"} />
-            </SelectTrigger>
-            <SelectContent>
-              {teamDesks.map((desk) => (
-                <SelectItem key={desk.id} value={desk.id}>
-                  {desk.team === "Unassigned" ? "Unassigned Desk" : "Team Desk"} ({desk.id.slice(0, 8)}...)
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-      <div className="flex justify-end">
-        <Button onClick={() => void handleSubmit()} disabled={!name.trim() || !teamId || !jobTitle.trim()}>
-          <UserPlus className="mr-2 h-4 w-4" />
-          Recruit
-        </Button>
-      </div>
-    </div>
-  );
+  return <p className="text-sm text-muted-foreground">Recruit Agent is temporarily unavailable in WS-only mode.</p>;
 }
 
 function ManageTeamsTabContent({ canOpen }: { canOpen: boolean }): React.JSX.Element {
-  const { teams } = useOfficeDataContext();
-  const updateTeam = useMutation(api.office_system.teams.updateTeam);
-  const [editingTeam, setEditingTeam] = useState<TeamData | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [services, setServices] = useState<string[]>([]);
-  const [serviceInput, setServiceInput] = useState("");
-  const [status, setStatus] = useState("");
-
-  const resetForm = (): void => {
-    setName("");
-    setDescription("");
-    setServices([]);
-    setServiceInput("");
-    setEditingTeam(null);
-  };
-
-  const handleEdit = (team: TeamData): void => {
-    setEditingTeam(team);
-    setName(team.name);
-    setDescription(team.description);
-    setServices(team.services || []);
-    setServiceInput("");
-  };
-
-  const handleUpdate = async (): Promise<void> => {
-    if (!editingTeam || !name.trim()) return;
-    setStatus("");
-    try {
-      await updateTeam({
-        teamId: editingTeam._id,
-        name: name.trim(),
-        description: description.trim() || undefined,
-        services: services.length > 0 ? services : undefined,
-      });
-      setStatus("Team updated.");
-      resetForm();
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to update team.");
-    }
-  };
-
   if (!canOpen) {
     return <p className="text-sm text-muted-foreground">Manage Teams is unavailable in the current backend mode.</p>;
   }
-
-  return (
-    <div className="space-y-4">
-      {editingTeam ? (
-        <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="font-medium">Edit {editingTeam.name}</p>
-            <Button variant="ghost" size="sm" onClick={resetForm}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input value={name} onChange={(event) => setName(event.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Textarea value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-[72px]" />
-          </div>
-          <div className="space-y-2">
-            <Label>Services</Label>
-            <div className="flex gap-2">
-              <Input
-                value={serviceInput}
-                onChange={(event) => setServiceInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && serviceInput.trim()) {
-                    event.preventDefault();
-                    if (!services.includes(serviceInput.trim())) {
-                      setServices([...services, serviceInput.trim()]);
-                    }
-                    setServiceInput("");
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => {
-                  if (serviceInput.trim() && !services.includes(serviceInput.trim())) {
-                    setServices([...services, serviceInput.trim()]);
-                    setServiceInput("");
-                  }
-                }}
-              >
-                Add
-              </Button>
-            </div>
-            {services.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {services.map((service, idx) => (
-                  <span key={`${service}-${idx}`} className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-1 text-sm text-primary">
-                    {service}
-                    <button type="button" onClick={() => setServices(services.filter((_, i) => i !== idx))}>
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={resetForm}>Cancel</Button>
-            <Button onClick={() => void handleUpdate()} disabled={!name.trim()}>
-              Save
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      {status ? <p className="text-sm text-muted-foreground">{status}</p> : null}
-
-      {teams.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No teams available.</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {teams.map((team) => (
-            <Card key={team._id}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">{team.name}</CardTitle>
-                <CardDescription>{team.description}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Employees</span>
-                  <span>{team.employees?.length || 0}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Desks</span>
-                  <span>{team.deskCount || 0}</span>
-                </div>
-                <div className="flex justify-end">
-                  <Button size="sm" variant="outline" onClick={() => handleEdit(team)}>
-                    Edit
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  return <p className="text-sm text-muted-foreground">Manage Teams is temporarily unavailable in WS-only mode.</p>;
 }
 
 function DirectoryTabContent(): React.JSX.Element {

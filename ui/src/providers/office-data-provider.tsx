@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { HALF_FLOOR } from "@/constants";
-import { getAbsoluteDeskPosition, getDeskRotation, getEmployeePositionAtDesk } from "@/convex/utils/layout";
+import { getAbsoluteDeskPosition, getDeskRotation, getEmployeePositionAtDesk } from "@/features/office-system/utils/layout";
 import { normalizeOfficeObjectId } from "@/features/office-system/components/office-object-id";
 import type { OpenClawAdapter } from "@/lib/openclaw-adapter";
 import type { Company, DeskLayoutData, EmployeeData, OfficeObject, TeamData } from "@/lib/types";

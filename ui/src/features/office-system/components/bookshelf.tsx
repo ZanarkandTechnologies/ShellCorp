@@ -1,6 +1,6 @@
 import { Box } from "@react-three/drei";
 import { InteractiveObject } from './interactive-object';
-import type { Id } from '@/convex/_generated/dataModel';
+import type { Id } from "@/lib/entity-types";
 
 interface BookshelfProps {
     objectId: Id<"officeObjects">;

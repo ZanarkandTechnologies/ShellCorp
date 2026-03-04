@@ -19,7 +19,7 @@
  * 1. Add to the items array with: { id, name, price, description, placementType }
  * 2. If placementType === "team": Requires team selection, update handleBuyAndPlace
  * 3. If placementType === "coordinate": Use setPlacementMode to trigger PlacementHandler
- * 4. Add corresponding mutation in convex/office_system/office_objects.ts if needed
+ * 4. Add corresponding gateway-backed adapter method if needed
  */
 "use client";
 

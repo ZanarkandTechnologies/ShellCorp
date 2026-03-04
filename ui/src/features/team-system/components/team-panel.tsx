@@ -18,7 +18,7 @@ import { UI_Z } from "@/lib/z-index";
  *
  * KEY CONCEPTS:
  * - Opens from team-cluster click with selected team context
- * - Uses OpenClaw-backed office context only (no Convex dependency)
+ * - Uses OpenClaw-backed office context only (no legacy backend dependency)
  * - Preserves parity-oriented tabbed shell for operations
  *
  * USAGE:

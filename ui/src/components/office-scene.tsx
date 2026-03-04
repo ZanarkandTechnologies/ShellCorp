@@ -28,7 +28,7 @@ import { DestinationDebugger } from './debug/destination-debugger';
 import type { StatusType } from '@/features/nav-system/components/status-indicator';
 import GlassWall from '@/features/office-system/components/glass-wall';
 import type { EmployeeData, DeskLayoutData, TeamData, OfficeObject, OfficeId } from '@/lib/types';
-import { getAbsoluteDeskPosition, getDeskRotation } from '@/convex/utils/layout';
+import { getAbsoluteDeskPosition, getDeskRotation } from "@/features/office-system/utils/layout";
 
 import { PlacementHandler } from './placement-handler';
 import { ViewComputerDialog } from '@/features/remote-cua-system/components/view-computer-dialog';

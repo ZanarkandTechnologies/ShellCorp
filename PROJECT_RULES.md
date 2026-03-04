@@ -6,7 +6,7 @@ This file defines project-specific technical rules, stack details, and execution
 
 - Framework: Node.js CLI + gateway runtime
 - Language: TypeScript (strict)
-- Database/Backend: Convex (log/message sink integration)
+- Database/Backend: OpenClaw gateway/state bridge integration
 - Package Manager: npm
 - Test Runner: Vitest
 
@@ -15,7 +15,7 @@ This file defines project-specific technical rules, stack details, and execution
 - `src/`: main source code
 - `workspace/`: runtime prompts, skills, and provider scaffolds
 - `docs/`: canonical project state (`prd.md`, `specs/*`, `progress.md`, `HISTORY.md`, `MEMORY.md`)
-- `convex/`: Convex functions/schema
+- `ui/src/lib/`: OpenClaw integration adapters and gateway clients
 
 ## Conventions
 
