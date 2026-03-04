@@ -9,7 +9,8 @@ type JsonObject = Record<string, unknown>;
 type MemoryEntryType = "discovery" | "decision" | "problem" | "solution" | "pattern" | "warning" | "success" | "refactor" | "bugfix" | "feature";
 type TaskProvider = "internal" | "notion" | "vibe" | "linear";
 type TaskSyncState = "healthy" | "pending" | "conflict" | "error";
-type TeamRole = "builder" | "growth_marketer" | "pm";
+type TeamRole = "builder" | "growth_marketer" | "pm" | "biz_pm" | "biz_executor";
+type BusinessType = "affiliate_marketing" | "content_creator" | "saas" | "custom";
 
 const OPENCLAW_HOME = process.env.OPENCLAW_STATE_DIR || path.join(process.env.HOME || "", ".openclaw");
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || path.join(OPENCLAW_HOME, "openclaw.json");
@@ -19,8 +20,12 @@ const OFFICE_SETTINGS_PATH = path.join(OPENCLAW_HOME, "office.json");
 const OFFICE_OBJECTS_TEMPLATE_PATH = path.resolve(__dirname, "../officeObjects.json");
 const PENDING_APPROVALS_PATH = path.join(OPENCLAW_HOME, "pending-approvals.json");
 const PENDING_APPROVALS_TEMPLATE_PATH = path.resolve(__dirname, "../templates/sidecar/pending-approvals.template.json");
+const BIZ_PM_HEARTBEAT_TEMPLATE_PATH = path.resolve(__dirname, "../templates/workspace/HEARTBEAT-biz-pm.md");
+const BIZ_EXECUTOR_HEARTBEAT_TEMPLATE_PATH = path.resolve(__dirname, "../templates/workspace/HEARTBEAT-biz-executor.md");
 const DEFAULT_MESH_ASSET_DIR = path.join(OPENCLAW_HOME, "assets", "meshes");
+const CRON_JOBS_PATH = path.join(OPENCLAW_HOME, "cron", "jobs.json");
 const MESH_EXTENSIONS = new Set([".glb", ".gltf"]);
+const MESH_PREVIEW_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 interface OfficeSettings {
   meshAssetDir?: string;
@@ -502,9 +507,21 @@ function normalizeTeamRoles(input: unknown): TeamRole[] {
   if (!Array.isArray(input)) return [];
   const out = new Set<TeamRole>();
   for (const row of input) {
-    if (row === "builder" || row === "growth_marketer" || row === "pm") out.add(row);
+    if (row === "builder" || row === "growth_marketer" || row === "pm" || row === "biz_pm" || row === "biz_executor") out.add(row);
   }
   return [...out];
+}
+
+function normalizeBusinessType(input: unknown): BusinessType | null {
+  if (
+    input === "affiliate_marketing" ||
+    input === "content_creator" ||
+    input === "saas" ||
+    input === "custom"
+  ) {
+    return input;
+  }
+  return null;
 }
 
 function projectIdFromTeamId(teamId: string): string {
@@ -512,13 +529,117 @@ function projectIdFromTeamId(teamId: string): string {
 }
 
 function roleSuffix(role: TeamRole): string {
-  return role === "growth_marketer" ? "growth" : role;
+  if (role === "growth_marketer") return "growth";
+  if (role === "biz_pm") return "pm";
+  if (role === "biz_executor") return "executor";
+  return role;
 }
 
 function defaultHeartbeatProfileIdForRole(role: TeamRole): string {
   if (role === "builder") return "hb-builder";
   if (role === "growth_marketer") return "hb-growth";
+  if (role === "biz_pm") return "hb-biz-pm";
+  if (role === "biz_executor") return "hb-biz-executor";
   return "hb-pm";
+}
+
+function defaultBusinessConfig(
+  type: BusinessType,
+  overrides?: { measure?: string; execute?: string; distribute?: string },
+): JsonObject {
+  return {
+    type,
+    slots: {
+      measure: {
+        skillId: overrides?.measure?.trim() || "amazon-affiliate-metrics",
+        category: "measure",
+        config: type === "affiliate_marketing" ? { platform: "amazon_associates" } : {},
+      },
+      execute: {
+        skillId: overrides?.execute?.trim() || "video-generator",
+        category: "execute",
+        config: {},
+      },
+      distribute: {
+        skillId: overrides?.distribute?.trim() || "tiktok-poster",
+        category: "distribute",
+        config: {},
+      },
+    },
+  } satisfies JsonObject;
+}
+
+function ensureBusinessHeartbeatProfiles(company: JsonObject): JsonObject {
+  const heartbeatProfiles = Array.isArray(company.heartbeatProfiles) ? [...company.heartbeatProfiles] : [];
+  const hasBizPm = heartbeatProfiles.some(
+    (entry) => entry && typeof entry === "object" && String((entry as JsonObject).id ?? "") === "hb-biz-pm",
+  );
+  const hasBizExecutor = heartbeatProfiles.some(
+    (entry) => entry && typeof entry === "object" && String((entry as JsonObject).id ?? "") === "hb-biz-executor",
+  );
+  if (!hasBizPm) {
+    heartbeatProfiles.push({
+      id: "hb-biz-pm",
+      role: "biz_pm",
+      cadenceMinutes: 5,
+      teamDescription: "Business PM loop",
+      productDetails: "Track KPIs and profitability, manage kanban",
+      goal: "Keep business net-positive with clear execution priorities",
+    } satisfies JsonObject);
+  }
+  if (!hasBizExecutor) {
+    heartbeatProfiles.push({
+      id: "hb-biz-executor",
+      role: "biz_executor",
+      cadenceMinutes: 5,
+      teamDescription: "Business execution loop",
+      productDetails: "Execute highest-value tasks and report measurements",
+      goal: "Create and distribute growth assets every heartbeat",
+    } satisfies JsonObject);
+  }
+  return {
+    ...company,
+    heartbeatProfiles,
+  };
+}
+
+async function upsertBusinessCronJobsBridge(projectId: string, agentIds: string[]): Promise<void> {
+  let jobsRaw = await readJsonFile<unknown>(CRON_JOBS_PATH, []);
+  if (!Array.isArray(jobsRaw)) jobsRaw = [];
+  const jobsById = new Map<string, JsonObject>();
+  for (const row of jobsRaw) {
+    if (!row || typeof row !== "object") continue;
+    const obj = row as JsonObject;
+    const id = typeof obj.id === "string" ? obj.id : "";
+    if (!id) continue;
+    jobsById.set(id, obj);
+  }
+
+  const now = Date.now();
+  for (const agentId of agentIds) {
+    const isPm = /-pm$/.test(agentId);
+    const jobId = `biz-heartbeat-${projectId}-${isPm ? "pm" : "executor"}`;
+    jobsById.set(jobId, {
+      id: jobId,
+      agentId,
+      name: `Business heartbeat (${isPm ? "PM" : "Executor"}) ${projectId}`,
+      enabled: true,
+      createdAtMs: now,
+      updatedAtMs: now,
+      schedule: { kind: "every", everyMs: 180000 },
+      sessionTarget: "isolated",
+      wakeMode: "next-heartbeat",
+      payload: {
+        kind: "agentTurn",
+        message: isPm
+          ? "Read HEARTBEAT.md, review KPIs and P&L, reprioritize kanban tasks, and return HEARTBEAT_OK."
+          : "Read HEARTBEAT.md, execute the highest-priority business task, and return HEARTBEAT_OK.",
+      },
+      delivery: { mode: "none" },
+    } satisfies JsonObject);
+  }
+  await mkdir(path.dirname(CRON_JOBS_PATH), { recursive: true });
+  await writeFile(CRON_JOBS_PATH, `${JSON.stringify([...jobsById.values()], null, 2)}\n`, "utf-8");
 }
 
 function shellcorpStateBridge() {
@@ -793,13 +914,28 @@ function shellcorpStateBridge() {
           const meshAssetDir = settings.meshAssetDir ?? DEFAULT_MESH_ASSET_DIR;
           const filePath = path.join(meshAssetDir, fileName);
           const ext = path.extname(fileName).toLowerCase();
-          if (!MESH_EXTENSIONS.has(ext)) {
+          const isMeshFile = MESH_EXTENSIONS.has(ext);
+          const isPreviewFile = MESH_PREVIEW_EXTENSIONS.has(ext) && fileName.includes(".preview.");
+          const isMetadataFile = ext === ".json" && fileName.endsWith(".meta.json");
+          if (!isMeshFile && !isPreviewFile && !isMetadataFile) {
             writeJson(res, 400, { ok: false, error: "mesh_asset_extension_invalid" });
             return;
           }
           try {
             const bytes = await readFile(filePath);
-            res.setHeader("content-type", ext === ".gltf" ? "model/gltf+json" : "model/gltf-binary");
+            if (ext === ".gltf") {
+              res.setHeader("content-type", "model/gltf+json");
+            } else if (ext === ".glb") {
+              res.setHeader("content-type", "model/gltf-binary");
+            } else if (ext === ".png") {
+              res.setHeader("content-type", "image/png");
+            } else if (ext === ".jpg" || ext === ".jpeg") {
+              res.setHeader("content-type", "image/jpeg");
+            } else if (ext === ".webp") {
+              res.setHeader("content-type", "image/webp");
+            } else if (ext === ".json") {
+              res.setHeader("content-type", "application/json");
+            }
             (res as { statusCode?: number }).statusCode = 200;
             (res as { end: (body: Buffer) => void }).end(bytes);
           } catch {
@@ -840,7 +976,25 @@ function shellcorpStateBridge() {
           const description = typeof body.description === "string" ? body.description.trim() : "";
           const goal = typeof body.goal === "string" ? body.goal.trim() : "";
           const kpis = normalizeKpiList(body.kpis);
-          const autoRoles = normalizeTeamRoles(body.autoRoles);
+          const businessType = normalizeBusinessType(body.businessType);
+          const capabilitySkills =
+            body.capabilitySkills && typeof body.capabilitySkills === "object"
+              ? {
+                  measure:
+                    typeof (body.capabilitySkills as JsonObject).measure === "string"
+                      ? String((body.capabilitySkills as JsonObject).measure)
+                      : undefined,
+                  execute:
+                    typeof (body.capabilitySkills as JsonObject).execute === "string"
+                      ? String((body.capabilitySkills as JsonObject).execute)
+                      : undefined,
+                  distribute:
+                    typeof (body.capabilitySkills as JsonObject).distribute === "string"
+                      ? String((body.capabilitySkills as JsonObject).distribute)
+                      : undefined,
+                }
+              : undefined;
+          const autoRoles = businessType ? (["biz_pm", "biz_executor"] satisfies TeamRole[]) : normalizeTeamRoles(body.autoRoles);
           const registerOpenclawAgents = body.registerOpenclawAgents === true;
           const withCluster = body.withCluster !== false;
           if (!name || !goal) {
@@ -852,7 +1006,10 @@ function shellcorpStateBridge() {
           const teamId = typeof body.teamId === "string" && body.teamId.trim() ? body.teamId.trim() : `team-proj-${slug}`;
           const projectId = projectIdFromTeamId(teamId);
 
-          const company = await readJsonFile<JsonObject>(COMPANY_MODEL_PATH, {});
+          let company = await readJsonFile<JsonObject>(COMPANY_MODEL_PATH, {});
+          if (businessType) {
+            company = ensureBusinessHeartbeatProfiles(company);
+          }
           const projects = Array.isArray(company.projects) ? [...company.projects] : [];
           if (projects.some((entry) => entry && typeof entry === "object" && String((entry as JsonObject).id ?? "").trim() === projectId)) {
             writeJson(res, 409, { ok: false, error: "team_already_exists", teamId, projectId });
@@ -870,6 +1027,10 @@ function shellcorpStateBridge() {
             status: "active",
             goal,
             kpis,
+            ...(businessType ? { businessConfig: defaultBusinessConfig(businessType, capabilitySkills) } : {}),
+            ledger: [],
+            experiments: [],
+            metricEvents: [],
           } satisfies JsonObject;
 
           const agents = Array.isArray(company.agents) ? [...company.agents] : [];
@@ -903,6 +1064,7 @@ function shellcorpStateBridge() {
           } satisfies JsonObject;
           await mkdir(path.dirname(COMPANY_MODEL_PATH), { recursive: true });
           await writeFile(COMPANY_MODEL_PATH, `${JSON.stringify(nextCompany, null, 2)}\n`, "utf-8");
+          const createdAgentIds = autoRoles.map((role) => `${slug}-${roleSuffix(role)}`);
 
           if (withCluster) {
             const currentObjects = normalizeOfficeObjects(await readJsonFile<unknown[]>(OFFICE_OBJECTS_PATH, []));
@@ -933,9 +1095,10 @@ function shellcorpStateBridge() {
             for (const role of autoRoles) {
               const agentId = `${slug}-${roleSuffix(role)}`;
               if (existing.has(agentId)) continue;
+              const workspacePath = path.join(OPENCLAW_HOME, "workspace", "products", agentId);
               list.push({
                 id: agentId,
-                workspace: path.join(OPENCLAW_HOME, "workspace", "products", agentId),
+                workspace: workspacePath,
                 agentDir: path.join(OPENCLAW_HOME, "agents", agentId, "agent"),
               } satisfies JsonObject);
             }
@@ -943,12 +1106,26 @@ function shellcorpStateBridge() {
             await mkdir(path.dirname(OPENCLAW_CONFIG_PATH), { recursive: true });
             await writeFile(OPENCLAW_CONFIG_PATH, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf-8");
           }
+          if (businessType) {
+            for (const agentId of createdAgentIds) {
+              const workspacePath = path.join(OPENCLAW_HOME, "workspace", "products", agentId);
+              const templatePath = /-pm$/.test(agentId) ? BIZ_PM_HEARTBEAT_TEMPLATE_PATH : BIZ_EXECUTOR_HEARTBEAT_TEMPLATE_PATH;
+              try {
+                const template = await readFile(templatePath, "utf-8");
+                await mkdir(workspacePath, { recursive: true });
+                await writeFile(path.join(workspacePath, "HEARTBEAT.md"), template, "utf-8");
+              } catch {
+                // best-effort workspace template materialization
+              }
+            }
+            await upsertBusinessCronJobsBridge(projectId, createdAgentIds);
+          }
 
           writeJson(res, 200, {
             ok: true,
             teamId,
             projectId,
-            createdAgents: autoRoles.map((role) => `${slug}-${roleSuffix(role)}`),
+            createdAgents: createdAgentIds,
           });
           return;
         }
