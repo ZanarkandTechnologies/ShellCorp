@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Trash2, Move, RotateCw, RotateCcw, Settings, X, MessageSquare, Monitor, UserCog } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { UI_Z } from '@/lib/z-index';
 
 interface ObjectControlMenuProps {
     isOpen: boolean;
@@ -244,7 +245,7 @@ export function ObjectControlMenu({
     );
 
     return (
-        <Html position={[0, 1.0, 0]} center zIndexRange={[1000, 0]} style={{ pointerEvents: 'none' }}>
+        <Html position={[0, 1.0, 0]} center zIndexRange={[UI_Z.sceneContextMenu, 0]} style={{ pointerEvents: 'none' }}>
             <div className="pointer-events-auto relative flex justify-center items-center">
                 {mode === 'main' && renderMain()}
                 {mode === 'rotate' && renderRotate()}

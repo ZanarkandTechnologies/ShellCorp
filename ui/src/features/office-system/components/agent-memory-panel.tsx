@@ -13,6 +13,7 @@ import { gatewayBase, stateBase } from "@/lib/gateway-config";
 import { OpenClawAdapter } from "@/lib/openclaw-adapter";
 import type { AgentMemoryEntry } from "@/lib/openclaw-types";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
+import { UI_Z } from "@/lib/z-index";
 
 /**
  * AGENT MEMORY PANEL
@@ -128,7 +129,7 @@ export function AgentMemoryPanel() {
         }
       }}
     >
-      <DialogContent className="min-w-[70vw] max-w-none h-[90vh] overflow-hidden p-0 z-[1200]">
+      <DialogContent className="min-w-[70vw] max-w-none h-[90vh] overflow-hidden p-0" style={{ zIndex: UI_Z.panelElevated }}>
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle className="flex items-center gap-2">
             <span>{employee?.name ?? "Agent"} Memory</span>

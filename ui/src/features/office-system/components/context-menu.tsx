@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { UI_Z } from '@/lib/z-index';
 
 export interface MenuAction {
     id: string;
@@ -135,7 +136,7 @@ export function ContextMenu({
 
     return (
         <>
-            <Html position={[0, 1.0, 0]} center zIndexRange={[1000, 0]} style={{ pointerEvents: 'none' }}>
+            <Html position={[0, 1.0, 0]} center zIndexRange={[UI_Z.sceneContextMenu, 0]} style={{ pointerEvents: 'none' }}>
                 <div className="pointer-events-auto relative flex justify-center items-center w-0 h-0">
                     {/* Center Close Button */}
                     <Button
@@ -170,7 +171,7 @@ export function ContextMenu({
             {/* Dialog in separate Html wrapper - Radix UI will portal it to body automatically */}
             <Html position={[0, 0, 0]} style={{ display: 'none', pointerEvents: 'none' }}>
                 <Dialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
-                    <DialogContent className="sm:max-w-[425px] z-[9999]">
+                    <DialogContent className="sm:max-w-[425px]" style={{ zIndex: UI_Z.critical }}>
                         <DialogHeader>
                             <DialogTitle>Delete {title}?</DialogTitle>
                             <DialogDescription>

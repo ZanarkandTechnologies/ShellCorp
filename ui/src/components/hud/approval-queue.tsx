@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { UI_Z } from "@/lib/z-index";
 
 type ApprovalQueueProps = {
   isOpen: boolean;
@@ -194,7 +195,7 @@ export function ApprovalQueue({ isOpen, onOpenChange }: ApprovalQueueProps) {
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[460px] max-w-[95vw] flex flex-col">
+      <SheetContent side="right" className="w-[460px] max-w-[95vw] flex flex-col" style={{ zIndex: UI_Z.panelElevated }}>
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             {criticalCount > 0 ? (

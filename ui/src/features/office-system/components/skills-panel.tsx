@@ -8,6 +8,7 @@ import { useAppStore } from "@/lib/app-store";
 import { gatewayBase, stateBase } from "@/lib/gateway-config";
 import { OpenClawAdapter } from "@/lib/openclaw-adapter";
 import type { SkillItemModel } from "@/lib/openclaw-types";
+import { UI_Z } from "@/lib/z-index";
 
 function fmtTs(ts?: number): string {
   if (!ts) return "n/a";
@@ -47,7 +48,7 @@ export function SkillsPanel() {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="min-w-[70vw] max-w-none h-[90vh] overflow-hidden p-0 z-[1200]">
+      <DialogContent className="min-w-[70vw] max-w-none h-[90vh] overflow-hidden p-0" style={{ zIndex: UI_Z.panelElevated }}>
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>Skills Panel</DialogTitle>
           {errorText ? <p className="text-xs text-destructive">{errorText}</p> : null}
