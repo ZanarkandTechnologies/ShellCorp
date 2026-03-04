@@ -7,8 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BusinessBuilderForm } from "@/components/hud/business-builder-form";
+import { computeBusinessReadinessIssues, createBusinessBuilderDraft, projectToBusinessBuilderDraft } from "@/lib/business-builder";
 import { useAppStore } from "@/lib/app-store";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
+import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { UI_Z } from "@/lib/z-index";
 
 /**
@@ -34,7 +37,7 @@ interface TeamPanelProps {
   teamId: string | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  initialTab?: "overview" | "kanban" | "projects" | "communications";
+  initialTab?: "overview" | "kanban" | "projects" | "communications" | "business";
   focusAgentId?: string | null;
   globalMode?: boolean;
 }
@@ -80,17 +83,27 @@ export function TeamPanel({
     employees,
     companyModel,
     workload,
+    refresh,
     manualResync,
     upsertFederationPolicy,
   } =
     useOfficeDataContext();
+  const adapter = useOpenClawAdapter();
   const setHighlightedEmployeeIds = useAppStore((state) => state.setHighlightedEmployeeIds);
   const highlightedEmployeeIds = useAppStore((state) => state.highlightedEmployeeIds);
   const selectedProjectId = useAppStore((state) => state.selectedProjectId);
   const setSelectedProjectId = useAppStore((state) => state.setSelectedProjectId);
-  const [activeTab, setActiveTab] = useState<"overview" | "kanban" | "projects" | "communications">(initialTab);
+  const [activeTab, setActiveTab] = useState<"overview" | "kanban" | "projects" | "communications" | "business">(initialTab);
   const [providerFilter, setProviderFilter] = useState<KanbanProviderFilter>("all");
   const [resyncState, setResyncState] = useState<{ pending: boolean; error?: string }>({ pending: false });
+  const [builderDraft, setBuilderDraft] = useState(() => createBusinessBuilderDraft("none"));
+  const [builderSaveState, setBuilderSaveState] = useState<{ pending: boolean; error?: string; ok?: string }>({ pending: false });
+  const [previewState, setPreviewState] = useState<{
+    pending: boolean;
+    role?: "biz_pm" | "biz_executor";
+    text?: string;
+    error?: string;
+  }>({ pending: false });
 
   const team = useMemo(() => {
     if (!teamId || globalMode) return null;
@@ -141,11 +154,47 @@ export function TeamPanel({
   const columns = statusColumns(visibleTasks);
   const summary = workload.find((entry) => entry.projectId === (project?.id ?? projectId ?? ""));
   const panelTitle = globalMode ? "All Teams" : team?.name ?? "Team";
+  const projectRevenueCents = (project?.ledger ?? [])
+    .filter((entry) => entry.type === "revenue")
+    .reduce((total, entry) => total + Math.max(0, Math.round(entry.amount)), 0);
+  const projectCostCents = (project?.ledger ?? [])
+    .filter((entry) => entry.type === "cost")
+    .reduce((total, entry) => total + Math.max(0, Math.round(entry.amount)), 0);
+  const projectProfitCents = projectRevenueCents - projectCostCents;
+  const hasBusinessConfig = Boolean(project?.businessConfig);
+  const resourceRows = (project?.resources ?? []).map((resource) => {
+    const softLimit = resource.policy.softLimit;
+    const hardLimit = resource.policy.hardLimit;
+    const health =
+      typeof hardLimit === "number" && resource.remaining <= hardLimit
+        ? "depleted"
+        : typeof softLimit === "number" && resource.remaining <= softLimit
+          ? "warning"
+          : "healthy";
+    return { ...resource, health };
+  });
+  const resourceEvents = (project?.resourceEvents ?? []).slice().reverse().slice(0, 12);
+  const currencyFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    [],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
     setActiveTab(initialTab);
   }, [initialTab, isOpen]);
+
+  useEffect(() => {
+    setBuilderDraft(projectToBusinessBuilderDraft(project));
+    setBuilderSaveState({ pending: false });
+    setPreviewState({ pending: false });
+  }, [project?.id]);
 
   useEffect(() => {
     if (!isOpen || !globalMode || selectedProjectId || !companyModel?.projects?.length) return;
@@ -179,6 +228,39 @@ export function TeamPanel({
     });
   }
 
+  async function handleSaveBusinessBuilder(): Promise<void> {
+    if (!project?.id || builderDraft.businessType === "none") return;
+    setBuilderSaveState({ pending: true });
+    const saved = await adapter.saveBusinessBuilderConfig({
+      projectId: project.id,
+      businessType: builderDraft.businessType,
+      capabilitySkills: builderDraft.capabilitySkills,
+      resources: builderDraft.resources,
+      source: "ui.team_panel.builder",
+    });
+    if (!saved.ok) {
+      setBuilderSaveState({ pending: false, error: saved.error ?? "business_builder_save_failed" });
+      return;
+    }
+    await refresh();
+    setBuilderSaveState({ pending: false, ok: "Saved." });
+  }
+
+  async function handlePreview(role: "biz_pm" | "biz_executor"): Promise<void> {
+    if (!project?.id || !teamId) return;
+    if (previewState.role === role && previewState.text) {
+      setPreviewState({ pending: false });
+      return;
+    }
+    setPreviewState({ pending: true, role });
+    const preview = await adapter.renderBusinessHeartbeatPreview({ teamId, role });
+    if (!preview.ok) {
+      setPreviewState({ pending: false, role, error: preview.error ?? "heartbeat_preview_failed" });
+      return;
+    }
+    setPreviewState({ pending: false, role, text: preview.rendered });
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="min-w-[70vw] max-w-none h-[90vh] overflow-hidden p-0" style={{ zIndex: UI_Z.panelElevated }}>
@@ -186,15 +268,23 @@ export function TeamPanel({
           <DialogTitle className="flex items-center gap-2">
             <span>{panelTitle}</span>
             {project ? <Badge variant="secondary">{project.status}</Badge> : null}
+            {project?.businessConfig ? <Badge variant="outline">{project.businessConfig.type}</Badge> : null}
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="flex h-full flex-col overflow-hidden px-6 pb-6">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) =>
+            setActiveTab(value as "overview" | "kanban" | "projects" | "communications" | "business")
+          }
+          className="flex h-full flex-col overflow-hidden px-6 pb-6"
+        >
           <TabsList className="mt-4 w-fit">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="kanban">Kanban</TabsTrigger>
             <TabsTrigger value="projects">Projects</TabsTrigger>
             <TabsTrigger value="communications">Communications</TabsTrigger>
+            <TabsTrigger value="business">Business</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="mt-4 flex-1 overflow-hidden">
@@ -430,6 +520,220 @@ export function TeamPanel({
                 </ScrollArea>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="business" className="mt-4 flex-1 overflow-hidden">
+            <ScrollArea className="h-full pr-2">
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Business Builder</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <BusinessBuilderForm value={builderDraft} onChange={setBuilderDraft} disabled={builderSaveState.pending} />
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={() => void handleSaveBusinessBuilder()} disabled={builderSaveState.pending || builderDraft.businessType === "none"}>
+                        {builderSaveState.pending ? "Saving..." : "Save Business Config"}
+                      </Button>
+                      <Button variant="outline" onClick={() => void handlePreview("biz_pm")} disabled={previewState.pending || builderDraft.businessType === "none"}>
+                        Preview PM Heartbeat
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => void handlePreview("biz_executor")}
+                        disabled={previewState.pending || builderDraft.businessType === "none"}
+                      >
+                        Preview Executor Heartbeat
+                      </Button>
+                      {previewState.text ? (
+                        <Button variant="ghost" onClick={() => setPreviewState({ pending: false })} disabled={previewState.pending}>
+                          Close Preview
+                        </Button>
+                      ) : null}
+                    </div>
+                    {builderSaveState.error ? <p className="text-sm text-destructive">{builderSaveState.error}</p> : null}
+                    {builderSaveState.ok ? <p className="text-sm text-emerald-500">{builderSaveState.ok}</p> : null}
+                    {previewState.error ? <p className="text-sm text-destructive">{previewState.error}</p> : null}
+                    {previewState.text ? (
+                      <ScrollArea className="max-h-44 rounded-md border p-2">
+                        <pre className="text-xs whitespace-pre-wrap">{previewState.text}</pre>
+                      </ScrollArea>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Readiness Checklist</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    {(team?.businessReadiness?.issues && team.businessReadiness.issues.length > 0
+                      ? team.businessReadiness.issues.map((issue) => ({ message: issue }))
+                      : computeBusinessReadinessIssues(builderDraft)
+                    ).map((issue, index) => (
+                      <p key={`${issue.message}-${index}`} className="text-amber-500">
+                        - {issue.message}
+                      </p>
+                    ))}
+                    {(team?.businessReadiness?.ready ?? computeBusinessReadinessIssues(builderDraft).length === 0) ? (
+                      <p className="text-emerald-500">Ready to run.</p>
+                    ) : null}
+                  </CardContent>
+                </Card>
+                {hasBusinessConfig ? (
+                  <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Revenue</CardTitle>
+                      </CardHeader>
+                      <CardContent className="text-2xl font-semibold text-emerald-500">
+                        {currencyFormatter.format(projectRevenueCents / 100)}
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Costs</CardTitle>
+                      </CardHeader>
+                      <CardContent className="text-2xl font-semibold text-amber-500">
+                        {currencyFormatter.format(projectCostCents / 100)}
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Profit</CardTitle>
+                      </CardHeader>
+                      <CardContent className={`text-2xl font-semibold ${projectProfitCents >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                        {currencyFormatter.format(projectProfitCents / 100)}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Capability Slots</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 gap-2 md:grid-cols-3 text-sm">
+                      <div className="rounded-md border p-2">
+                        <p className="font-medium">Measure</p>
+                        <p className="text-muted-foreground">{project?.businessConfig?.slots.measure.skillId ?? "not-set"}</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <p className="font-medium">Execute</p>
+                        <p className="text-muted-foreground">{project?.businessConfig?.slots.execute.skillId ?? "not-set"}</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <p className="font-medium">Distribute</p>
+                        <p className="text-muted-foreground">{project?.businessConfig?.slots.distribute.skillId ?? "not-set"}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Resources</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {resourceRows.map((resource) => (
+                        <div key={resource.id} className="rounded-md border p-2 text-sm">
+                          <div className="mb-1 flex items-center justify-between gap-2">
+                            <p className="font-medium">{resource.name}</p>
+                            <Badge
+                              variant={
+                                resource.health === "healthy" ? "secondary" : resource.health === "warning" ? "outline" : "destructive"
+                              }
+                            >
+                              {resource.health}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {resource.remaining} / {resource.limit} {resource.unit}
+                            {typeof resource.reserved === "number" ? ` (reserved ${resource.reserved})` : ""}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            tracker: {resource.trackerSkillId} | low-policy: {resource.policy.whenLow}
+                          </p>
+                        </div>
+                      ))}
+                      {resourceRows.length === 0 ? <p className="text-xs text-muted-foreground">No resources configured yet.</p> : null}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Experiments</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {(project?.experiments ?? []).slice().reverse().slice(0, 8).map((experiment) => (
+                        <div key={experiment.id} className="rounded-md border p-2 text-sm">
+                          <div className="mb-1 flex items-center justify-between">
+                            <p className="font-medium">{experiment.hypothesis}</p>
+                            <Badge variant="outline">{experiment.status}</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            started {new Date(experiment.startedAt).toLocaleString()}
+                            {experiment.endedAt ? ` -> ended ${new Date(experiment.endedAt).toLocaleString()}` : ""}
+                          </p>
+                          {experiment.results ? <p className="mt-1 text-xs">{experiment.results}</p> : null}
+                        </div>
+                      ))}
+                      {(project?.experiments ?? []).length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No experiments logged yet.</p>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Recent Metrics</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {(project?.metricEvents ?? []).slice().reverse().slice(0, 10).map((event) => (
+                        <div key={event.id} className="rounded-md border p-2 text-xs">
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className="font-medium">{event.source}</span>
+                            <span className="text-muted-foreground">{new Date(event.timestamp).toLocaleString()}</span>
+                          </div>
+                          <p className="text-muted-foreground break-all">{JSON.stringify(event.metrics)}</p>
+                        </div>
+                      ))}
+                      {(project?.metricEvents ?? []).length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No metric events recorded yet.</p>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Resource Events</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {resourceEvents.map((event) => (
+                        <div key={event.id} className="rounded-md border p-2 text-xs">
+                          <div className="mb-1 flex items-center justify-between gap-2">
+                            <span className="font-medium">{event.kind}</span>
+                            <span className="text-muted-foreground">{new Date(event.ts).toLocaleString()}</span>
+                          </div>
+                          <p className="text-muted-foreground">
+                            {event.resourceId} | delta {event.delta} | remaining {event.remainingAfter}
+                          </p>
+                          <p className="text-muted-foreground">{event.source}</p>
+                          {event.note ? <p className="text-muted-foreground">{event.note}</p> : null}
+                        </div>
+                      ))}
+                      {resourceEvents.length === 0 ? <p className="text-xs text-muted-foreground">No resource events yet.</p> : null}
+                    </CardContent>
+                  </Card>
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="pt-4 text-sm text-muted-foreground">
+                      Configure business type, capability skills, and resources above, then save to initialize Business telemetry.
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </ScrollArea>
           </TabsContent>
         </Tabs>
       </DialogContent>
