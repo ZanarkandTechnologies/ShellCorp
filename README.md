@@ -2,145 +2,84 @@
 
 Gamified control center UI for OpenClaw multi-agent operations.
 
+## Start Here
+
+Read in this order:
+
+1. `docs/getting-started.md`
+2. `docs/features-overview.md`
+
 ## Concept Video
 
 Original concept demo of what an AI office could look like:
 
 [Watch on Loom](https://www.loom.com/share/2252d33ca4f14d5a8a4671c30746c756)
 
+## Job To Be Done
+
+When a small team runs many autonomous agents on one VPS, they need a single office control center that makes sessions, teams, memory, skills, and autonomy loops easy to inspect and steer without rebuilding the runtime.
+
 ## Product Direction
 
-This repository is now UI-first:
+ShellCorp is UI-first:
 
-- OpenClaw handles runtime, routing, sessions, and plugin loading.
-- Shell Company maps OpenClaw state into a gamified office UI.
-- Notion logic is being packaged as an in-repo OpenClaw extension.
-- Shell Company is expanding into a personalized autonomous company cockpit:
-  - Multi-provider mission visibility (Notion/Vibe/internal)
-  - Ticket/session lifecycle control
-  - Context graphing and generated context tools/skills
-  - Heartbeat/autonomy observability and intervention controls
-  - Agent identity and office personalization (2D/2.5D/3D)
+- OpenClaw owns runtime, sessions, routing, and plugin lifecycle.
+- ShellCorp maps OpenClaw state into a gamified office UI.
+- Team and office operations are CLI-first in this phase.
+- Extensions stay plugin-first (starting with Notion comments hooks).
 
-Canonical indexes:
+## Current Product Value
 
-- OpenClaw Multi-Agent Routing: https://docs.openclaw.ai/concepts/multi-agent#multi-agent-routing
-- OpenClaw Plugins: https://docs.openclaw.ai/tools/plugin#plugins
+- Office personalization and decoration controls for operators.
+- Team topology, role demand, KPI/goal shaping, and heartbeat controls.
+- Observability across team state, agent memory, and federated Kanban sync health.
+- Explicit operator governance for autonomy loops (pause/resume/manual run).
 
-## Requirements
+Feature docs:
 
-- Node.js 20+
-- An OpenClaw instance running on your VPS or local environment
+- `docs/feature-decorations.md`
+- `docs/feature-cli.md`
+- `docs/feature-business-logic.md`
+- `docs/extensions.md`
 
-## Quick Start (UI)
+## Scope Boundaries
 
-```bash
-npm install
-npm run ui
-```
+In scope now:
 
-By default, the UI expects an OpenClaw-compatible gateway endpoint at:
+- UI + adapter mapping on top of OpenClaw.
+- CLI-first team and office operations (`npm run shell -- ...`).
+- Canonical-provider-per-project federation baseline (`internal`/`notion`/`vibe`).
+- Notion comments-first webhook integration via OpenClaw hooks.
 
-- `http://127.0.0.1:8787` (override via `VITE_GATEWAY_URL`)
+Out of scope now:
 
-## Quick Start (CEO Team CLI)
+- Rebuilding a custom runtime/gateway that duplicates OpenClaw.
+- Full multi-master board writes with implicit conflict resolution.
+- Hiding canonical provider ownership semantics.
 
-ShellCorp includes a CLI for CEO/team topology management against OpenClaw sidecar state.
+## Behavioral Invariants
 
-Run from repo root:
+- OpenClaw is source-of-truth for runtime and sessions (`MEM-0100`).
+- Team/org metadata lives in sidecar JSON (`MEM-0104`).
+- Navigation is panel-first and parity-critical flows remain dedicated modal-based (`MEM-0107`, `MEM-0109`).
+- Ticket lifecycle maps to session lifecycle until explicit close/reopen (`MEM-0112`).
+- Team and office management remain CLI-first in current phase (`MEM-0119`, `MEM-0120`).
 
-```bash
-npm run shell -- team list
-```
+## Recent Changes
 
-Common commands:
+- Added AI office UI QA runbook (`MEM-0118`).
+- Added CEO Team Management CLI and docs-only SCL cookbook (`MEM-0119`).
+- Added Office Decoration CLI and meshy-based spec generation workflow (`MEM-0120`).
 
-```bash
-npm run shell -- team create --name "Alpha" --description "Core team" --goal "Ship roadmap" --kpi weekly_shipped_tickets --auto-roles builder,pm,growth_marketer
-npm run shell -- team update --team-id team-proj-alpha --goal "Reduce backlog" --kpi-add support_reply_sla_minutes
-npm run shell -- team heartbeat set --team-id team-proj-alpha --cadence-minutes 15 --goal "Create or execute relevant tickets from Kanban"
-npm run shell -- team role-slot set --team-id team-proj-alpha --role builder --desired-count 2
-npm run shell -- team archive --team-id team-proj-alpha
-npm run shell -- doctor team-data
-```
+## Canonical Indexes
 
-Office decoration commands:
+- OpenClaw Multi-Agent Routing: [https://docs.openclaw.ai/concepts/multi-agent#multi-agent-routing](https://docs.openclaw.ai/concepts/multi-agent#multi-agent-routing)
+- OpenClaw Plugins: [https://docs.openclaw.ai/tools/plugin#plugins](https://docs.openclaw.ai/tools/plugin#plugins)
 
-```bash
-npm run shell -- office print
-npm run shell -- office list
-npm run shell -- office teams
-npm run shell -- office add plant --position -10,0,-10
-npm run shell -- office move plant-nw --position 0,0,0
-npm run shell -- office remove plant-nw
-npm run shell -- office theme
-npm run shell -- office theme set cozy
-npm run shell -- office generate "small cactus desk plant" --style low-poly --type prop
-```
+## Repo Surfaces
 
-Docs-only SCL cookbook (intent -> command):
-
-- `docs/how-to/ceo-team-cli-scl-cookbook.md`
-
-### Quick Start Templates (OpenClaw + Sidecar)
-
-For teams onboarding agents/operators, copy these template files and adjust ids/paths:
-
-- `templates/openclaw/openclaw.template.json` -> `~/.openclaw/openclaw.json`
-- `templates/openclaw/agents.list.template.json` -> `openclaw.json.agents.list` (reference snippet)
-- `templates/sidecar/company.template.json` -> `~/.openclaw/company.json` or `workspace/office/company.json`
-- `templates/sidecar/office-objects.template.json` -> `officeObjects.json` (or merge into `company.json.officeObjects`)
-
-Example bootstrap:
-
-```bash
-mkdir -p ~/.openclaw
-cp templates/openclaw/openclaw.template.json ~/.openclaw/openclaw.json
-cp templates/sidecar/company.template.json ~/.openclaw/company.json
-cp templates/sidecar/office-objects.template.json ./officeObjects.json
-```
-
-`openclaw.json` must include `agents.list` entries with stable `id`, `workspace`, sandbox mode, and tool policy so the UI can reconcile configured vs runtime agents.
-
-## Architecture Summary
-
-- `ui/src/**` contains the gamified office and operational panels.
-- `src/**` contains remaining Notion-related logic being migrated to plugin form.
-- `docs/specs/SC01..SC10` define state mapping, plugin packaging, memory/skills surfaces, chat bridge contracts, kanban federation, lifecycle controls, context indexing, personalization, and heartbeat autonomy.
-
-## OpenClaw State Model (MVP)
-
-Shell Company adapters treat OpenClaw as source of truth:
-
-- `~/.openclaw/openclaw.json`
-- `~/.openclaw/agents/<agentId>/sessions/sessions.json`
-- `~/.openclaw/agents/<agentId>/sessions/*.jsonl`
-- OpenClaw gateway APIs for online operations (send/refresh/session state)
-
-## In-Repo Notion Extension Workflow
-
-The Notion plugin is developed in-repo under an extension folder and loaded by OpenClaw via `plugins.load.paths`.
-
-Typical local flow:
-
-1. Implement/update plugin code and `openclaw.plugin.json`.
-2. Point OpenClaw config `plugins.load.paths` to the extension directory.
-3. Restart OpenClaw gateway.
-4. Verify plugin is loaded:
-   - `openclaw plugins list`
-   - `openclaw plugins info <plugin-id>`
-
-Detailed SC06 setup runbook:
-
-- `docs/how-to/sc06-kanban-notion-setup.md`
-- `docs/how-to/notion-comment-hook-contract.md`
-
-## Current Focus
-
-- Keep and improve office/game visualization.
-- Replace old data access paths with OpenClaw adapters.
-- Expand observability for agent/session state, memory, and cross-agent context transfer.
-- Route operator chat actions and lifecycle controls from UI back into OpenClaw sessions.
-- Federate board workflows across Notion/Vibe/internal sources with explicit sync ownership.
-- Ship context indexing that generates reusable context tools/skills for autonomous execution.
-- Expose heartbeat/autonomy governance with pause/resume/manual-run and traceable state.
+- `ui/src/**`: office UI, panels, and interaction flows.
+- `cli/**`: ShellCorp CLI command entry and handlers.
+- `skills/**`: repo-local skills for operators/agents.
+- `docs/specs/**`: SC01-SC10 and study specs.
+- `docs/how-to/**`: runbooks and focused operational recipes.
