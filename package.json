@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
+    "shell": "tsx cli/shellcorp-cli.ts",
     "ui": "vite --config ui/vite.config.ts",
     "ui:build": "vite build --config ui/vite.config.ts",
     "test": "vitest",
