@@ -25,6 +25,14 @@ interface Snapshot {
   officeStylePreset?: string;
 }
 
+interface CompanySnapshot {
+  projects?: Array<{
+    id: string;
+    name: string;
+    status: string;
+  }>;
+}
+
 async function setupStateDir(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "shellcorp-office-cli-test-"));
   await writeFile(path.join(dir, "company.json"), `${JSON.stringify(baseCompany, null, 2)}\n`, "utf-8");
@@ -97,6 +105,163 @@ describe("office CLI", () => {
     const payload = String(logSpy.mock.calls.at(-1)?.[0] ?? "");
     expect(payload).toContain("\"objects\"");
     expect(payload).toContain("\"plant-a\"");
+  });
+
+  it("validates placement flags for office add", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+
+    await expect(runCommand(["office", "add", "plant"])).rejects.toThrow("placement_requires_position_or_auto");
+    await expect(runCommand(["office", "add", "plant", "--position", "0,0,0", "--auto-place"])).rejects.toThrow("placement_flags_conflict");
+  });
+
+  it("auto-places an object into first available slot", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await runCommand(["office", "add", "plant", "--id", "plant-a", "--position", "0,0,0"]);
+    await runCommand(["office", "add", "plant", "--id", "plant-b", "--auto-place"]);
+
+    const raw = await readFile(path.join(stateDir, "office-objects.json"), "utf-8");
+    const objects = JSON.parse(raw) as Array<{ id: string; position: [number, number, number] }>;
+    const plantB = objects.find((entry) => entry.id === "plant-b");
+    expect(plantB?.position).toEqual([-2, 0, -2]);
+  });
+
+  it("fails auto-placement when no empty slot is available", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const blockers: Array<{ id: string; identifier: string; meshType: string; position: [number, number, number] }> = [];
+    for (let x = -17; x <= 17; x += 1) {
+      for (let z = -17; z <= 17; z += 1) {
+        blockers.push({
+          id: `block-${x}-${z}`,
+          identifier: `block-${x}-${z}`,
+          meshType: "plant",
+          position: [x, 0, z],
+        });
+      }
+    }
+    await writeFile(path.join(stateDir, "office-objects.json"), `${JSON.stringify(blockers, null, 2)}\n`, "utf-8");
+
+    await expect(runCommand(["office", "add", "plant", "--auto-place"])).rejects.toThrow("no_empty_space_available:plant");
+  });
+
+  it("rejects overlapping manual add and move placements", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await runCommand(["office", "add", "plant", "--id", "plant-a", "--position", "0,0,0"]);
+    await expect(runCommand(["office", "add", "plant", "--id", "plant-b", "--position", "0,0,0"])).rejects.toThrow("position_occupied");
+
+    await runCommand(["office", "add", "couch", "--id", "couch-a", "--position", "4,0,0"]);
+    await expect(runCommand(["office", "move", "couch-a", "--position", "0,0,0"])).rejects.toThrow("position_occupied");
+  });
+
+  it("requires mesh metadata for custom-mesh and accepts explicit mesh path", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await expect(runCommand(["office", "add", "custom-mesh", "--auto-place"])).rejects.toThrow("custom_mesh_requires_asset_metadata");
+
+    await runCommand([
+      "office",
+      "add",
+      "custom-mesh",
+      "--id",
+      "dragon-mesh-a",
+      "--auto-place",
+      "--mesh-public-path",
+      "/openclaw/assets/meshes/dragon.glb",
+      "--display-name",
+      "Dragon",
+    ]);
+    const raw = await readFile(path.join(stateDir, "office-objects.json"), "utf-8");
+    const objects = JSON.parse(raw) as Array<{ id: string; metadata?: Record<string, unknown> }>;
+    const dragon = objects.find((entry) => entry.id === "dragon-mesh-a");
+    expect(dragon?.metadata?.meshPublicPath).toBe("/openclaw/assets/meshes/dragon.glb");
+    expect(dragon?.metadata?.displayName).toBe("Dragon");
+  });
+
+  it("creates a real project-backed team when adding a team cluster", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+
+    await runCommand([
+      "office",
+      "add",
+      "team-cluster",
+      "--id",
+      "cluster-dragons",
+      "--auto-place",
+      "--metadata",
+      "name=Dragons",
+    ]);
+
+    const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const company = JSON.parse(companyRaw) as CompanySnapshot;
+    const dragonsProject = (company.projects ?? []).find((entry) => entry.name === "Dragons");
+    expect(dragonsProject).toBeTruthy();
+    expect(dragonsProject?.status).toBe("active");
+
+    const objectsRaw = await readFile(path.join(stateDir, "office-objects.json"), "utf-8");
+    const objects = JSON.parse(objectsRaw) as Array<{ id: string; metadata?: Record<string, unknown> }>;
+    const cluster = objects.find((entry) => entry.id === "cluster-dragons");
+    expect(cluster?.metadata?.teamId).toBe(`team-${dragonsProject?.id}`);
+    expect(cluster?.metadata?.name).toBe("Dragons");
+  });
+
+  it("reports invalid office objects via office doctor", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const seeded = [
+      { id: "plant-a", identifier: "plant-a", meshType: "plant", position: [0, 0, 0] },
+      { id: "dragon-bad", identifier: "dragon-bad", meshType: "custom-mesh", position: [2, 0, 0], metadata: { label: "dragon" } },
+      { id: "cluster-bad", identifier: "cluster-bad", meshType: "team-cluster", position: [4, 0, 0], metadata: { teamId: "team-proj-missing" } },
+    ];
+    await writeFile(path.join(stateDir, "office-objects.json"), `${JSON.stringify(seeded, null, 2)}\n`, "utf-8");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(["office", "doctor", "--json"]);
+    const payloadRaw = String(logSpy.mock.calls.at(-1)?.[0] ?? "");
+    const payload = JSON.parse(payloadRaw) as {
+      ok: boolean;
+      invalidCount: number;
+      invalid: Array<{ id: string; reasons: string[] }>;
+    };
+    expect(payload.ok).toBe(false);
+    expect(payload.invalidCount).toBe(2);
+    expect(payload.invalid.some((entry) => entry.id === "dragon-bad" && entry.reasons.includes("missing_mesh_public_path"))).toBe(true);
+    expect(payload.invalid.some((entry) => entry.id === "cluster-bad" && entry.reasons.includes("team_project_missing"))).toBe(true);
+  });
+
+  it("removes invalid office objects via office doctor --fix", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const seeded = [
+      { id: "plant-a", identifier: "plant-a", meshType: "plant", position: [0, 0, 0] },
+      { id: "dragon-bad", identifier: "dragon-bad", meshType: "custom-mesh", position: [2, 0, 0], metadata: { label: "dragon" } },
+      { id: "cluster-bad", identifier: "cluster-bad", meshType: "team-cluster", position: [4, 0, 0], metadata: { teamId: "team-proj-missing" } },
+    ];
+    await writeFile(path.join(stateDir, "office-objects.json"), `${JSON.stringify(seeded, null, 2)}\n`, "utf-8");
+
+    await runCommand(["office", "doctor", "--fix"]);
+    const raw = await readFile(path.join(stateDir, "office-objects.json"), "utf-8");
+    const objects = JSON.parse(raw) as Array<{ id: string }>;
+    expect(objects.map((entry) => entry.id)).toEqual(["plant-a"]);
+  });
+
+  it("filters doctor cleanup by reason", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const seeded = [
+      { id: "plant-a", identifier: "plant-a", meshType: "plant", position: [0, 0, 0] },
+      { id: "dragon-bad", identifier: "dragon-bad", meshType: "custom-mesh", position: [2, 0, 0], metadata: { label: "dragon" } },
+      { id: "cluster-bad", identifier: "cluster-bad", meshType: "team-cluster", position: [4, 0, 0], metadata: { teamId: "team-proj-missing" } },
+    ];
+    await writeFile(path.join(stateDir, "office-objects.json"), `${JSON.stringify(seeded, null, 2)}\n`, "utf-8");
+
+    await runCommand(["office", "doctor", "--reason", "missing_mesh_public_path", "--fix"]);
+    const raw = await readFile(path.join(stateDir, "office-objects.json"), "utf-8");
+    const objects = JSON.parse(raw) as Array<{ id: string }>;
+    expect(objects.map((entry) => entry.id)).toEqual(["plant-a", "cluster-bad"]);
   });
 });
 

@@ -27,6 +27,7 @@ import {
   type OfficeStylePreset,
 } from "./sidecar-store.js";
 import { renderOfficeAscii } from "./office-renderer.js";
+import { findFirstOpenPlacement, isPlacementAreaFree } from "./office-placement.js";
 
 const FLOOR_SIZE = 35;
 const HALF_FLOOR = FLOOR_SIZE / 2;
@@ -67,6 +68,26 @@ function assertPositionInBounds(position: [number, number, number]): void {
   const [x, , z] = position;
   if (x < -HALF_FLOOR || x > HALF_FLOOR || z < -HALF_FLOOR || z > HALF_FLOOR) {
     fail(`position_out_of_bounds:x=${x},z=${z},allowed=[-${HALF_FLOOR},${HALF_FLOOR}]`);
+  }
+}
+
+function assertPositionUnoccupied(input: {
+  position: [number, number, number];
+  meshType: string;
+  metadata?: Record<string, unknown>;
+  objects: OfficeObjectModel[];
+  ignoreObjectId?: string;
+}): void {
+  const free = isPlacementAreaFree({
+    position: input.position,
+    meshType: input.meshType,
+    metadata: input.metadata,
+    existingObjects: input.objects,
+    bounds: { halfExtent: HALF_FLOOR },
+    ignoreObjectId: input.ignoreObjectId,
+  });
+  if (!free) {
+    fail(`position_occupied:x=${input.position[0]},z=${input.position[2]}`);
   }
 }
 
@@ -112,11 +133,125 @@ function slugify(input: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function firstUsableDepartmentId(company: CompanyModel): string {
+  const preferred = company.departments.find((entry) => entry.id === "dept-products");
+  if (preferred) return preferred.id;
+  return company.departments[0]?.id ?? "dept-products";
+}
+
+function nextProjectId(company: CompanyModel, base: string): string {
+  const slug = slugify(base) || "office-team";
+  const direct = slug.startsWith("proj-") ? slug : `proj-${slug}`;
+  if (!company.projects.some((entry) => entry.id === direct)) return direct;
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = `${direct}-${index}`;
+    if (!company.projects.some((entry) => entry.id === candidate)) return candidate;
+  }
+  return `${direct}-${Date.now()}`;
+}
+
+async function ensureTeamClusterProject(opts: {
+  store: ReturnType<typeof createSidecarStore>;
+  metadata: Record<string, unknown>;
+  fallbackObjectId: string;
+}): Promise<Record<string, unknown>> {
+  const company = await opts.store.readCompanyModel();
+  const requestedTeamId = typeof opts.metadata.teamId === "string" ? opts.metadata.teamId.trim() : "";
+  const requestedName = typeof opts.metadata.name === "string" ? opts.metadata.name.trim() : "";
+  const requestedDescription = typeof opts.metadata.description === "string" ? opts.metadata.description.trim() : "";
+  let projectId = requestedTeamId.startsWith("team-") ? requestedTeamId.slice("team-".length) : "";
+  if (!projectId) {
+    const seed = requestedName || requestedTeamId || opts.fallbackObjectId;
+    projectId = nextProjectId(company, seed);
+  }
+  let project = company.projects.find((entry) => entry.id === projectId);
+  let nextCompany = company;
+
+  if (!project) {
+    const projectName = requestedName || `Team ${projectId.replace(/^proj-/, "")}`;
+    project = {
+      id: projectId,
+      departmentId: firstUsableDepartmentId(company),
+      name: projectName,
+      githubUrl: "",
+      status: "active",
+      goal: requestedDescription || `Operate team ${projectName}`,
+      kpis: [],
+      ledger: [],
+      experiments: [],
+      metricEvents: [],
+      resources: [],
+      resourceEvents: [],
+    };
+    nextCompany = {
+      ...company,
+      projects: [...company.projects, project],
+    };
+    await opts.store.writeCompanyModel(nextCompany);
+  } else if (project.status === "archived") {
+    const revived = { ...project, status: "active" as const };
+    nextCompany = {
+      ...company,
+      projects: company.projects.map((entry) => (entry.id === projectId ? revived : entry)),
+    };
+    project = revived;
+    await opts.store.writeCompanyModel(nextCompany);
+  }
+
+  return {
+    ...opts.metadata,
+    teamId: `team-${project.id}`,
+    name: requestedName || project.name,
+    ...(requestedDescription ? { description: requestedDescription } : {}),
+  };
+}
+
 function getTeamNameById(company: CompanyModel, teamId: string): string {
   if (!teamId.startsWith("team-")) return "";
   const projectId = teamId.slice("team-".length);
   const project = company.projects.find((entry) => entry.id === projectId);
   return project?.name ?? "";
+}
+
+function findInvalidOfficeObjects(input: {
+  objects: OfficeObjectModel[];
+  company: CompanyModel;
+}): Array<{
+  id: string;
+  meshType: string;
+  reasons: string[];
+}> {
+  const projectIds = new Set(input.company.projects.map((entry) => entry.id));
+  const archivedProjectIds = new Set(input.company.projects.filter((entry) => entry.status === "archived").map((entry) => entry.id));
+  const issues: Array<{ id: string; meshType: string; reasons: string[] }> = [];
+  for (const object of input.objects) {
+    const reasons: string[] = [];
+    if (object.meshType === "custom-mesh") {
+      const meshPath = typeof object.metadata?.meshPublicPath === "string" ? object.metadata.meshPublicPath.trim() : "";
+      if (!meshPath) {
+        reasons.push("missing_mesh_public_path");
+      }
+    }
+    if (object.meshType === "team-cluster") {
+      const teamId = typeof object.metadata?.teamId === "string" ? object.metadata.teamId.trim() : "";
+      if (!teamId) {
+        reasons.push("missing_team_id");
+      } else if (!teamId.startsWith("team-")) {
+        reasons.push("invalid_team_id_format");
+      } else {
+        const projectId = teamId.slice("team-".length);
+        if (!projectIds.has(projectId)) {
+          reasons.push("team_project_missing");
+        } else if (archivedProjectIds.has(projectId)) {
+          reasons.push("team_project_archived");
+        }
+      }
+    }
+    if (reasons.length > 0) {
+      issues.push({ id: object.id, meshType: object.meshType, reasons });
+    }
+  }
+  return issues;
 }
 
 async function writeMeshySpecFile(input: {
@@ -247,6 +382,56 @@ export function registerOfficeCommands(program: Command): void {
     });
 
   office
+    .command("doctor")
+    .description("Detect and optionally remove invalid office objects")
+    .option("--fix", "Remove invalid objects", false)
+    .option("--reason <reason>", "Only include invalid objects matching this reason (repeatable)", collectValue, [] as string[])
+    .option("--json", "Output JSON", false)
+    .action(async (opts: { fix?: boolean; reason?: string[]; json?: boolean }) => {
+      const objects = await store.readOfficeObjects();
+      const company = await store.readCompanyModel();
+      const allInvalid = findInvalidOfficeObjects({ objects, company });
+      const reasonFilter = new Set((opts.reason ?? []).map((entry) => entry.trim()).filter(Boolean));
+      const invalid =
+        reasonFilter.size === 0
+          ? allInvalid
+          : allInvalid.filter((entry) => entry.reasons.some((reason) => reasonFilter.has(reason)));
+      let removed: string[] = [];
+      if (opts.fix && invalid.length > 0) {
+        const invalidSet = new Set(invalid.map((entry) => entry.id));
+        const next = objects.filter((entry) => !invalidSet.has(entry.id));
+        removed = [...invalidSet];
+        await store.writeOfficeObjects(next);
+      }
+      const payload = {
+        ok: invalid.length === 0,
+        totalInvalidCount: allInvalid.length,
+        invalidCount: invalid.length,
+        filteredByReason: [...reasonFilter],
+        invalid,
+        fixed: opts.fix === true,
+        removed,
+      };
+      if (opts.json) {
+        console.log(JSON.stringify(payload, null, 2));
+        return;
+      }
+      if (invalid.length === 0) {
+        console.log("office-objects: ok");
+        return;
+      }
+      console.log(`office-objects: invalid (${invalid.length})`);
+      for (const entry of invalid) {
+        console.log(`- ${entry.id} | ${entry.meshType} | ${entry.reasons.join(",")}`);
+      }
+      if (opts.fix) {
+        console.log(`removed ${removed.length} invalid objects`);
+      } else {
+        console.log("run `npm run shell -- office doctor --fix` to remove invalid objects");
+      }
+    });
+
+  office
     .command("teams")
     .option("--json", "Output JSON", false)
     .action(async (opts: { json?: boolean }) => {
@@ -279,26 +464,62 @@ export function registerOfficeCommands(program: Command): void {
   office
     .command("add")
     .argument("<meshType>", "Object mesh type")
-    .requiredOption("--position <x,y,z>", "World position")
+    .option("--position <x,y,z>", "World position")
+    .option("--auto-place", "Find first available placement slot", false)
     .option("--rotation <x,y,z>", "Rotation")
     .option("--scale <x,y,z>", "Scale")
     .option("--id <id>", "Custom object id")
+    .option("--mesh-public-path <path>", "Custom mesh public URL/path")
+    .option("--display-name <name>", "Custom mesh display name")
     .option("--metadata <key=value>", "Metadata entries (repeatable)", collectValue, [] as string[])
     .option("--json", "Output JSON", false)
     .action(
-      async (meshTypeArg: string, opts: { position: string; rotation?: string; scale?: string; id?: string; metadata: string[]; json?: boolean }) => {
+      async (meshTypeArg: string, opts: { position?: string; autoPlace?: boolean; rotation?: string; scale?: string; id?: string; meshPublicPath?: string; displayName?: string; metadata: string[]; json?: boolean }) => {
         const meshType = ensureMeshType(meshTypeArg);
-        const position = parseVector3(opts.position, "--position");
-        assertPositionInBounds(position);
         const rotation = opts.rotation ? parseVector3(opts.rotation, "--rotation") : undefined;
         const scale = opts.scale ? parseVector3(opts.scale, "--scale") : undefined;
-        const metadata = parseMetadata(opts.metadata ?? []);
+        let metadata = parseMetadata(opts.metadata ?? []);
+        if (opts.meshPublicPath?.trim()) metadata.meshPublicPath = opts.meshPublicPath.trim();
+        if (opts.displayName?.trim()) metadata.displayName = opts.displayName.trim();
         const objectId = opts.id?.trim() || generateObjectId(meshType);
+        const hasPosition = Boolean(opts.position && opts.position.trim());
+        const wantsAutoPlace = opts.autoPlace === true;
+        if (!hasPosition && !wantsAutoPlace) {
+          fail("placement_requires_position_or_auto");
+        }
+        if (hasPosition && wantsAutoPlace) {
+          fail("placement_flags_conflict");
+        }
+        if (meshType === "custom-mesh") {
+          const meshPath = typeof metadata.meshPublicPath === "string" ? metadata.meshPublicPath.trim() : "";
+          if (!meshPath) fail("custom_mesh_requires_asset_metadata");
+        }
+        if (meshType === "team-cluster") {
+          metadata = await ensureTeamClusterProject({
+            store,
+            metadata,
+            fallbackObjectId: objectId,
+          });
+        }
 
         const objects = await store.readOfficeObjects();
         if (objects.some((entry) => entry.id === objectId)) {
           fail(`object_exists:${objectId}`);
         }
+        const position =
+          hasPosition && opts.position
+            ? parseVector3(opts.position, "--position")
+            : findFirstOpenPlacement({
+                meshType,
+                metadata,
+                existingObjects: objects,
+                bounds: { halfExtent: HALF_FLOOR },
+              });
+        if (!position) {
+          fail(`no_empty_space_available:${meshType}`);
+        }
+        assertPositionInBounds(position);
+        assertPositionUnoccupied({ position, meshType, metadata, objects });
 
         const nextObject: OfficeObjectModel = {
           id: objectId,
@@ -329,6 +550,13 @@ export function registerOfficeCommands(program: Command): void {
       const rotation = opts.rotation ? parseVector3(opts.rotation, "--rotation") : undefined;
       const next = [...objects];
       const current = next[index];
+      assertPositionUnoccupied({
+        position,
+        meshType: current.meshType,
+        metadata: current.metadata,
+        objects,
+        ignoreObjectId: current.id,
+      });
       next[index] = {
         ...current,
         position,
