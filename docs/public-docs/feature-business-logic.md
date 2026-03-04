@@ -23,6 +23,45 @@ At each heartbeat, an agent/team loop optimizes toward project goals:
 
 Heartbeat governance expectations are defined in `docs/specs/SC10-spec-heartbeat-autonomy-loop.md`.
 
+## Advisory Resource Layer
+
+Business teams use an advisory resource envelope so PM/Executor loops can plan with finite constraints
+without hard-blocking execution.
+
+```mermaid
+flowchart TB
+  subgraph sidecar [Sidecar Data]
+    ProjectModel["ProjectModel<br/>businessConfig + ledger + metrics"]
+    ResourceState["resources[]<br/>resourceEvents[]"]
+  end
+
+  subgraph skills [Skill Layer]
+    TrackerSkills["resource trackers<br/>(cash/api/distribution/custom)"]
+    BusinessSkills["measure/execute/distribute"]
+  end
+
+  subgraph runtime [Heartbeat Loop]
+    PMBeat["PM HEARTBEAT.md"]
+    ExecBeat["Executor HEARTBEAT.md"]
+    AdvisoryPolicy["advisory planner<br/>warn/deprioritize"]
+  end
+
+  subgraph ui [Business Tab]
+    ResourceCards["Resource cards/status"]
+    ResourceEvents["resource event timeline"]
+  end
+
+  ProjectModel --> ResourceState
+  TrackerSkills --> ResourceState
+  ResourceState --> PMBeat
+  ResourceState --> ExecBeat
+  PMBeat --> AdvisoryPolicy
+  ExecBeat --> AdvisoryPolicy
+  ResourceState --> ResourceCards
+  ResourceState --> ResourceEvents
+  BusinessSkills --> AdvisoryPolicy
+```
+
 ## Goals, KPIs, And Team Structure
 
 The sidecar model captures:
