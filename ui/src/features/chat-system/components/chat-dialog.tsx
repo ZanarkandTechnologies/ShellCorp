@@ -6,6 +6,7 @@ import { ChatHeader } from "@/features/chat-system/components/chat-header";
 import { MessageRenderer } from "@/features/chat-system/components/message-renderer";
 import { ChatInput } from "@/features/chat-system/components/chat-input";
 import { Sparkles } from "lucide-react";
+import { UI_Z } from "@/lib/z-index";
 
 /**
  * CHAT DIALOG
@@ -43,9 +44,12 @@ export default function ChatDialog() {
 
     return (
         <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
-            <DialogContent className="min-w-[80vw] max-w-none h-[85vh] p-0 flex flex-col overflow-hidden gap-0 border-none shadow-2xl bg-background z-[2000]">
+            <DialogContent
+                className="min-w-[80vw] max-w-none h-[85vh] p-0 flex flex-col overflow-hidden gap-0 border-none shadow-2xl bg-background"
+                style={{ zIndex: UI_Z.chat }}
+            >
                 <DialogTitle className="sr-only">Chat with Agent</DialogTitle>
-                <div className="flex flex-1 h-full overflow-hidden bg-background">
+                <div className="flex flex-1 h-full min-h-0 overflow-hidden bg-background">
                     <ChatSidebar
                         threads={threads}
                         subthreadsMap={subthreadsMap}
@@ -57,7 +61,7 @@ export default function ChatDialog() {
                         isCreatingThread={isCreatingThread}
                         disableNewThread={isEmployeeScopedChat}
                     />
-                    <div className="flex flex-col flex-1 h-full overflow-hidden relative">
+                    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
                         <ChatHeader
                             sidebarOpen={sidebarOpen}
                             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
@@ -96,7 +100,7 @@ export default function ChatDialog() {
                                 </div>
                             </div>
                         ) : null}
-                        <div className="flex-1 overflow-hidden relative">
+                        <div className="relative min-h-0 flex-1 overflow-hidden">
                             <div className="h-full overflow-y-auto">
                                 <div className="container max-w-4xl mx-auto px-4 pb-4">
                                     {!messages || messages.length === 0 ? (

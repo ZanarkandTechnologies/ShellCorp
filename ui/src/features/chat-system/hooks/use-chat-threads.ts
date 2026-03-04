@@ -85,16 +85,17 @@ export function useChatThreads(): {
 
     const resolveSessionKeyForAgent = useCallback(
         async (agentId: string): Promise<string | null> => {
+            const fallbackKey = `agent:${agentId}:main`;
             try {
                 const resolved = await client.request<SessionsResolveResult>("sessions.resolve", {
-                    agentId,
+                    key: fallbackKey,
                     includeGlobal: false,
                     includeUnknown: false,
                 });
                 const key = typeof resolved?.key === "string" ? resolved.key.trim() : "";
-                return key || null;
+                return key || fallbackKey;
             } catch {
-                return null;
+                return fallbackKey;
             }
         },
         [client],

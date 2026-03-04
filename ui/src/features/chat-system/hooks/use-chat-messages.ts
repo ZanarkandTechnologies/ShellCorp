@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChatStore, type LocalChatMessage } from "@/features/chat-system/chat-store";
 import { useAppStore } from "@/lib/app-store";
 import { useGateway } from "@/providers/gateway-provider";
@@ -77,6 +77,7 @@ export function useChatMessages(threadId: string | null): {
     const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatus>("ready");
     const [streamingText, setStreamingText] = useState("");
     const [activeRunId, setActiveRunId] = useState<string | null>(null);
+    const completedRunIdsRef = useRef<Set<string>>(new Set());
     const messagesByThread = useChatStore((state) => state.messagesByThread);
     const selectedAgentId = useAppStore((state) => state.selectedAgentId);
     const selectedSessionKey = useAppStore((state) => state.selectedSessionKey);
@@ -130,9 +131,14 @@ export function useChatMessages(threadId: string | null): {
             if (!payload || !effectiveThreadId || !effectiveSessionKey) return;
             if (payload.sessionKey !== effectiveSessionKey) return;
 
+            const isTerminalState = payload.state === "final" || payload.state === "aborted" || payload.state === "error";
+            if (isTerminalState && payload.runId && completedRunIdsRef.current.has(payload.runId)) {
+                return;
+            }
+
             const text = extractEventText(payload.message);
             const runMismatch = payload.runId && activeRunId && payload.runId !== activeRunId;
-            if (runMismatch && payload.state !== "final") return;
+            if (runMismatch) return;
 
             if (payload.state === "delta") {
                 setSubmissionStatus("streaming");
@@ -150,6 +156,9 @@ export function useChatMessages(threadId: string | null): {
                         [effectiveThreadId]: [...nextMessages, createAssistantMessage(finalText)],
                     });
                 }
+                if (payload.runId) {
+                    completedRunIdsRef.current.add(payload.runId);
+                }
                 setStreamingText("");
                 setActiveRunId(null);
                 setSubmissionStatus("ready");
@@ -165,6 +174,9 @@ export function useChatMessages(threadId: string | null): {
                         [effectiveThreadId]: [...nextMessages, createAssistantMessage(abortedText)],
                     });
                 }
+                if (payload.runId) {
+                    completedRunIdsRef.current.add(payload.runId);
+                }
                 setStreamingText("");
                 setActiveRunId(null);
                 setSubmissionStatus("ready");
@@ -178,6 +190,9 @@ export function useChatMessages(threadId: string | null): {
                     ...useChatStore.getState().messagesByThread,
                     [effectiveThreadId]: [...nextMessages, createAssistantMessage(`Error: ${errorText}`)],
                 });
+                if (payload.runId) {
+                    completedRunIdsRef.current.add(payload.runId);
+                }
                 setStreamingText("");
                 setActiveRunId(null);
                 setSubmissionStatus("ready");
@@ -216,6 +231,7 @@ export function useChatMessages(threadId: string | null): {
                 typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
                     ? crypto.randomUUID()
                     : `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            completedRunIdsRef.current.delete(runId);
             setActiveRunId(runId);
 
             try {
