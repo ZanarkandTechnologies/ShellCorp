@@ -24,6 +24,7 @@ export type ProjectStatus = "active" | "paused" | "archived";
 export type AgentRole = "ceo" | "builder" | "growth_marketer" | "pm";
 export type AgentLifecycleState = "active" | "idle" | "pending_spawn" | "retired";
 export type SpawnPolicy = "queue_pressure" | "manual";
+export type OfficeStylePreset = "default" | "pixel" | "brutalist" | "cozy";
 
 export interface DepartmentModel {
   id: string;
@@ -79,6 +80,7 @@ export interface CompanyModel {
   federationPolicies: unknown[];
   providerIndexProfiles: unknown[];
   heartbeatRuntime?: JsonObject;
+  officeStylePreset?: OfficeStylePreset;
   [key: string]: unknown;
 }
 
@@ -129,6 +131,13 @@ function normalizeLifecycle(value: unknown): AgentLifecycleState {
 
 function normalizeSpawnPolicy(value: unknown): SpawnPolicy {
   return value === "manual" ? "manual" : "queue_pressure";
+}
+
+function normalizeOfficeStylePreset(value: unknown): OfficeStylePreset | undefined {
+  if (value === "default" || value === "pixel" || value === "brutalist" || value === "cozy") {
+    return value;
+  }
+  return undefined;
 }
 
 function normalizeCompanyModel(input: unknown): CompanyModel {
@@ -234,6 +243,7 @@ function normalizeCompanyModel(input: unknown): CompanyModel {
     federationPolicies: Array.isArray(row.federationPolicies) ? row.federationPolicies : [],
     providerIndexProfiles: Array.isArray(row.providerIndexProfiles) ? row.providerIndexProfiles : [],
     heartbeatRuntime: asObject(row.heartbeatRuntime),
+    ...(normalizeOfficeStylePreset(row.officeStylePreset) ? { officeStylePreset: normalizeOfficeStylePreset(row.officeStylePreset) } : {}),
   };
 }
 
@@ -287,6 +297,17 @@ export interface SidecarStore {
   writeCompanyModel: (model: CompanyModel) => Promise<void>;
   readOfficeObjects: () => Promise<OfficeObjectModel[]>;
   writeOfficeObjects: (objects: OfficeObjectModel[]) => Promise<void>;
+  readOfficeStylePreset: () => Promise<OfficeStylePreset>;
+  writeOfficeStylePreset: (preset: OfficeStylePreset) => Promise<void>;
+}
+
+export function generateObjectId(meshType: string): string {
+  const slug = asString(meshType, "object")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "object";
+  const nonce = Math.random().toString(36).slice(2, 8);
+  return `${slug}-${nonce}`;
 }
 
 export function resolveOpenclawHome(): string {
@@ -307,6 +328,17 @@ export function createSidecarStore(): SidecarStore {
     writeCompanyModel: async (model) => writeJsonAtomic(companyPath, normalizeCompanyModel(model)),
     readOfficeObjects: async () => normalizeOfficeObjects(await readJsonFile(officeObjectsPath, [])),
     writeOfficeObjects: async (objects) => writeJsonAtomic(officeObjectsPath, normalizeOfficeObjects(objects)),
+    readOfficeStylePreset: async () => {
+      const company = normalizeCompanyModel(await readJsonFile(companyPath, {}));
+      return company.officeStylePreset ?? "default";
+    },
+    writeOfficeStylePreset: async (preset) => {
+      const company = normalizeCompanyModel(await readJsonFile(companyPath, {}));
+      await writeJsonAtomic(companyPath, {
+        ...company,
+        officeStylePreset: normalizeOfficeStylePreset(preset) ?? "default",
+      });
+    },
   };
 }
 

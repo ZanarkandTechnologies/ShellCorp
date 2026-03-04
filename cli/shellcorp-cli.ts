@@ -18,6 +18,7 @@
  * - MEM-0104
  */
 import { Command } from "commander";
+import { registerOfficeCommands } from "./office-commands.js";
 import { registerDoctorCommands } from "./team-commands.js";
 import { registerTeamCommands } from "./team-commands.js";
 
@@ -30,6 +31,7 @@ async function main(): Promise<void> {
 
   registerTeamCommands(program);
   registerDoctorCommands(program);
+  registerOfficeCommands(program);
 
   await program.parseAsync(process.argv);
 }
