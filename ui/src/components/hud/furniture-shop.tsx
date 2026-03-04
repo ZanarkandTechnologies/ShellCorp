@@ -39,6 +39,50 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { MeshAssetModel } from "@/lib/openclaw-types";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Store, Box, CloudDownload, Monitor, Download, Package, Sofa, Library, Briefcase } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+type TabId = "catalog" | "custom" | "import";
+
+interface BuiltInCatalogItem {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    icon: React.ComponentType<{ className?: string }>;
+}
+
+const BUILT_IN_ITEMS: BuiltInCatalogItem[] = [
+    {
+        id: "desk",
+        name: "Office Desk",
+        description: "Standard workstation desk included with the core office kit.",
+        category: "Furniture",
+        icon: Monitor,
+    },
+    {
+        id: "couch",
+        name: "Lounge Couch",
+        description: "Minimal waiting area couch for team collaboration spaces.",
+        category: "Lounge",
+        icon: Sofa,
+    },
+    {
+        id: "bookshelf",
+        name: "Bookshelf",
+        description: "Neutral storage shelf for office props and decor scenes.",
+        category: "Storage",
+        icon: Library,
+    },
+    {
+        id: "pantry",
+        name: "Pantry Counter",
+        description: "Pantry module for kitchen corners and social zones.",
+        category: "Utility",
+        icon: Briefcase,
+    },
+];
 
 interface FurnitureShopProps {
     isOpen: boolean;
@@ -49,7 +93,10 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     const { company } = useOfficeDataContext();
     const { startPlacement } = usePlacementSystem();
     const adapter = useOpenClawAdapter();
+
+    const [activeTab, setActiveTab] = useState<TabId>("catalog");
     const [meshAssets, setMeshAssets] = useState<MeshAssetModel[]>([]);
+    const [failedPreviewByAssetId, setFailedPreviewByAssetId] = useState<Record<string, boolean>>({});
     const [meshAssetDir, setMeshAssetDir] = useState("");
     const [meshUrlInput, setMeshUrlInput] = useState("");
     const [meshLabelInput, setMeshLabelInput] = useState("");
@@ -58,28 +105,24 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     const [isLoadingAssets, setIsLoadingAssets] = useState(false);
     const [meshError, setMeshError] = useState<string | null>(null);
 
-    // Shop inventory
-    // TODO: Move to database once item system is more mature
-    const items = [
-        {
-            id: "desk",
-            name: "Office Desk",
-            price: 500,
-            description: "Standard employee desk",
-            placementType: "hybrid" // Can be assigned to team OR placed at coordinates
-        },
-        // Future items:
-        // { id: "plant", name: "Plant", price: 50, description: "Decorative plant", placementType: "coordinate" },
-        // { id: "meeting-table", name: "Meeting Table", price: 1000, description: "6-person conference table", placementType: "coordinate" },
-        // { id: "coffee-machine", name: "Coffee Machine", price: 800, description: "Keep your team caffeinated", placementType: "coordinate" },
-    ];
-
     const hasMeshAssets = meshAssets.length > 0;
 
     const sortedMeshAssets = useMemo(
         () => [...meshAssets].sort((a, b) => b.addedAt - a.addedAt),
         [meshAssets],
     );
+
+    const getAssetPathBase = (publicPath: string): string =>
+        publicPath.replace(/\.(glb|gltf)$/i, "");
+
+    const getPreviewCandidatePath = (publicPath: string): string =>
+        `${getAssetPathBase(publicPath)}.preview.png`;
+
+    const formatFileSize = (bytes: number): string => {
+        if (!Number.isFinite(bytes) || bytes <= 0) return "n/a";
+        if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    };
 
     const loadMeshAssets = async () => {
         setIsLoadingAssets(true);
@@ -103,17 +146,11 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
         void loadMeshAssets();
     }, [isOpen]);
 
-    const handleBuyAndPlace = (item: typeof items[0]) => {
-        if (!company) return;
-
-        // Close shop and tell the system to start placement
-        onOpenChange(false);
-
-        startPlacement(item.id, {
-            companyId: company._id,
-            itemName: item.name,
-        });
-    };
+    useEffect(() => {
+        if (!isOpen) {
+            setFailedPreviewByAssetId({});
+        }
+    }, [isOpen]);
 
     const handleSaveMeshDir = async () => {
         const nextDir = meshAssetDir.trim();
@@ -170,115 +207,238 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
         });
     };
 
+    const renderCatalog = () => (
+        <div className="space-y-6">
+            <div className="rounded-lg border bg-card text-card-foreground p-5">
+                <div>
+                    <h3 className="font-semibold text-lg">Built-in Catalog</h3>
+                    <p className="text-sm text-muted-foreground">
+                        Static assets bundled with ShellCorp. These are fast to load and always available.
+                    </p>
+                </div>
+            </div>
+
+            <div>
+                <h3 className="text-base font-semibold mb-4">Available Items</h3>
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                    {BUILT_IN_ITEMS.map((item) => (
+                        <Card key={item.id} className="flex flex-col overflow-hidden border-border/70 shadow-none">
+                            <div className="h-28 bg-muted/40 flex items-center justify-center border-b">
+                                <item.icon className="w-10 h-10 text-muted-foreground/50" />
+                            </div>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-base">{item.name}</CardTitle>
+                                <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
+                            </CardHeader>
+                            <CardContent className="pt-0 pb-4 mt-auto">
+                                <span className="inline-flex rounded-md border px-2 py-1 text-xs text-muted-foreground">
+                                    {item.category}
+                                </span>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+
+    const renderCustomLibrary = () => (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h3 className="text-lg font-semibold">Custom Library</h3>
+                    <p className="text-sm text-muted-foreground">Imported GLB/GLTF assets with optional sidecar previews.</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => void loadMeshAssets()} disabled={isLoadingAssets}>
+                    {isLoadingAssets ? "Refreshing..." : "Refresh"}
+                </Button>
+            </div>
+
+            {hasMeshAssets ? (
+                <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+                    {sortedMeshAssets.map((asset) => (
+                        <Card key={asset.assetId} className="flex flex-col">
+                            <div className="h-28 bg-muted/40 flex items-center justify-center border-b overflow-hidden">
+                                {!failedPreviewByAssetId[asset.assetId] ? (
+                                    <img
+                                        src={
+                                            getPreviewCandidatePath(asset.publicPath)
+                                        }
+                                        alt={`${asset.label} preview`}
+                                        className="h-full w-full object-cover"
+                                        onError={() =>
+                                            setFailedPreviewByAssetId((current) => ({
+                                                ...current,
+                                                [asset.assetId]: true,
+                                            }))
+                                        }
+                                    />
+                                ) : (
+                                    <Package className="w-8 h-8 text-muted-foreground/50" />
+                                )}
+                            </div>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm truncate" title={asset.label}>{asset.label}</CardTitle>
+                                <p className="text-xs text-muted-foreground line-clamp-2">{asset.fileName}</p>
+                            </CardHeader>
+                            <CardContent className="space-y-1 text-xs text-muted-foreground mt-auto pb-4">
+                                <p>{formatFileSize(asset.fileSizeBytes)}</p>
+                                <p className="truncate" title={asset.localPath}>{asset.localPath}</p>
+                            </CardContent>
+                            <CardFooter className="pt-0">
+                                <Button className="w-full" onClick={() => startCustomMeshPlacement(asset)}>
+                                    Place Mesh
+                                </Button>
+                            </CardFooter>
+                        </Card>
+                    ))}
+                </div>
+            ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg border-dashed">
+                    <Box className="w-12 h-12 text-muted-foreground/50 mb-4" />
+                    <h3 className="text-lg font-medium">No custom meshes found</h3>
+                    <p className="text-sm text-muted-foreground max-w-sm mt-1">
+                        You haven't downloaded any custom meshes yet. Go to the Import tab to add some.
+                    </p>
+                    <Button variant="outline" className="mt-4" onClick={() => setActiveTab("import")}>
+                        Go to Import
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
+
+    const renderImport = () => (
+        <div className="space-y-6 max-w-3xl">
+            <div>
+                <h3 className="text-lg font-semibold">Import Custom Assets</h3>
+                <p className="text-sm text-muted-foreground">
+                    Download new .glb/.gltf files and optionally add lightweight preview metadata for catalog cards.
+                </p>
+            </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                        <Download className="w-4 h-4" />
+                        Download from URL
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="mesh-url">Mesh URL</Label>
+                        <Input
+                            id="mesh-url"
+                            value={meshUrlInput}
+                            onChange={(event) => setMeshUrlInput(event.target.value)}
+                            placeholder="https://example.com/model.glb"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="mesh-label">Label (Optional)</Label>
+                        <Input
+                            id="mesh-label"
+                            value={meshLabelInput}
+                            onChange={(event) => setMeshLabelInput(event.target.value)}
+                            placeholder="e.g., cyber-desk"
+                        />
+                    </div>
+                    {meshError && <p className="text-sm text-destructive">{meshError}</p>}
+                </CardContent>
+                <CardFooter>
+                    <Button onClick={() => void handleDownloadMesh()} disabled={isDownloadingMesh}>
+                        {isDownloadingMesh ? "Downloading..." : "Download to Mesh Folder"}
+                    </Button>
+                </CardFooter>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                        <Box className="w-4 h-4" />
+                        Local Mesh Folder
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                        You can manually copy `.glb`/`.gltf` files into this folder.
+                    </p>
+                    <div className="space-y-2">
+                        <Label htmlFor="mesh-asset-dir">Folder Path</Label>
+                        <div className="flex gap-2">
+                            <Input
+                                id="mesh-asset-dir"
+                                value={meshAssetDir}
+                                onChange={(event) => setMeshAssetDir(event.target.value)}
+                                placeholder="~/.openclaw/assets/meshes"
+                            />
+                            <Button onClick={() => void handleSaveMeshDir()} disabled={isSavingDir} variant="secondary">
+                                {isSavingDir ? "Saving..." : "Save"}
+                            </Button>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base">Preview Convention</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm text-muted-foreground">
+                    <p>For `chair.glb`, add `chair.preview.png` in the same folder.</p>
+                    <p className="font-mono text-xs">{"chair.glb -> chair.preview.png"}</p>
+                </CardContent>
+            </Card>
+        </div>
+    );
+
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[600px]">
-                <DialogHeader>
-                    <DialogTitle>Furniture Shop</DialogTitle>
-                    <DialogDescription>
-                        Buy furniture and equipment for your office.
+            <DialogContent className="w-[85vw] max-w-[85vw] h-[85vh] sm:max-w-[85vw] flex flex-col p-0 overflow-hidden gap-0">
+                <DialogHeader className="px-6 py-4 border-b shrink-0">
+                    <DialogTitle>Furniture & Assets</DialogTitle>
+                    <DialogDescription className="sr-only">
+                        Buy furniture and equipment for your office or import custom meshes.
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        {items.map((item) => (
-                            <Card key={item.id}>
-                                <CardHeader>
-                                    <CardTitle className="text-lg">{item.name}</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <p className="text-sm text-muted-foreground mb-2">{item.description}</p>
-                                    <p className="font-bold">${item.price}</p>
-                                </CardContent>
-                                <CardFooter>
-                                    <Button onClick={() => handleBuyAndPlace(item)} className="w-full">
-                                        Buy & Place
-                                    </Button>
-                                </CardFooter>
-                            </Card>
-                        ))}
+                <div className="flex flex-1 overflow-hidden">
+                    {/* Sidebar */}
+                    <div className="w-56 border-r bg-background p-4 flex flex-col gap-2 shrink-0">
+                        <Button
+                            variant={activeTab === "catalog" ? "secondary" : "ghost"}
+                            className={cn("justify-start", activeTab === "catalog" && "bg-muted")}
+                            onClick={() => setActiveTab("catalog")}
+                        >
+                            <Store className="w-4 h-4 mr-2" />
+                            Built-in Catalog
+                        </Button>
+                        <Button
+                            variant={activeTab === "custom" ? "secondary" : "ghost"}
+                            className={cn("justify-start", activeTab === "custom" && "bg-muted")}
+                            onClick={() => setActiveTab("custom")}
+                        >
+                            <Box className="w-4 h-4 mr-2" />
+                            Custom Library
+                        </Button>
+                        <Button
+                            variant={activeTab === "import" ? "secondary" : "ghost"}
+                            className={cn("justify-start", activeTab === "import" && "bg-muted")}
+                            onClick={() => setActiveTab("import")}
+                        >
+                            <CloudDownload className="w-4 h-4 mr-2" />
+                            Import
+                        </Button>
                     </div>
 
-                    <div className="rounded-md border p-4 space-y-4">
-                        <div className="flex items-center justify-between gap-2">
-                            <div>
-                                <h3 className="text-sm font-semibold">Custom Meshes (Meshy)</h3>
-                                <p className="text-xs text-muted-foreground">
-                                    Local files live under your OpenClaw mesh asset folder.
-                                </p>
-                            </div>
-                            <Button size="sm" variant="outline" onClick={() => void loadMeshAssets()} disabled={isLoadingAssets}>
-                                {isLoadingAssets ? "Refreshing..." : "Refresh Catalog"}
-                            </Button>
+                    {/* Main Content Area */}
+                    <ScrollArea className="flex-1 bg-background">
+                        <div className="p-6">
+                            {activeTab === "catalog" && renderCatalog()}
+                            {activeTab === "custom" && renderCustomLibrary()}
+                            {activeTab === "import" && renderImport()}
                         </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="mesh-asset-dir">Mesh asset folder</Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    id="mesh-asset-dir"
-                                    value={meshAssetDir}
-                                    onChange={(event) => setMeshAssetDir(event.target.value)}
-                                    placeholder="~/.openclaw/assets/meshes"
-                                />
-                                <Button onClick={() => void handleSaveMeshDir()} disabled={isSavingDir}>
-                                    {isSavingDir ? "Saving..." : "Save Folder"}
-                                </Button>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                                You can manually copy `.glb`/`.gltf` files into this folder, then refresh catalog.
-                            </p>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="mesh-url">Download mesh from URL</Label>
-                            <Input
-                                id="mesh-url"
-                                value={meshUrlInput}
-                                onChange={(event) => setMeshUrlInput(event.target.value)}
-                                placeholder="https://example.com/model.glb"
-                            />
-                            <Input
-                                value={meshLabelInput}
-                                onChange={(event) => setMeshLabelInput(event.target.value)}
-                                placeholder="Optional label (e.g., cyber-desk)"
-                            />
-                            <Button onClick={() => void handleDownloadMesh()} disabled={isDownloadingMesh}>
-                                {isDownloadingMesh ? "Downloading..." : "Download to Mesh Folder"}
-                            </Button>
-                        </div>
-
-                        {meshError ? (
-                            <p className="text-sm text-destructive">{meshError}</p>
-                        ) : null}
-
-                        <div className="grid grid-cols-1 gap-3 max-h-60 overflow-y-auto pr-1">
-                            {hasMeshAssets ? (
-                                sortedMeshAssets.map((asset) => (
-                                    <Card key={asset.assetId}>
-                                        <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">{asset.label}</CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-1 text-xs text-muted-foreground">
-                                            <p>{asset.fileName}</p>
-                                            <p>{Math.max(1, Math.round(asset.fileSizeBytes / 1024))} KB</p>
-                                            <p className="truncate">{asset.localPath}</p>
-                                        </CardContent>
-                                        <CardFooter>
-                                            <Button className="w-full" onClick={() => startCustomMeshPlacement(asset)}>
-                                                Place Mesh
-                                            </Button>
-                                        </CardFooter>
-                                    </Card>
-                                ))
-                            ) : (
-                                <p className="text-xs text-muted-foreground">
-                                    No mesh assets found. Copy files into folder or download from URL.
-                                </p>
-                            )}
-                        </div>
-                    </div>
+                    </ScrollArea>
                 </div>
             </DialogContent>
         </Dialog>
