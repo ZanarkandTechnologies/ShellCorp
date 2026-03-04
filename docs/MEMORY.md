@@ -1,5 +1,6 @@
 # MEMORY
 
+2026-03-04 01:40 +0000 | decision | MEM-0119 | cli,topology,invariant | CEO team management is CLI-first via `shellcorp` commands that mutate `~/.openclaw/company.json` (and optional `office-objects.json` cluster metadata), with docs-only SCL intent-to-command mapping for agent execution.
 2026-02-25 20:10 +0800 | decision | MEM-0100 | architecture,invariant | OpenClaw is the runtime source of truth; Shell Company focuses on UI mapping, visualization, and operator workflows.
 2026-02-25 20:10 +0800 | decision | MEM-0101 | docs,invariant | Canonical docs indexes for this project are OpenClaw Multi-Agent Routing and OpenClaw Plugins pages.
 2026-02-25 20:15 +0800 | decision | MEM-0102 | plugins,invariant | Notion integration is delivered as an in-repo OpenClaw extension (`extensions/notion`) instead of internal gateway code.

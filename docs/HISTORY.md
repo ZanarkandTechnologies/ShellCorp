@@ -1,5 +1,6 @@
 # HISTORY
 
+2026-03-04 01:40 +0000 | feature | MEM-0119 | cli,team-management | Added ShellCorp CEO Team Management CLI (`npm run shell -- ...`) with team create/list/update/archive, role-slot and heartbeat controls, team-data doctor validation, and docs-only SCL intent cookbook.
 2026-03-03 | docs | MEM-0118 | qa,ui,docs | Added AI Office UI QA runbook (`docs/how-to/ai-office-ui-qa-runbook.md`) documenting Sims-like interaction model, employee/object/team click flows, top-left menu entrypoints, source-to-panel mapping, builder mode, and ASCII diagrams for browser-agent testing.
 2026-02-25 20:10 +0800 | refactor | MEM-0100 | pivot,openclaw,ui | Hard pivot from legacy custom gateway/runtime to UI-first OpenClaw control center architecture.
 2026-02-25 20:12 +0800 | feature | MEM-0101 | docs,specs | Added SC01-SC04 specs for OpenClaw state mapping, Notion plugin packaging, memory/skills UI, and chat bridge.

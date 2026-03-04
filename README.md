@@ -43,6 +43,31 @@ By default, the UI expects an OpenClaw-compatible gateway endpoint at:
 
 - `http://127.0.0.1:8787` (override via `VITE_GATEWAY_URL`)
 
+## Quick Start (CEO Team CLI)
+
+ShellCorp includes a CLI for CEO/team topology management against OpenClaw sidecar state.
+
+Run from repo root:
+
+```bash
+npm run shell -- team list
+```
+
+Common commands:
+
+```bash
+npm run shell -- team create --name "Alpha" --description "Core team" --goal "Ship roadmap" --kpi weekly_shipped_tickets --auto-roles builder,pm,growth_marketer
+npm run shell -- team update --team-id team-proj-alpha --goal "Reduce backlog" --kpi-add support_reply_sla_minutes
+npm run shell -- team heartbeat set --team-id team-proj-alpha --cadence-minutes 15 --goal "Create or execute relevant tickets from Kanban"
+npm run shell -- team role-slot set --team-id team-proj-alpha --role builder --desired-count 2
+npm run shell -- team archive --team-id team-proj-alpha
+npm run shell -- doctor team-data
+```
+
+Docs-only SCL cookbook (intent -> command):
+
+- `docs/how-to/ceo-team-cli-scl-cookbook.md`
+
 ### Quick Start Templates (OpenClaw + Sidecar)
 
 For teams onboarding agents/operators, copy these template files and adjust ids/paths:
