@@ -52,9 +52,18 @@ import type {
   PendingApprovalModel,
   OfficeSettingsModel,
   MeshAssetModel,
+  LedgerEntryModel,
+  ExperimentModel,
+  MetricEventModel,
+  ProjectResourceModel,
+  ResourceEventModel,
+  CapabilitySlotModel,
+  BusinessConfigModel,
 } from "./openclaw-types";
 import { buildGatewayHeaders } from "./gateway-config";
 import type { GatewayWsClient } from "./gateway-ws-client";
+import type { BusinessBuilderResourceDraft } from "./business-builder";
+import { toProjectResources } from "./business-builder";
 
 type Json = Record<string, unknown>;
 const HEARTBEAT_START_PATTERN = /read\s+heartbeat\.md[\s\S]*current\s+time:/i;
@@ -791,6 +800,22 @@ const DEFAULT_COMPANY_MODEL: CompanyModel = {
       productDetails: "Cross-project strategy",
       goal: "Drive measurable progress toward company goals.",
     },
+    {
+      id: "hb-biz-pm",
+      role: "biz_pm",
+      cadenceMinutes: 5,
+      teamDescription: "Business PM loop",
+      productDetails: "Review KPIs and profitability, manage kanban",
+      goal: "Keep business net-positive and execution focused.",
+    },
+    {
+      id: "hb-biz-executor",
+      role: "biz_executor",
+      cadenceMinutes: 5,
+      teamDescription: "Business execution loop",
+      productDetails: "Execute highest-priority growth tasks",
+      goal: "Produce measurable growth output every heartbeat.",
+    },
   ],
   channelBindings: [],
   heartbeatRuntime: {
@@ -819,6 +844,194 @@ function toDepartment(entry: unknown): DepartmentModel | null {
   };
 }
 
+function toCapabilitySlot(
+  entry: unknown,
+  fallbackCategory: "measure" | "execute" | "distribute",
+): CapabilitySlotModel {
+  const row = asRecord(entry);
+  const skillId = String(row.skillId ?? "").trim();
+  const categoryRaw = String(row.category ?? fallbackCategory);
+  const category =
+    categoryRaw === "measure" || categoryRaw === "execute" || categoryRaw === "distribute"
+      ? categoryRaw
+      : fallbackCategory;
+  const configNode = asRecord(row.config);
+  const config: Record<string, string> = {};
+  for (const [key, value] of Object.entries(configNode)) {
+    if (typeof value === "string") config[key] = value;
+  }
+  return {
+    skillId: skillId || `${category}-skill`,
+    category,
+    config,
+  };
+}
+
+function toBusinessConfig(entry: unknown): BusinessConfigModel | undefined {
+  const row = asRecord(entry);
+  const type = String(row.type ?? "").trim();
+  if (!type) return undefined;
+  const slots = asRecord(row.slots);
+  return {
+    type,
+    slots: {
+      measure: toCapabilitySlot(slots.measure, "measure"),
+      execute: toCapabilitySlot(slots.execute, "execute"),
+      distribute: toCapabilitySlot(slots.distribute, "distribute"),
+    },
+  };
+}
+
+function toLedgerEntry(projectId: string, entry: unknown): LedgerEntryModel | null {
+  const row = asRecord(entry);
+  const id = String(row.id ?? "").trim();
+  const timestamp = String(row.timestamp ?? "").trim();
+  const source = String(row.source ?? "").trim();
+  const description = String(row.description ?? "").trim();
+  if (!id || !timestamp || !source || !description) return null;
+  const amount = Number(row.amount ?? 0);
+  return {
+    id,
+    projectId: String(row.projectId ?? projectId),
+    timestamp,
+    type: row.type === "revenue" ? "revenue" : "cost",
+    amount: Number.isFinite(amount) ? amount : 0,
+    currency: String(row.currency ?? "USD"),
+    source,
+    description,
+    experimentId: typeof row.experimentId === "string" ? row.experimentId : undefined,
+  };
+}
+
+function toExperiment(projectId: string, entry: unknown): ExperimentModel | null {
+  const row = asRecord(entry);
+  const id = String(row.id ?? "").trim();
+  const hypothesis = String(row.hypothesis ?? "").trim();
+  const startedAt = String(row.startedAt ?? "").trim();
+  if (!id || !hypothesis || !startedAt) return null;
+  const statusRaw = String(row.status ?? "running");
+  const status = statusRaw === "completed" || statusRaw === "failed" ? statusRaw : "running";
+  const metricsBeforeNode = asRecord(row.metricsBefore);
+  const metricsAfterNode = asRecord(row.metricsAfter);
+  const metricsBefore: Record<string, number> = {};
+  const metricsAfter: Record<string, number> = {};
+  for (const [key, value] of Object.entries(metricsBeforeNode)) {
+    if (typeof value === "number" && Number.isFinite(value)) metricsBefore[key] = value;
+  }
+  for (const [key, value] of Object.entries(metricsAfterNode)) {
+    if (typeof value === "number" && Number.isFinite(value)) metricsAfter[key] = value;
+  }
+  return {
+    id,
+    projectId: String(row.projectId ?? projectId),
+    hypothesis,
+    status,
+    startedAt,
+    endedAt: typeof row.endedAt === "string" ? row.endedAt : undefined,
+    results: typeof row.results === "string" ? row.results : undefined,
+    metricsBefore: Object.keys(metricsBefore).length > 0 ? metricsBefore : undefined,
+    metricsAfter: Object.keys(metricsAfter).length > 0 ? metricsAfter : undefined,
+  };
+}
+
+function toMetricEvent(projectId: string, entry: unknown): MetricEventModel | null {
+  const row = asRecord(entry);
+  const id = String(row.id ?? "").trim();
+  const timestamp = String(row.timestamp ?? "").trim();
+  const source = String(row.source ?? "").trim();
+  if (!id || !timestamp || !source) return null;
+  const metricsNode = asRecord(row.metrics);
+  const metrics: Record<string, number> = {};
+  for (const [key, value] of Object.entries(metricsNode)) {
+    if (typeof value === "number" && Number.isFinite(value)) metrics[key] = value;
+  }
+  if (Object.keys(metrics).length === 0) return null;
+  return {
+    id,
+    projectId: String(row.projectId ?? projectId),
+    timestamp,
+    source,
+    metrics,
+  };
+}
+
+function toResourceType(entry: unknown): "cash_budget" | "api_quota" | "distribution_slots" | "custom" {
+  if (entry === "cash_budget" || entry === "api_quota" || entry === "distribution_slots" || entry === "custom") {
+    return entry;
+  }
+  return "custom";
+}
+
+function toResourceLowBehavior(entry: unknown): "warn" | "deprioritize_expensive_tasks" | "ask_pm_review" {
+  if (entry === "deprioritize_expensive_tasks" || entry === "ask_pm_review") return entry;
+  return "warn";
+}
+
+function toResourceEventKind(entry: unknown): "refresh" | "consumption" | "adjustment" {
+  if (entry === "refresh" || entry === "consumption") return entry;
+  return "adjustment";
+}
+
+function toProjectResource(projectId: string, entry: unknown): ProjectResourceModel | null {
+  const row = asRecord(entry);
+  const id = String(row.id ?? "").trim();
+  const name = String(row.name ?? "").trim();
+  const unit = String(row.unit ?? "").trim();
+  const trackerSkillId = String(row.trackerSkillId ?? "").trim();
+  if (!id || !name || !unit || !trackerSkillId) return null;
+  const policy = asRecord(row.policy);
+  const metadataNode = asRecord(row.metadata);
+  const metadata: Record<string, string> = {};
+  for (const [key, value] of Object.entries(metadataNode)) {
+    if (typeof value === "string") metadata[key] = value;
+  }
+  const remaining = Number(row.remaining ?? 0);
+  const limit = Number(row.limit ?? 0);
+  const reserved = Number(row.reserved ?? Number.NaN);
+  const refreshCadenceMinutes = Number(row.refreshCadenceMinutes ?? Number.NaN);
+  return {
+    id,
+    projectId: String(row.projectId ?? projectId),
+    type: toResourceType(row.type),
+    name,
+    unit,
+    remaining: Number.isFinite(remaining) ? remaining : 0,
+    limit: Number.isFinite(limit) ? limit : 0,
+    reserved: Number.isFinite(reserved) ? reserved : undefined,
+    trackerSkillId,
+    refreshCadenceMinutes: Number.isFinite(refreshCadenceMinutes) ? Math.max(1, Math.floor(refreshCadenceMinutes)) : undefined,
+    policy: {
+      advisoryOnly: true,
+      softLimit: Number.isFinite(Number(policy.softLimit)) ? Number(policy.softLimit) : undefined,
+      hardLimit: Number.isFinite(Number(policy.hardLimit)) ? Number(policy.hardLimit) : undefined,
+      whenLow: toResourceLowBehavior(policy.whenLow),
+    },
+    metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+  };
+}
+
+function toResourceEvent(projectId: string, entry: unknown): ResourceEventModel | null {
+  const row = asRecord(entry);
+  const id = String(row.id ?? "").trim();
+  const resourceId = String(row.resourceId ?? "").trim();
+  const ts = String(row.ts ?? "").trim();
+  const source = String(row.source ?? "").trim();
+  if (!id || !resourceId || !ts || !source) return null;
+  const delta = Number(row.delta ?? 0);
+  const remainingAfter = Number(row.remainingAfter ?? 0);
+  return {
+    id,
+    projectId: String(row.projectId ?? projectId),
+    resourceId,
+    ts,
+    kind: toResourceEventKind(row.kind),
+    delta: Number.isFinite(delta) ? delta : 0,
+    remainingAfter: Number.isFinite(remainingAfter) ? remainingAfter : 0,
+    source,
+    note: typeof row.note === "string" ? row.note : undefined,
+  };
+}
+
 function toProject(entry: unknown): ProjectModel | null {
   const row = asRecord(entry);
   const id = String(row.id ?? "").trim();
@@ -834,6 +1047,12 @@ function toProject(entry: unknown): ProjectModel | null {
     status: status === "paused" || status === "archived" ? status : "active",
     goal: String(row.goal ?? ""),
     kpis: Array.isArray(row.kpis) ? row.kpis.filter((item): item is string => typeof item === "string") : [],
+    businessConfig: toBusinessConfig(row.businessConfig),
+    ledger: normalizeArray(row.ledger, (item) => toLedgerEntry(id, item)),
+    experiments: normalizeArray(row.experiments, (item) => toExperiment(id, item)),
+    metricEvents: normalizeArray(row.metricEvents, (item) => toMetricEvent(id, item)),
+    resources: normalizeArray(row.resources, (item) => toProjectResource(id, item)),
+    resourceEvents: normalizeArray(row.resourceEvents, (item) => toResourceEvent(id, item)),
   };
 }
 
@@ -842,7 +1061,7 @@ function toCompanyAgent(entry: unknown): CompanyAgentModel | null {
   const agentId = String(row.agentId ?? "").trim();
   const role = String(row.role ?? "");
   if (!agentId) return null;
-  if (role !== "ceo" && role !== "builder" && role !== "growth_marketer" && role !== "pm") return null;
+  if (role !== "ceo" && role !== "builder" && role !== "growth_marketer" && role !== "pm" && role !== "biz_pm" && role !== "biz_executor") return null;
   const lifecycle = String(row.lifecycleState ?? "active");
   return {
     agentId,
@@ -860,7 +1079,7 @@ function toRoleSlot(entry: unknown): RoleSlotModel | null {
   const projectId = String(row.projectId ?? "").trim();
   const role = String(row.role ?? "");
   if (!projectId) return null;
-  if (role !== "builder" && role !== "growth_marketer" && role !== "pm") return null;
+  if (role !== "builder" && role !== "growth_marketer" && role !== "pm" && role !== "biz_pm" && role !== "biz_executor") return null;
   const desiredCount = Number(row.desiredCount ?? 0);
   return {
     projectId,
@@ -993,7 +1212,7 @@ function toHeartbeatProfile(entry: unknown): HeartbeatProfileModel | null {
   const id = String(row.id ?? "").trim();
   const role = String(row.role ?? "");
   if (!id) return null;
-  if (role !== "ceo" && role !== "builder" && role !== "growth_marketer" && role !== "pm") return null;
+  if (role !== "ceo" && role !== "builder" && role !== "growth_marketer" && role !== "pm" && role !== "biz_pm" && role !== "biz_executor") return null;
   const cadenceMinutes = Number(row.cadenceMinutes ?? 10);
   return {
     id,
@@ -1013,7 +1232,16 @@ function toChannelBinding(entry: unknown): ChannelBindingModel | null {
   const agentRole = String(row.agentRole ?? "");
   if (!externalChannelId || !projectId) return null;
   if (platform !== "slack" && platform !== "discord") return null;
-  if (agentRole !== "ceo" && agentRole !== "builder" && agentRole !== "growth_marketer" && agentRole !== "pm") return null;
+  if (
+    agentRole !== "ceo" &&
+    agentRole !== "builder" &&
+    agentRole !== "growth_marketer" &&
+    agentRole !== "pm" &&
+    agentRole !== "biz_pm" &&
+    agentRole !== "biz_executor"
+  ) {
+    return null;
+  }
   return {
     platform,
     externalChannelId,
@@ -1719,6 +1947,11 @@ export class OpenClawAdapter {
           status: "active",
           goal: input.goal.trim(),
           kpis: ["open_vs_closed_ticket_ratio"],
+          ledger: [],
+          experiments: [],
+          metricEvents: [],
+          resources: [],
+          resourceEvents: [],
         },
       ],
       agents: [
@@ -1763,6 +1996,12 @@ export class OpenClawAdapter {
     autoRoles: Array<"builder" | "growth_marketer" | "pm">;
     registerOpenclawAgents: boolean;
     withCluster: boolean;
+    businessType?: "affiliate_marketing" | "content_creator" | "saas" | "custom";
+    capabilitySkills?: {
+      measure: string;
+      execute: string;
+      distribute: string;
+    };
   }): Promise<{ ok: boolean; teamId?: string; projectId?: string; createdAgents?: string[]; error?: string }> {
     try {
       const response = await fetch(`${this.stateUrl}/openclaw/team/create`, {
@@ -1787,6 +2026,103 @@ export class OpenClawAdapter {
       };
     } catch {
       return { ok: false, error: "team_create_unavailable" };
+    }
+  }
+
+  async saveBusinessBuilderConfig(input: {
+    projectId: string;
+    businessType: "affiliate_marketing" | "content_creator" | "saas" | "custom";
+    capabilitySkills: {
+      measure: string;
+      execute: string;
+      distribute: string;
+    };
+    resources: BusinessBuilderResourceDraft[];
+    source?: string;
+  }): Promise<{ ok: boolean; error?: string }> {
+    const company = await this.getCompanyModel();
+    const project = company.projects.find((entry) => entry.id === input.projectId);
+    if (!project) return { ok: false, error: "project_not_found" };
+    const nextResources = toProjectResources(input.projectId, input.resources);
+    const priorById = new Map((project.resources ?? []).map((resource) => [resource.id, resource]));
+    const nowIso = new Date().toISOString();
+    const nextEvents = [...(project.resourceEvents ?? [])];
+    for (const resource of nextResources) {
+      const previous = priorById.get(resource.id);
+      if (!previous) continue;
+      if (previous.remaining !== resource.remaining || previous.limit !== resource.limit || previous.reserved !== resource.reserved) {
+        nextEvents.push({
+          id: `resource-event-${input.projectId}-${resource.id}-${Date.now()}`,
+          projectId: input.projectId,
+          resourceId: resource.id,
+          ts: nowIso,
+          kind: "adjustment",
+          delta: resource.remaining - previous.remaining,
+          remainingAfter: resource.remaining,
+          source: input.source ?? "ui.business_builder.save",
+          note: "Business Builder save",
+        });
+      }
+    }
+    const nextCompany: CompanyModel = {
+      ...company,
+      projects: company.projects.map((entry) =>
+        entry.id === input.projectId
+          ? {
+              ...entry,
+              businessConfig: {
+                type: input.businessType,
+                slots: {
+                  measure: {
+                    skillId: input.capabilitySkills.measure.trim() || "measure-skill",
+                    category: "measure",
+                    config: entry.businessConfig?.slots.measure.config ?? {},
+                  },
+                  execute: {
+                    skillId: input.capabilitySkills.execute.trim() || "execute-skill",
+                    category: "execute",
+                    config: entry.businessConfig?.slots.execute.config ?? {},
+                  },
+                  distribute: {
+                    skillId: input.capabilitySkills.distribute.trim() || "distribute-skill",
+                    category: "distribute",
+                    config: entry.businessConfig?.slots.distribute.config ?? {},
+                  },
+                },
+              },
+              resources: nextResources,
+              resourceEvents: nextEvents,
+            }
+          : entry,
+      ),
+    };
+    const saved = await this.saveCompanyModel(nextCompany);
+    return { ok: saved.ok, error: saved.error };
+  }
+
+  async renderBusinessHeartbeatPreview(input: {
+    teamId: string;
+    role: "biz_pm" | "biz_executor";
+  }): Promise<{ ok: boolean; rendered?: string; error?: string }> {
+    try {
+      const response = await fetch(`${this.stateUrl}/openclaw/team/heartbeat/render`, {
+        method: "POST",
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify(input),
+      });
+      const payload = (await response.json()) as Json;
+      if (!response.ok || payload.ok === false) {
+        return {
+          ok: false,
+          error: typeof payload.error === "string" ? payload.error : `heartbeat_render_failed:${response.status}`,
+        };
+      }
+      return {
+        ok: true,
+        rendered: typeof payload.rendered === "string" ? payload.rendered : "",
+      };
+    } catch {
+      return { ok: false, error: "heartbeat_render_unavailable" };
     }
   }
 

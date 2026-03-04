@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { hashSchemaVersion, resolveCanonicalWriteProvider, toFederationPolicy, toProviderIndexProfile, toTask } from "./openclaw-adapter";
+import {
+  deriveAgentLiveStatus,
+  hashSchemaVersion,
+  parseHeartbeatWindows,
+  resolveCanonicalWriteProvider,
+  toFederationPolicy,
+  toProviderIndexProfile,
+  toTask,
+} from "./openclaw-adapter";
 
 describe("openclaw federation normalization", () => {
   it("normalizes federated task defaults", () => {
@@ -74,5 +82,89 @@ describe("openclaw federation normalization", () => {
         "internal",
       ),
     ).toBe("notion");
+  });
+});
+
+describe("heartbeat parsing", () => {
+  it("groups heartbeat windows and ignores mixed operator messages", () => {
+    const windows = parseHeartbeatWindows(
+      [
+        {
+          ts: 1000,
+          type: "message",
+          role: "user",
+          text: "Read HEARTBEAT.md if it exists. Current time: Wednesday",
+        },
+        {
+          ts: 1200,
+          type: "message",
+          role: "assistant",
+          text: "Planning next actions with ReadFile and Shell",
+        },
+        {
+          ts: 1300,
+          type: "message",
+          role: "user",
+          source: "operator",
+          text: "quick direct CLI message",
+        },
+        {
+          ts: 1400,
+          type: "message",
+          role: "assistant",
+          text: "HEARTBEAT_OK",
+        },
+      ],
+      "agent:main:main",
+    );
+    expect(windows).toHaveLength(1);
+    expect(windows[0].status).toBe("ok");
+    expect(windows[0].eventCount).toBe(4);
+    expect(windows[0].skillBubbles.length).toBeGreaterThan(0);
+  });
+
+  it("keeps open heartbeat as running and derives live status", () => {
+    const windows = parseHeartbeatWindows(
+      [
+        {
+          ts: 2000,
+          type: "message",
+          role: "user",
+          text: "Read HEARTBEAT.md if it exists. Current time: Wednesday",
+        },
+        {
+          ts: 2100,
+          type: "tool",
+          role: "tool",
+          text: "ReadFile ok",
+        },
+      ],
+      "agent:main:main",
+    );
+    const status = deriveAgentLiveStatus("main", "agent:main:main", windows);
+    expect(status.state).toBe("running");
+    expect(status.sessionKey).toBe("agent:main:main");
+  });
+
+  it("marks heartbeat as no_work when only prompt and HEARTBEAT_OK exist", () => {
+    const windows = parseHeartbeatWindows(
+      [
+        {
+          ts: 3000,
+          type: "message",
+          role: "user",
+          text: "Read HEARTBEAT.md if it exists. Current time: Wednesday",
+        },
+        {
+          ts: 3200,
+          type: "message",
+          role: "assistant",
+          text: "HEARTBEAT_OK",
+        },
+      ],
+      "agent:main:main",
+    );
+    expect(windows).toHaveLength(1);
+    expect(windows[0].status).toBe("no_work");
   });
 });

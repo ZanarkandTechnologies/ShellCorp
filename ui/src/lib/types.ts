@@ -16,6 +16,31 @@ export interface Team {
   clusterPosition?: [number, number, number];
   services?: string[];
   wanderLockUntil?: number;
+  businessType?: string;
+  capabilitySkills?: {
+    measure: string;
+    execute: string;
+    distribute: string;
+  };
+  finances?: {
+    revenueCents: number;
+    costCents: number;
+    profitCents: number;
+  };
+  resources?: Array<{
+    id: string;
+    type: string;
+    name: string;
+    unit: string;
+    remaining: number;
+    limit: number;
+    reserved?: number;
+    health: "healthy" | "warning" | "depleted";
+  }>;
+  businessReadiness?: {
+    ready: boolean;
+    issues: string[];
+  };
 }
 
 export interface Employee {
@@ -63,6 +88,8 @@ export interface EmployeeData extends Employee {
   hasActiveComputerSession?: boolean;
   notificationCount?: number;
   notificationPriority?: number;
+  heartbeatState?: "running" | "ok" | "no_work" | "error" | "idle";
+  heartbeatBubbles?: Array<{ label: string; weight: number }>;
 }
 
 export interface TeamData extends Team {

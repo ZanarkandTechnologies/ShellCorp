@@ -7,6 +7,7 @@ import { getAbsoluteDeskPosition, getDeskRotation, getEmployeePositionAtDesk } f
 import { normalizeOfficeObjectId } from "@/features/office-system/components/office-object-id";
 import type { OpenClawAdapter } from "@/lib/openclaw-adapter";
 import type { Company, DeskLayoutData, EmployeeData, OfficeObject, TeamData } from "@/lib/types";
+import { computeBusinessReadinessIssues, projectToBusinessBuilderDraft } from "@/lib/business-builder";
 import type {
   AgentCardModel,
   AgentLiveStatus,
@@ -19,6 +20,7 @@ import type {
   ReconciliationWarning,
   UnifiedOfficeModel,
 } from "@/lib/openclaw-types";
+import { useAgentLiveStatuses } from "@/hooks/use-agent-live-status";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 
 interface OfficeDataContextType {
@@ -219,8 +221,35 @@ function toOfficeData(
       projectToTeamId.set(project.id, teamId);
       const projectAgents = companyAgents.filter((agent) => agent.projectId === project.id);
       const summary = workload.find((item) => item.projectId === project.id);
+      const revenueCents = (project.ledger ?? [])
+        .filter((entry) => entry.type === "revenue")
+        .reduce((total, entry) => total + Math.max(0, Math.round(entry.amount)), 0);
+      const costCents = (project.ledger ?? [])
+        .filter((entry) => entry.type === "cost")
+        .reduce((total, entry) => total + Math.max(0, Math.round(entry.amount)), 0);
       const fallbackAnchor: [number, number, number] = [projectIndex * 9 - 4, 0, 8];
       const clusterPosition = teamClusterAnchorsByTeamId.get(teamId) ?? clampClusterPosition(fallbackAnchor).position;
+      const resources = (project.resources ?? []).map((resource) => {
+        const softLimit = resource.policy.softLimit;
+        const hardLimit = resource.policy.hardLimit;
+        const health =
+          typeof hardLimit === "number" && resource.remaining <= hardLimit
+            ? "depleted"
+            : typeof softLimit === "number" && resource.remaining <= softLimit
+              ? "warning"
+              : "healthy";
+        return {
+          id: resource.id,
+          type: resource.type,
+          name: resource.name,
+          unit: resource.unit,
+          remaining: resource.remaining,
+          limit: resource.limit,
+          reserved: resource.reserved,
+          health,
+        };
+      });
+      const readinessIssues = computeBusinessReadinessIssues(projectToBusinessBuilderDraft(project)).map((issue) => issue.message);
       teams.push({
         _id: teamId,
         companyId,
@@ -229,6 +258,24 @@ function toOfficeData(
         deskCount: Math.max(projectAgents.length, 3),
         clusterPosition,
         employees: projectAgents.map((agent) => `employee-${agent.agentId}`),
+        businessType: project.businessConfig?.type,
+        capabilitySkills: project.businessConfig
+          ? {
+              measure: project.businessConfig.slots.measure.skillId,
+              execute: project.businessConfig.slots.execute.skillId,
+              distribute: project.businessConfig.slots.distribute.skillId,
+            }
+          : undefined,
+        finances: {
+          revenueCents,
+          costCents,
+          profitCents: revenueCents - costCents,
+        },
+        resources,
+        businessReadiness: {
+          ready: readinessIssues.length === 0,
+          issues: readinessIssues,
+        },
       });
     }
   } else {
@@ -343,7 +390,12 @@ function toOfficeData(
       isBusy: (runtimeAgent?.sessionCount ?? 0) > 0,
       deskId: initialDeskLayout?.deskId as EmployeeData["deskId"],
       isCEO: companyAgent?.role === "ceo" || isMainAgent || index === 0,
-      isSupervisor: companyAgent?.role === "pm" || companyAgent?.role === "ceo" || isMainAgent || index === 0,
+      isSupervisor:
+        companyAgent?.role === "pm" ||
+        companyAgent?.role === "biz_pm" ||
+        companyAgent?.role === "ceo" ||
+        isMainAgent ||
+        index === 0,
       jobTitle: companyAgent?.role ? `${companyAgent.role} (${agent.agentId})` : `Configured Agent (${agent.agentId})`,
       status:
         heartbeatStatus ??
@@ -399,8 +451,12 @@ function toOfficeData(
 export function OfficeDataProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const sharedAdapter = useOpenClawAdapter();
   const [value, setValue] = useState<OfficeDataContextType>({ ...fallbackData(), isLoading: true });
+  const [agentIds, setAgentIds] = useState<string[]>([]);
   const adapterRef = useRef<OpenClawAdapter | null>(null);
   const cancelledRef = useRef(false);
+  const latestUnifiedRef = useRef<UnifiedOfficeModel | null>(null);
+  const latestApprovalsRef = useRef<PendingApprovalModel[]>([]);
+  const liveStatusByConvex = useAgentLiveStatuses(agentIds);
 
   const load = async (): Promise<void> => {
     const adapter = adapterRef.current;
@@ -410,9 +466,18 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
         adapter.getUnifiedOfficeModel(),
         adapter.getPendingApprovals(),
       ]);
-      const statusByAgent = await adapter.getAgentsLiveStatus(
-        [...new Set([...unified.runtimeAgents.map((item) => item.agentId), ...unified.configuredAgents.map((item) => item.agentId)])],
-      );
+      const nextAgentIds = [...new Set([...unified.runtimeAgents.map((item) => item.agentId), ...unified.configuredAgents.map((item) => item.agentId)])];
+      setAgentIds(nextAgentIds);
+
+      let statusByAgent: Record<string, AgentLiveStatus> = {};
+      if (liveStatusByConvex && Object.keys(liveStatusByConvex).length > 0) {
+        statusByAgent = liveStatusByConvex;
+      } else {
+        statusByAgent = await adapter.getAgentsLiveStatus(nextAgentIds);
+      }
+
+      latestUnifiedRef.current = unified;
+      latestApprovalsRef.current = pendingApprovals;
       if (cancelledRef.current) return;
       setValue((current) => {
         const next = toOfficeData(unified, pendingApprovals, statusByAgent);
@@ -435,6 +500,23 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       }));
     }
   };
+
+  useEffect(() => {
+    if (!liveStatusByConvex || Object.keys(liveStatusByConvex).length === 0) return;
+    const unified = latestUnifiedRef.current;
+    if (!unified) return;
+    const pendingApprovals = latestApprovalsRef.current;
+    setValue((current) => {
+      const next = toOfficeData(unified, pendingApprovals, liveStatusByConvex);
+      return {
+        ...next,
+        refresh: current.refresh,
+        manualResync: current.manualResync,
+        upsertFederationPolicy: current.upsertFederationPolicy,
+        upsertProviderIndexProfile: current.upsertProviderIndexProfile,
+      };
+    });
+  }, [liveStatusByConvex]);
 
   useEffect(() => {
     adapterRef.current = sharedAdapter;

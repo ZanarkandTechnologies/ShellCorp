@@ -33,6 +33,8 @@ export interface SessionTimelineEvent {
   type: "message" | "tool" | "status";
   role: string;
   text: string;
+  source?: "heartbeat" | "ui" | "operator" | "unknown";
+  eventId?: string;
   raw?: Record<string, unknown>;
 }
 
@@ -46,6 +48,34 @@ export interface SessionTimelineModel {
     contextTokens?: number;
   };
   events: SessionTimelineEvent[];
+}
+
+export interface HeartbeatSkillBubble {
+  id: string;
+  label: string;
+  weight: number;
+}
+
+export interface HeartbeatWindow {
+  beatId: string;
+  sessionKey: string;
+  startedAt: number;
+  endedAt?: number;
+  trigger: "scheduled" | "manual" | "unknown";
+  status: "running" | "ok" | "no_work" | "error";
+  summary: string;
+  skillBubbles: HeartbeatSkillBubble[];
+  eventCount: number;
+}
+
+export interface AgentLiveStatus {
+  agentId: string;
+  sessionKey?: string;
+  state: "running" | "ok" | "no_work" | "error" | "idle";
+  statusText: string;
+  updatedAt?: number;
+  bubbles: HeartbeatSkillBubble[];
+  latestHeartbeat?: HeartbeatWindow;
 }
 
 export interface SkillItemModel {
@@ -111,13 +141,117 @@ export interface OpenClawConfigPreview {
   diffText?: string;
 }
 
-export type AgentRole = "ceo" | "builder" | "growth_marketer" | "pm";
+export type AgentRole = "ceo" | "builder" | "growth_marketer" | "pm" | "biz_pm" | "biz_executor";
 export type TaskStatus = "todo" | "in_progress" | "blocked" | "done";
 export type FederatedTaskProvider = "internal" | "notion" | "vibe" | "linear";
 export type TaskSyncState = "healthy" | "pending" | "conflict" | "error";
 export type FederationConflictPolicy = "canonical_wins" | "newest_wins";
 export type ProjectStatus = "active" | "paused" | "archived";
 export type AgentLifecycleState = "active" | "idle" | "pending_spawn" | "retired";
+export type CapabilityCategory = "measure" | "execute" | "distribute";
+export type LedgerEntryType = "revenue" | "cost";
+export type ExperimentStatus = "running" | "completed" | "failed";
+export type ResourceType = "cash_budget" | "api_quota" | "distribution_slots" | "custom";
+export type ResourceHealth = "healthy" | "warning" | "depleted";
+export type ResourceLowBehavior = "warn" | "deprioritize_expensive_tasks" | "ask_pm_review";
+export type ResourceEventKind = "refresh" | "consumption" | "adjustment";
+
+export interface CapabilitySlotModel {
+  skillId: string;
+  category: CapabilityCategory;
+  config: Record<string, string>;
+}
+
+export interface BusinessConfigModel {
+  type: string;
+  slots: {
+    measure: CapabilitySlotModel;
+    execute: CapabilitySlotModel;
+    distribute: CapabilitySlotModel;
+  };
+}
+
+export interface LedgerEntryModel {
+  id: string;
+  projectId: string;
+  timestamp: string;
+  type: LedgerEntryType;
+  amount: number;
+  currency: string;
+  source: string;
+  description: string;
+  experimentId?: string;
+}
+
+export interface ExperimentModel {
+  id: string;
+  projectId: string;
+  hypothesis: string;
+  status: ExperimentStatus;
+  startedAt: string;
+  endedAt?: string;
+  results?: string;
+  metricsBefore?: Record<string, number>;
+  metricsAfter?: Record<string, number>;
+}
+
+export interface MetricEventModel {
+  id: string;
+  projectId: string;
+  timestamp: string;
+  source: string;
+  metrics: Record<string, number>;
+}
+
+export interface ResourcePolicyModel {
+  advisoryOnly: true;
+  softLimit?: number;
+  hardLimit?: number;
+  whenLow: ResourceLowBehavior;
+}
+
+export interface ProjectResourceModel {
+  id: string;
+  projectId: string;
+  type: ResourceType;
+  name: string;
+  unit: string;
+  remaining: number;
+  limit: number;
+  reserved?: number;
+  trackerSkillId: string;
+  refreshCadenceMinutes?: number;
+  policy: ResourcePolicyModel;
+  metadata?: Record<string, string>;
+}
+
+export interface ResourceEventModel {
+  id: string;
+  projectId: string;
+  resourceId: string;
+  ts: string;
+  kind: ResourceEventKind;
+  delta: number;
+  remainingAfter: number;
+  source: string;
+  note?: string;
+}
+
+export interface BusinessReadinessIssueModel {
+  code: string;
+  message: string;
+}
+
+export interface BusinessBuilderStateModel {
+  businessType: string;
+  capabilitySkills: {
+    measure: string;
+    execute: string;
+    distribute: string;
+  };
+  resources: ProjectResourceModel[];
+  readinessIssues: BusinessReadinessIssueModel[];
+}
 
 export interface DepartmentModel {
   id: string;
@@ -134,6 +268,12 @@ export interface ProjectModel {
   status: ProjectStatus;
   goal: string;
   kpis: string[];
+  businessConfig?: BusinessConfigModel;
+  ledger: LedgerEntryModel[];
+  experiments: ExperimentModel[];
+  metricEvents: MetricEventModel[];
+  resources: ProjectResourceModel[];
+  resourceEvents: ResourceEventModel[];
 }
 
 export interface CompanyAgentModel {
@@ -334,4 +474,251 @@ export interface UnifiedOfficeModel {
     ceoAnchorMode: "glass-derived" | "fallback";
     source: "gateway" | "localStorage" | "default";
   };
+}
+
+export interface GatewayAgentIdentityModel {
+  name?: string;
+  theme?: string;
+  emoji?: string;
+  avatar?: string;
+  avatarUrl?: string;
+}
+
+export interface GatewayAgentRowModel {
+  id: string;
+  name?: string;
+  identity?: GatewayAgentIdentityModel;
+}
+
+export interface AgentsListResult {
+  defaultId: string;
+  mainKey: string;
+  scope: string;
+  agents: GatewayAgentRowModel[];
+}
+
+export interface ToolCatalogProfile {
+  id: "minimal" | "coding" | "messaging" | "full";
+  label: string;
+}
+
+export interface ToolCatalogEntry {
+  id: string;
+  label: string;
+  description: string;
+  source: "core" | "plugin";
+  pluginId?: string;
+  optional?: boolean;
+  defaultProfiles: Array<"minimal" | "coding" | "messaging" | "full">;
+}
+
+export interface ToolCatalogGroup {
+  id: string;
+  label: string;
+  source: "core" | "plugin";
+  pluginId?: string;
+  tools: ToolCatalogEntry[];
+}
+
+export interface ToolsCatalogResult {
+  agentId: string;
+  profiles: ToolCatalogProfile[];
+  groups: ToolCatalogGroup[];
+}
+
+export interface AgentIdentityResult {
+  agentId: string;
+  name: string;
+  avatar: string;
+  emoji?: string;
+}
+
+export interface AgentFileEntry {
+  name: string;
+  path: string;
+  missing: boolean;
+  size?: number;
+  updatedAtMs?: number;
+  content?: string;
+}
+
+export interface AgentsFilesListResult {
+  agentId: string;
+  workspace: string;
+  files: AgentFileEntry[];
+}
+
+export interface AgentsFilesGetResult {
+  agentId: string;
+  workspace: string;
+  file: AgentFileEntry;
+}
+
+export interface AgentsFilesSetResult {
+  ok: true;
+  agentId: string;
+  workspace: string;
+  file: AgentFileEntry;
+}
+
+export interface ChannelUiMetaEntry {
+  id: string;
+  label: string;
+  detailLabel: string;
+  systemImage?: string;
+}
+
+export interface ChannelAccountSnapshot {
+  accountId: string;
+  name?: string | null;
+  enabled?: boolean | null;
+  configured?: boolean | null;
+  linked?: boolean | null;
+  running?: boolean | null;
+  connected?: boolean | null;
+  reconnectAttempts?: number | null;
+  lastConnectedAt?: number | null;
+  lastError?: string | null;
+  lastStartAt?: number | null;
+  lastStopAt?: number | null;
+  lastInboundAt?: number | null;
+  lastOutboundAt?: number | null;
+  lastProbeAt?: number | null;
+  mode?: string | null;
+  dmPolicy?: string | null;
+  allowFrom?: string[] | null;
+  tokenSource?: string | null;
+  botTokenSource?: string | null;
+  appTokenSource?: string | null;
+  credentialSource?: string | null;
+  audienceType?: string | null;
+  audience?: string | null;
+  webhookPath?: string | null;
+  webhookUrl?: string | null;
+  baseUrl?: string | null;
+  allowUnmentionedGroups?: boolean | null;
+  cliPath?: string | null;
+  dbPath?: string | null;
+  port?: number | null;
+  probe?: unknown;
+  audit?: unknown;
+  application?: unknown;
+}
+
+export interface ChannelsStatusSnapshot {
+  ts: number;
+  channelOrder: string[];
+  channelLabels: Record<string, string>;
+  channelDetailLabels?: Record<string, string>;
+  channelSystemImages?: Record<string, string>;
+  channelMeta?: ChannelUiMetaEntry[];
+  channels: Record<string, unknown>;
+  channelAccounts: Record<string, ChannelAccountSnapshot[]>;
+  channelDefaultAccountId: Record<string, string>;
+}
+
+export type CronSchedule =
+  | { kind: "at"; at: string }
+  | { kind: "every"; everyMs: number; anchorMs?: number }
+  | { kind: "cron"; expr: string; tz?: string; staggerMs?: number };
+
+export type CronSessionTarget = "main" | "isolated";
+export type CronWakeMode = "next-heartbeat" | "now";
+
+export type CronPayload =
+  | { kind: "systemEvent"; text: string }
+  | {
+      kind: "agentTurn";
+      message: string;
+      model?: string;
+      thinking?: string;
+      timeoutSeconds?: number;
+    };
+
+export interface CronDelivery {
+  mode: "none" | "announce" | "webhook";
+  channel?: string;
+  to?: string;
+  bestEffort?: boolean;
+}
+
+export interface CronJobState {
+  nextRunAtMs?: number;
+  runningAtMs?: number;
+  lastRunAtMs?: number;
+  lastStatus?: "ok" | "error" | "skipped";
+  lastError?: string;
+  lastDurationMs?: number;
+}
+
+export interface CronJob {
+  id: string;
+  agentId?: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  deleteAfterRun?: boolean;
+  createdAtMs: number;
+  updatedAtMs: number;
+  schedule: CronSchedule;
+  sessionTarget: CronSessionTarget;
+  wakeMode: CronWakeMode;
+  payload: CronPayload;
+  delivery?: CronDelivery;
+  state?: CronJobState;
+}
+
+export interface CronStatus {
+  enabled: boolean;
+  jobs: number;
+  nextWakeAtMs?: number | null;
+}
+
+export interface SkillsStatusConfigCheck {
+  path: string;
+  satisfied: boolean;
+}
+
+export interface SkillInstallOption {
+  id: string;
+  kind: "brew" | "node" | "go" | "uv";
+  label: string;
+  bins: string[];
+}
+
+export interface SkillStatusEntry {
+  name: string;
+  description: string;
+  source: string;
+  filePath: string;
+  baseDir: string;
+  skillKey: string;
+  bundled?: boolean;
+  primaryEnv?: string;
+  emoji?: string;
+  homepage?: string;
+  always: boolean;
+  disabled: boolean;
+  blockedByAllowlist: boolean;
+  eligible: boolean;
+  requirements: {
+    bins: string[];
+    env: string[];
+    config: string[];
+    os: string[];
+  };
+  missing: {
+    bins: string[];
+    env: string[];
+    config: string[];
+    os: string[];
+  };
+  configChecks: SkillsStatusConfigCheck[];
+  install: SkillInstallOption[];
+}
+
+export interface SkillStatusReport {
+  workspaceDir: string;
+  managedSkillsDir: string;
+  skills: SkillStatusEntry[];
 }
