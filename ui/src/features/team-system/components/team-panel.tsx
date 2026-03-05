@@ -8,14 +8,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BusinessBuilderForm } from "@/components/hud/business-builder-form";
+import { Textarea } from "@/components/ui/textarea";
 import { computeBusinessReadinessIssues, createBusinessBuilderDraft, projectToBusinessBuilderDraft } from "@/lib/business-builder";
 import { useAppStore } from "@/lib/app-store";
+import type { ProjectAccountEventModel } from "@/lib/openclaw-types";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { UI_Z } from "@/lib/z-index";
 import { isConvexEnabled } from "@/providers/convex-provider";
 import { api } from "../../../../../convex/_generated/api";
+import { BusinessFlowComposer } from "./business-flow/business-flow-composer";
+import { BusinessReadinessPanel } from "./business-flow/business-readiness-panel";
+import { BusinessSkillLibrary, type BusinessSlotKey } from "./business-flow/business-skill-library";
+import { LedgerTabPanel } from "./business-flow/ledger-tab-panel";
+import { ResourcesSection } from "./business-flow/resources-section";
+import { buildTeamTimelineRows, type TeamTimelineRow } from "./team-timeline";
 
 /**
  * TEAM PANEL
@@ -40,7 +47,7 @@ interface TeamPanelProps {
   teamId: string | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  initialTab?: "overview" | "kanban" | "projects" | "communications" | "business";
+  initialTab?: "overview" | "kanban" | "projects" | "communications" | "timeline" | "business" | "ledger";
   focusAgentId?: string | null;
   globalMode?: boolean;
 }
@@ -71,7 +78,8 @@ type ActivityRow = {
 
 function deriveProjectId(teamId: string | null): string | null {
   if (!teamId) return null;
-  return teamId.startsWith("team-") ? teamId.replace(/^team-/, "") : null;
+  const normalized = teamId.trim().toLowerCase();
+  return normalized.startsWith("team-") ? normalized.replace(/^team-/, "") : null;
 }
 
 function statusColumns(tasks: PanelTask[]): Record<"todo" | "in_progress" | "blocked" | "done", PanelTask[]> {
@@ -104,7 +112,7 @@ export function TeamPanel({
   const highlightedEmployeeIds = useAppStore((state) => state.highlightedEmployeeIds);
   const selectedProjectId = useAppStore((state) => state.selectedProjectId);
   const setSelectedProjectId = useAppStore((state) => state.setSelectedProjectId);
-  const [activeTab, setActiveTab] = useState<"overview" | "kanban" | "projects" | "communications" | "business">(initialTab);
+  const [activeTab, setActiveTab] = useState<"overview" | "kanban" | "projects" | "communications" | "timeline" | "business" | "ledger">(initialTab);
   const [communicationsFilter, setCommunicationsFilter] = useState<CommunicationsFilter>("all");
   const [boardActionState, setBoardActionState] = useState<{ pending: boolean; error?: string; ok?: string }>({ pending: false });
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -112,12 +120,9 @@ export function TeamPanel({
   const [newTaskOwner, setNewTaskOwner] = useState("");
   const [builderDraft, setBuilderDraft] = useState(() => createBusinessBuilderDraft("none"));
   const [builderSaveState, setBuilderSaveState] = useState<{ pending: boolean; error?: string; ok?: string }>({ pending: false });
-  const [previewState, setPreviewState] = useState<{
-    pending: boolean;
-    role?: "biz_pm" | "biz_executor";
-    text?: string;
-    error?: string;
-  }>({ pending: false });
+  const [selectedBusinessSlot, setSelectedBusinessSlot] = useState<BusinessSlotKey>("measure");
+  const [ledgerActionState, setLedgerActionState] = useState<{ pending: boolean; error?: string; ok?: string }>({ pending: false });
+  const [trackingContext, setTrackingContext] = useState("");
 
   const team = useMemo(() => {
     if (!teamId || globalMode) return null;
@@ -137,12 +142,28 @@ export function TeamPanel({
   }, [companyModel, projectId]);
 
   const convexEnabled = isConvexEnabled();
+  const teamScopeId = useMemo(() => {
+    if (globalMode) return project?.id ? `team-${project.id}`.toLowerCase() : null;
+    return teamId ? teamId.trim().toLowerCase() : null;
+  }, [globalMode, project?.id, teamId]);
   const boardCommand = convexEnabled ? useMutation(api.board.boardCommand) : null;
   const convexBoard = convexEnabled
     ? useQuery(api.board.getProjectBoard, project?.id ? { projectId: project.id } : "skip")
     : undefined;
   const convexActivity = convexEnabled
-    ? useQuery(api.board.getProjectActivity, project?.id ? { projectId: project.id, limit: 60 } : "skip")
+    ? useQuery(api.board.getProjectActivity, project?.id ? { projectId: project.id, teamId: teamScopeId ?? undefined, limit: 60 } : "skip")
+    : undefined;
+  const convexTimeline = convexEnabled
+    ? useQuery(
+        api.board.getTeamTimeline,
+        teamScopeId
+          ? {
+              teamId: teamScopeId,
+              projectId: project?.id,
+              limit: 80,
+            }
+          : "skip",
+      )
     : undefined;
 
   const projectTasks = useMemo(() => {
@@ -207,6 +228,13 @@ export function TeamPanel({
     if (communicationsFilter === "all") return communicationRows;
     return communicationRows.filter((row) => row.activityType === communicationsFilter);
   }, [communicationRows, communicationsFilter]);
+  const timelineRows = useMemo(() => {
+    return buildTeamTimelineRows({
+      convexTimeline: Array.isArray(convexTimeline) ? (convexTimeline as TeamTimelineRow[]) : undefined,
+      communicationRows,
+      projectId: project?.id,
+    });
+  }, [communicationRows, convexTimeline, project?.id]);
 
   const visibleTasks = useMemo(() => {
     return focusAgentId ? projectTasks.filter((task) => task.ownerAgentId === focusAgentId) : projectTasks;
@@ -222,18 +250,6 @@ export function TeamPanel({
     .reduce((total, entry) => total + Math.max(0, Math.round(entry.amount)), 0);
   const projectProfitCents = projectRevenueCents - projectCostCents;
   const hasBusinessConfig = Boolean(project?.businessConfig);
-  const resourceRows = (project?.resources ?? []).map((resource) => {
-    const softLimit = resource.policy.softLimit;
-    const hardLimit = resource.policy.hardLimit;
-    const health =
-      typeof hardLimit === "number" && resource.remaining <= hardLimit
-        ? "depleted"
-        : typeof softLimit === "number" && resource.remaining <= softLimit
-          ? "warning"
-          : "healthy";
-    return { ...resource, health };
-  });
-  const resourceEvents = (project?.resourceEvents ?? []).slice().reverse().slice(0, 12);
   const allProjects = globalMode ? companyModel?.projects ?? [] : project ? [project] : [];
   const projectTaskCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -276,6 +292,47 @@ export function TeamPanel({
       : "";
   const teamGoal = normalizedProjectGoal || "No goal set yet. Use the team CLI to define a clear business target.";
   const teamKpis = project?.kpis ?? [];
+  const activeExperimentCount = useMemo(
+    () => (project?.experiments ?? []).filter((experiment) => experiment.status === "running").length,
+    [project?.experiments],
+  );
+  const accountEvents = useMemo<ProjectAccountEventModel[]>(() => {
+    if (project?.accountEvents?.length) return project.accountEvents;
+    const ledgerRows = [...(project?.ledger ?? [])].sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
+    let running = 0;
+    return ledgerRows.map((entry) => {
+      running += entry.type === "revenue" ? entry.amount : -entry.amount;
+      return {
+        id: `ledger-derived-${entry.id}`,
+        projectId: entry.projectId,
+        accountId: `${entry.projectId}:account`,
+        timestamp: entry.timestamp,
+        type: (entry.type === "revenue" ? "credit" : "debit") as "credit" | "debit",
+        amountCents: entry.amount,
+        source: entry.source,
+        note: entry.description,
+        balanceAfterCents: running,
+      };
+    });
+  }, [project?.accountEvents, project?.ledger]);
+  const teamAccount = useMemo(() => {
+    if (project?.account) return project.account;
+    const latest = accountEvents[accountEvents.length - 1];
+    return {
+      id: `${project?.id ?? "project"}:account`,
+      projectId: project?.id ?? "project",
+      currency: "USD",
+      balanceCents: latest?.balanceAfterCents ?? 0,
+      updatedAt: latest?.timestamp ?? new Date().toISOString(),
+    };
+  }, [accountEvents, project?.account, project?.id]);
+  const readinessIssues = useMemo(
+    () =>
+      team?.businessReadiness?.issues && team.businessReadiness.issues.length > 0
+        ? team.businessReadiness.issues.map((issue, index) => ({ code: `team-${index}`, message: issue }))
+        : computeBusinessReadinessIssues(builderDraft),
+    [builderDraft, team?.businessReadiness?.issues],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -285,7 +342,9 @@ export function TeamPanel({
   useEffect(() => {
     setBuilderDraft(projectToBusinessBuilderDraft(project));
     setBuilderSaveState({ pending: false });
-    setPreviewState({ pending: false });
+    setTrackingContext(project?.trackingContext ?? "");
+    setSelectedBusinessSlot("measure");
+    setLedgerActionState({ pending: false });
   }, [project?.id]);
 
   useEffect(() => {
@@ -301,13 +360,14 @@ export function TeamPanel({
   if (!globalMode && !team) return null;
 
   async function handleSaveBusinessBuilder(): Promise<void> {
-    if (!project?.id || builderDraft.businessType === "none") return;
+    if (!project?.id) return;
     setBuilderSaveState({ pending: true });
     const saved = await adapter.saveBusinessBuilderConfig({
       projectId: project.id,
-      businessType: builderDraft.businessType,
+      businessType: builderDraft.businessType === "none" ? "custom" : builderDraft.businessType,
       capabilitySkills: builderDraft.capabilitySkills,
       resources: builderDraft.resources,
+      trackingContext,
       source: "ui.team_panel.builder",
     });
     if (!saved.ok) {
@@ -341,19 +401,28 @@ export function TeamPanel({
     }
   }
 
-  async function handlePreview(role: "biz_pm" | "biz_executor"): Promise<void> {
-    if (!project?.id || !teamId) return;
-    if (previewState.role === role && previewState.text) {
-      setPreviewState({ pending: false });
+  async function handleRecordAccountEvent(input: {
+    type: "credit" | "debit";
+    amountCents: number;
+    source: string;
+    note?: string;
+  }): Promise<void> {
+    if (!project?.id) return;
+    setLedgerActionState({ pending: true });
+    const result = await adapter.recordProjectAccountEvent({
+      projectId: project.id,
+      type: input.type,
+      amountCents: input.amountCents,
+      source: input.source,
+      note: input.note,
+      currency: teamAccount.currency,
+    });
+    if (!result.ok) {
+      setLedgerActionState({ pending: false, error: result.error ?? "ledger_update_failed" });
       return;
     }
-    setPreviewState({ pending: true, role });
-    const preview = await adapter.renderBusinessHeartbeatPreview({ teamId, role });
-    if (!preview.ok) {
-      setPreviewState({ pending: false, role, error: preview.error ?? "heartbeat_preview_failed" });
-      return;
-    }
-    setPreviewState({ pending: false, role, text: preview.rendered });
+    await refresh();
+    setLedgerActionState({ pending: false, ok: input.type === "credit" ? "Funding recorded." : "Spend recorded." });
   }
 
   return (
@@ -370,7 +439,7 @@ export function TeamPanel({
         <Tabs
           value={activeTab}
           onValueChange={(value) =>
-            setActiveTab(value as "overview" | "kanban" | "projects" | "communications" | "business")
+            setActiveTab(value as "overview" | "kanban" | "projects" | "communications" | "timeline" | "business" | "ledger")
           }
           className="flex min-h-0 flex-1 flex-col overflow-hidden px-6 pb-6"
         >
@@ -379,7 +448,9 @@ export function TeamPanel({
             <TabsTrigger value="kanban">Kanban</TabsTrigger>
             <TabsTrigger value="projects">Projects</TabsTrigger>
             <TabsTrigger value="communications">Communications</TabsTrigger>
+            <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="business">Business</TabsTrigger>
+            <TabsTrigger value="ledger">Ledger</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="mt-4 min-h-0 flex-1 overflow-hidden">
@@ -824,222 +895,133 @@ export function TeamPanel({
             </div>
           </TabsContent>
 
+          <TabsContent value="timeline" className="mt-4 min-h-0 flex-1 overflow-hidden">
+            <Card className="h-full">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm">Team Timeline</CardTitle>
+                  {teamScopeId ? (
+                    <Badge variant="outline" className="text-[10px] uppercase">
+                      {teamScopeId}
+                    </Badge>
+                  ) : null}
+                </div>
+              </CardHeader>
+              <CardContent className="h-[calc(100%-3rem)] overflow-hidden">
+                <ScrollArea className="h-full rounded-md border p-3">
+                  <div className="space-y-2">
+                    {timelineRows.map((row) => {
+                      const actor = row.agentId ?? row.actorAgentId ?? "system";
+                      const kind = row.activityType ?? row.eventType ?? row.sourceType;
+                      return (
+                        <div key={`timeline-${row._id}`} className="rounded-md border bg-muted/20 p-2 text-sm">
+                          <div className="mb-1 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{actor}</span>
+                              <Badge variant="secondary" className="text-[10px] uppercase">
+                                {kind}
+                              </Badge>
+                            </div>
+                            <span className="text-xs text-muted-foreground">{new Date(row.occurredAt).toLocaleTimeString()}</span>
+                          </div>
+                          <p className="font-medium">{row.label}</p>
+                          {row.detail ? <p className="text-xs text-muted-foreground">{row.detail}</p> : null}
+                          {row.taskId ? <p className="text-[11px] text-muted-foreground">task: {row.taskId}</p> : null}
+                        </div>
+                      );
+                    })}
+                    {timelineRows.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No timeline entries yet. Use `shellcorp team bot log` and board actions to populate team history.
+                      </p>
+                    ) : null}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="business" className="mt-4 min-h-0 flex-1 overflow-hidden">
             <ScrollArea className="h-full pr-2">
               <div className="space-y-4">
                 <Card>
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <CardTitle className="text-sm">Business Command Deck</CardTitle>
-                      <Badge variant="outline">{builderDraft.businessType}</Badge>
-                    </div>
+                    <CardTitle className="text-sm">Business Command Deck</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <BusinessBuilderForm value={builderDraft} onChange={setBuilderDraft} disabled={builderSaveState.pending} />
+                    <div className="grid min-h-0 grid-cols-1 gap-3 xl:grid-cols-[320px_minmax(0,1fr)]">
+                      <BusinessSkillLibrary
+                        selectedSlot={selectedBusinessSlot}
+                        onSelectSlot={setSelectedBusinessSlot}
+                        onAssignSkill={(slot, skillId) =>
+                          setBuilderDraft((current) => ({
+                            ...current,
+                            capabilitySkills: {
+                              ...current.capabilitySkills,
+                              [slot]: skillId,
+                            },
+                          }))
+                        }
+                        currentSkills={builderDraft.capabilitySkills}
+                      />
+                      <BusinessFlowComposer
+                        selectedSlot={selectedBusinessSlot}
+                        capabilitySkills={builderDraft.capabilitySkills}
+                        onSelectSlot={setSelectedBusinessSlot}
+                      />
+                    </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button onClick={() => void handleSaveBusinessBuilder()} disabled={builderSaveState.pending || builderDraft.businessType === "none"}>
+                      <Button onClick={() => void handleSaveBusinessBuilder()} disabled={builderSaveState.pending}>
                         {builderSaveState.pending ? "Saving..." : "Save Business Config"}
                       </Button>
-                      <Button variant="outline" onClick={() => void handlePreview("biz_pm")} disabled={previewState.pending || builderDraft.businessType === "none"}>
-                        Preview PM Heartbeat
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => void handlePreview("biz_executor")}
-                        disabled={previewState.pending || builderDraft.businessType === "none"}
-                      >
-                        Preview Executor Heartbeat
-                      </Button>
-                      {previewState.text ? (
-                        <Button variant="ghost" onClick={() => setPreviewState({ pending: false })} disabled={previewState.pending}>
-                          Close Preview
-                        </Button>
-                      ) : null}
                     </div>
                     {builderSaveState.error ? <p className="text-sm text-destructive">{builderSaveState.error}</p> : null}
                     {builderSaveState.ok ? <p className="text-sm text-emerald-500">{builderSaveState.ok}</p> : null}
-                    {previewState.error ? <p className="text-sm text-destructive">{previewState.error}</p> : null}
-                    {previewState.text ? (
-                      <ScrollArea className="max-h-44 rounded-md border p-2">
-                        <pre className="text-xs whitespace-pre-wrap">{previewState.text}</pre>
-                      </ScrollArea>
-                    ) : null}
+                    <Card className="border-dashed">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Tracking &amp; Metrics Context</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <Textarea
+                          value={trackingContext}
+                          onChange={(event) => setTrackingContext(event.target.value)}
+                          placeholder="Describe how this business tracks success. This context is used by PM/executor prompts."
+                          className="min-h-28"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Use `shellcorp team business context set --team-id ... --text ...` to update this from CLI.
+                        </p>
+                      </CardContent>
+                    </Card>
                   </CardContent>
                 </Card>
-
+                <BusinessReadinessPanel issues={readinessIssues} fallbackReady={team?.businessReadiness?.ready ?? false} />
                 <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Readiness Checklist</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    {(team?.businessReadiness?.issues && team.businessReadiness.issues.length > 0
-                      ? team.businessReadiness.issues.map((issue) => ({ message: issue }))
-                      : computeBusinessReadinessIssues(builderDraft)
-                    ).map((issue, index) => (
-                      <p key={`${issue.message}-${index}`} className="text-amber-500">
-                        - {issue.message}
-                      </p>
-                    ))}
-                    {(team?.businessReadiness?.ready ?? computeBusinessReadinessIssues(builderDraft).length === 0) ? (
-                      <p className="text-emerald-500">Ready to run.</p>
-                    ) : null}
+                  <CardContent className="flex items-center justify-between gap-3 pt-4 text-sm">
+                    <span>
+                      Active Experiments: <strong>{activeExperimentCount}</strong> running
+                    </span>
+                    <Button variant="outline" size="sm" onClick={() => setActiveTab("projects")}>
+                      View in Projects
+                    </Button>
                   </CardContent>
                 </Card>
-                {hasBusinessConfig ? (
-                  <div className="space-y-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Financial + Capability + Telemetry</p>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Revenue</CardTitle>
-                      </CardHeader>
-                      <CardContent className="text-2xl font-semibold text-emerald-500">
-                        {currencyFormatter.format(projectRevenueCents / 100)}
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Costs</CardTitle>
-                      </CardHeader>
-                      <CardContent className="text-2xl font-semibold text-amber-500">
-                        {currencyFormatter.format(projectCostCents / 100)}
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Profit</CardTitle>
-                      </CardHeader>
-                      <CardContent className={`text-2xl font-semibold ${projectProfitCents >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-                        {currencyFormatter.format(projectProfitCents / 100)}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Capability Slots</CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-1 gap-2 md:grid-cols-3 text-sm">
-                      <div className="rounded-md border p-2">
-                        <p className="font-medium">Measure</p>
-                        <p className="text-muted-foreground">{project?.businessConfig?.slots.measure.skillId ?? "not-set"}</p>
-                      </div>
-                      <div className="rounded-md border p-2">
-                        <p className="font-medium">Execute</p>
-                        <p className="text-muted-foreground">{project?.businessConfig?.slots.execute.skillId ?? "not-set"}</p>
-                      </div>
-                      <div className="rounded-md border p-2">
-                        <p className="font-medium">Distribute</p>
-                        <p className="text-muted-foreground">{project?.businessConfig?.slots.distribute.skillId ?? "not-set"}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Resources</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {resourceRows.map((resource) => (
-                        <div key={resource.id} className="rounded-md border p-2 text-sm">
-                          <div className="mb-1 flex items-center justify-between gap-2">
-                            <p className="font-medium">{resource.name}</p>
-                            <Badge
-                              variant={
-                                resource.health === "healthy" ? "secondary" : resource.health === "warning" ? "outline" : "destructive"
-                              }
-                            >
-                              {resource.health}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {resource.remaining} / {resource.limit} {resource.unit}
-                            {typeof resource.reserved === "number" ? ` (reserved ${resource.reserved})` : ""}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            tracker: {resource.trackerSkillId} | low-policy: {resource.policy.whenLow}
-                          </p>
-                        </div>
-                      ))}
-                      {resourceRows.length === 0 ? <p className="text-xs text-muted-foreground">No resources configured yet.</p> : null}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Experiments</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {(project?.experiments ?? []).slice().reverse().slice(0, 8).map((experiment) => (
-                        <div key={experiment.id} className="rounded-md border p-2 text-sm">
-                          <div className="mb-1 flex items-center justify-between">
-                            <p className="font-medium">{experiment.hypothesis}</p>
-                            <Badge variant="outline">{experiment.status}</Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            started {new Date(experiment.startedAt).toLocaleString()}
-                            {experiment.endedAt ? ` -> ended ${new Date(experiment.endedAt).toLocaleString()}` : ""}
-                          </p>
-                          {experiment.results ? <p className="mt-1 text-xs">{experiment.results}</p> : null}
-                        </div>
-                      ))}
-                      {(project?.experiments ?? []).length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No experiments logged yet.</p>
-                      ) : null}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Recent Metrics</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {(project?.metricEvents ?? []).slice().reverse().slice(0, 10).map((event) => (
-                        <div key={event.id} className="rounded-md border p-2 text-xs">
-                          <div className="mb-1 flex items-center justify-between">
-                            <span className="font-medium">{event.source}</span>
-                            <span className="text-muted-foreground">{new Date(event.timestamp).toLocaleString()}</span>
-                          </div>
-                          <p className="text-muted-foreground break-all">{JSON.stringify(event.metrics)}</p>
-                        </div>
-                      ))}
-                      {(project?.metricEvents ?? []).length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No metric events recorded yet.</p>
-                      ) : null}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Resource Events</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {resourceEvents.map((event) => (
-                        <div key={event.id} className="rounded-md border p-2 text-xs">
-                          <div className="mb-1 flex items-center justify-between gap-2">
-                            <span className="font-medium">{event.kind}</span>
-                            <span className="text-muted-foreground">{new Date(event.ts).toLocaleString()}</span>
-                          </div>
-                          <p className="text-muted-foreground">
-                            {event.resourceId} | delta {event.delta} | remaining {event.remainingAfter}
-                          </p>
-                          <p className="text-muted-foreground">{event.source}</p>
-                          {event.note ? <p className="text-muted-foreground">{event.note}</p> : null}
-                        </div>
-                      ))}
-                      {resourceEvents.length === 0 ? <p className="text-xs text-muted-foreground">No resource events yet.</p> : null}
-                    </CardContent>
-                  </Card>
-                  </div>
-                ) : (
+                <ResourcesSection resources={project?.resources ?? []} />
+                {!hasBusinessConfig ? (
                   <Card>
                     <CardContent className="pt-4 text-sm text-muted-foreground">
-                      Configure business type, capability skills, and resources above, then save to initialize Business telemetry.
+                      Configure capability slots in the flow and save to initialize business orchestration.
                     </CardContent>
                   </Card>
-                )}
+                ) : null}
               </div>
             </ScrollArea>
+          </TabsContent>
+
+          <TabsContent value="ledger" className="mt-4 min-h-0 flex-1 overflow-hidden">
+            <LedgerTabPanel account={teamAccount} events={accountEvents} onRecordEvent={handleRecordAccountEvent} />
+            {ledgerActionState.error ? <p className="mt-2 text-sm text-destructive">{ledgerActionState.error}</p> : null}
+            {ledgerActionState.ok ? <p className="mt-2 text-sm text-emerald-500">{ledgerActionState.ok}</p> : null}
           </TabsContent>
         </Tabs>
       </DialogContent>

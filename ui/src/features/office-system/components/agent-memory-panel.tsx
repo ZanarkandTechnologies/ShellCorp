@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "convex/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,9 @@ import type { AgentMemoryEntry } from "@/lib/openclaw-types";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { UI_Z } from "@/lib/z-index";
+import { isConvexEnabled } from "@/providers/convex-provider";
+import { api } from "../../../../../convex/_generated/api";
+import { buildAgentTimelineRows, type AgentEventRow } from "./agent-memory-timeline";
 
 /**
  * AGENT MEMORY PANEL
@@ -32,7 +36,7 @@ import { UI_Z } from "@/lib/z-index";
  * - MEM-0109
  */
 
-type MemoryPanelTab = "list" | "search" | "graph";
+type MemoryPanelTab = "list" | "search" | "timeline" | "graph";
 
 function formatTimestamp(ts?: number): string {
   if (!ts) return "no timestamp";
@@ -76,12 +80,29 @@ export function AgentMemoryPanel() {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<MemoryPanelTab>("list");
   const [reloadTick, setReloadTick] = useState(0);
+  const convexEnabled = isConvexEnabled();
 
   const employee = useMemo(
     () => employees.find((row) => row._id === memoryPanelEmployeeId) ?? null,
     [employees, memoryPanelEmployeeId],
   );
   const agentId = useMemo(() => extractAgentId(memoryPanelEmployeeId ? String(memoryPanelEmployeeId) : null), [memoryPanelEmployeeId]);
+  const teamId = useMemo(() => {
+    if (!employee?.teamId) return undefined;
+    return String(employee.teamId).trim().toLowerCase();
+  }, [employee?.teamId]);
+  const convexAgentEvents = convexEnabled
+    ? useQuery(
+        api.status.getAgentEvents,
+        agentId
+          ? {
+              agentId,
+              teamId,
+              limit: 80,
+            }
+          : "skip",
+      )
+    : undefined;
 
   useEffect(() => {
     if (!agentId) {
@@ -114,6 +135,12 @@ export function AgentMemoryPanel() {
   }, [adapter, agentId, reloadTick]);
 
   const filteredEntries = useMemo(() => entries.filter((entry) => matchesQuery(entry, query)), [entries, query]);
+  const timelineRows = useMemo(() => {
+    return buildAgentTimelineRows({
+      convexAgentEvents: Array.isArray(convexAgentEvents) ? (convexAgentEvents as AgentEventRow[]) : undefined,
+      entries,
+    });
+  }, [convexAgentEvents, entries]);
 
   if (!memoryPanelEmployeeId) return null;
 
@@ -139,6 +166,7 @@ export function AgentMemoryPanel() {
           <TabsList className="mt-4 w-fit">
             <TabsTrigger value="list">List</TabsTrigger>
             <TabsTrigger value="search">Search</TabsTrigger>
+            <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="graph">Graph</TabsTrigger>
           </TabsList>
 
@@ -216,6 +244,34 @@ export function AgentMemoryPanel() {
                       <p className="text-sm text-muted-foreground">
                         No matches. Try `MEM-`, a tag, or a keyword.
                       </p>
+                    ) : null}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="timeline" className="mt-4 flex-1 overflow-hidden">
+            <Card className="h-full">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Agent Timeline</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[calc(100%-3rem)] overflow-hidden">
+                <ScrollArea className="h-full rounded-md border p-3">
+                  <div className="space-y-2">
+                    {timelineRows.map((row) => (
+                      <div key={`timeline-${row.id}`} className="rounded-md border p-2 text-sm">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary">{row.kind}</Badge>
+                          <Badge variant="outline">{row.source}</Badge>
+                          <span className="text-xs text-muted-foreground">{formatTimestamp(row.ts)}</span>
+                        </div>
+                        <p className="break-words">{row.label}</p>
+                        {row.detail ? <p className="text-xs text-muted-foreground">{row.detail}</p> : null}
+                      </div>
+                    ))}
+                    {timelineRows.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No timeline events found for this agent yet.</p>
                     ) : null}
                   </div>
                 </ScrollArea>
