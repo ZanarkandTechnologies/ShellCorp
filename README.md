@@ -7,7 +7,9 @@ Gamified control center UI for OpenClaw multi-agent operations.
 Read in this order:
 
 1. `docs/getting-started.md`
-2. `docs/features-overview.md`
+2. `docs/progress.md`
+3. `docs/openclaw-adapter-contracts.md` (UI adapter contract reference)
+4. `docs/prd.md`
 
 ## Multi-Agent Heartbeat Proof Loop
 
@@ -45,9 +47,13 @@ Without this, agents only get messaging tools and cannot run CLI commands.
 From repo root:
 
 ```bash
+npm install
 npm link
 shellcorp --version
 ```
+
+Note: the current global `shellcorp` wrapper executes the repo-local CLI via `npm run shell`.
+If the repo dependencies are missing, it will print an actionable error telling you to run `npm install`.
 
 ### 4) Run one-command heartbeat smoke test
 

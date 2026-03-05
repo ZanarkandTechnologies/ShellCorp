@@ -101,7 +101,7 @@ Wake -> Read board state -> Decide action:
 
   ALWAYS:
     -> Log activity via `team bot log`
-    -> Report status via status-self-reporter
+    -> Report live state via `team status report`
 ```
 
 ### Executor Agent Heartbeat Loop
@@ -136,7 +136,7 @@ Wake -> Get next task from board -> Route by task type:
     -> Report findings to PM via activity log
 
   ALWAYS:
-    -> Report status transitions via status-self-reporter
+    -> Report status transitions via `team status report`
     -> Move task through board states (in_progress -> done)
 ```
 
@@ -157,7 +157,7 @@ Wake -> Get next task from board -> Route by task type:
 ```bash
 # Agent uses OpenClaw browser/computer-use to browse Amazon
 # Then creates tasks via ShellCorp CLI
-npm run shell -- team board task add \
+shellcorp team board task add \
   --team-id {teamId} \
   --title "Create video: {productName}" \
   --priority high \
@@ -193,7 +193,7 @@ infsh login
 2. Generate script: hook (3s) -> value demo (15s) -> CTA with affiliate link (5s)
 3. Choose model based on brief (avatar for UGC, veo for B-roll, remotion for data-driven)
 4. Run `infsh app run ...` and save output to workspace
-5. Log cost: `npm run shell -- team funds spend --team-id {id} --amount {cents} --source inference_sh --note "{model}"`
+5. Log cost: `shellcorp team funds spend --team-id {id} --amount {cents} --source inference_sh --note "{model}"`
 
 ### 3. TikTok Poster (`skills/distribute/tiktok-poster`)
 
@@ -209,7 +209,7 @@ infsh login
 
 **Post-publish:**
 - Capture post URL
-- Record via `team bot log --team-id {id} --agent-id {agentId} --label "distributed" --detail "Posted to TikTok: {url}"`
+- Record via `shellcorp team bot log --team-id {id} --agent-id {agentId} --activity-type distributing --label "distributed" --detail "Posted to TikTok: {url}"`
 
 ### 4. Instagram Poster (`skills/distribute/instagram-poster`)
 
@@ -239,13 +239,13 @@ infsh login
 **Post-measurement:**
 ```bash
 # Write metric event
-npm run shell -- team business metric-add \
+shellcorp team business metric-add \
   --team-id {id} \
   --source amazon_associates \
   --metrics '{"clicks":240,"ordered_items":3,"revenue_cents":810}'
 
 # Write revenue to ledger if commission realized
-npm run shell -- team funds deposit \
+shellcorp team funds deposit \
   --team-id {id} \
   --amount {commissionCents} \
   --source amazon_associates \

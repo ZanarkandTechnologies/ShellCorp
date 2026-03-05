@@ -94,6 +94,13 @@ Business kanban/task execution state now uses Convex as canonical storage for te
 
 CLI and UI surfaces read/write these Convex tables directly for realtime visibility. Sidecar `company.json.tasks` is no longer canonical for business team board execution flow.
 
+Status visibility uses a companion explicit self-report path:
+
+- `shellcorp team status report` writes canonical live state (`planning`, `executing`, `blocked`, `done`) for operator bubbles/chips.
+- `shellcorp team bot log` writes timeline breadcrumbs for activity auditing.
+
+Both should be emitted in heartbeat turns: one for current state, one for event history.
+
 ### 9) Business Flow Composer + Dedicated Ledger Tab
 
 Business operations and finance are now intentionally separated in Team Panel:
@@ -130,7 +137,7 @@ Each project now supports:
 ### Team create with business mode
 
 ```bash
-npm run shell -- team create \
+shellcorp team create \
   --name "Affiliate Team" \
   --description "Affiliate business" \
   --goal "Reach $100 MRR" \
@@ -140,7 +147,7 @@ npm run shell -- team create \
 ### Update business capability slot
 
 ```bash
-npm run shell -- team business set \
+shellcorp team business set \
   --team-id team-proj-affiliate-team \
   --slot measure \
   --skill-id stripe-revenue \
@@ -150,7 +157,7 @@ npm run shell -- team business set \
 ### Update team resources
 
 ```bash
-npm run shell -- team resources set \
+shellcorp team resources set \
   --team-id team-proj-affiliate-team \
   --type cash_budget \
   --remaining 4200 \
@@ -160,31 +167,46 @@ npm run shell -- team resources set \
 ### Seed demo business data
 
 ```bash
-npm run shell -- team business seed-demo --team-id team-proj-affiliate-team
+shellcorp team business seed-demo --team-id team-proj-affiliate-team
 ```
 
 ### Team funds CLI
 
 ```bash
 # read current team account balance
-npm run shell -- team funds balance --team-id team-proj-affiliate-team
+shellcorp team funds balance --team-id team-proj-affiliate-team
 
 # add money (amount in cents)
-npm run shell -- team funds deposit \
+shellcorp team funds deposit \
   --team-id team-proj-affiliate-team \
   --amount 50000 \
   --source seed_capital \
   --note "initial funding"
 
 # record spend (amount in cents)
-npm run shell -- team funds spend \
+shellcorp team funds spend \
   --team-id team-proj-affiliate-team \
   --amount 1200 \
   --source openai_api \
   --note "content batch run"
 
 # view recent account events
-npm run shell -- team funds ledger --team-id team-proj-affiliate-team --limit 10
+shellcorp team funds ledger --team-id team-proj-affiliate-team --limit 10
+
+# status + timeline reporting during heartbeat turns
+shellcorp team status report \
+  --team-id team-proj-affiliate-team \
+  --agent-id affiliate-pm \
+  --state planning \
+  --status-text "Reviewing board and resource constraints" \
+  --step-key hb-affiliate-pm-001
+
+shellcorp team bot log \
+  --team-id team-proj-affiliate-team \
+  --agent-id affiliate-pm \
+  --activity-type status \
+  --label heartbeat_decision \
+  --detail "Prioritize low-cost distribution tasks"
 ```
 
 ## UI Surfaces Added
