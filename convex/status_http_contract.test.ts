@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseIngestPayload, parseStatusReportPayload } from "./status-http-contract";
+import { parseIngestPayload, parseStatusReportPayload } from "./status_http_contract";
 
 describe("status-http-contract", () => {
   it("parses valid ingest payload", () => {
@@ -52,3 +52,4 @@ describe("status-http-contract", () => {
     ).toBeNull();
   });
 });
+

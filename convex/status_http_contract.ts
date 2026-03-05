@@ -74,3 +74,4 @@ export function parseStatusReportPayload(body: unknown): ParsedStatusReportPaylo
     occurredAt: typeof row.occurredAt === "number" ? row.occurredAt : undefined,
   };
 }
+

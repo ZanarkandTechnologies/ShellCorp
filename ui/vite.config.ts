@@ -47,6 +47,27 @@ function writeJson(res: { setHeader: (k: string, v: string) => void; end: (body:
   res.end(JSON.stringify(payload));
 }
 
+function requestHeader(req: unknown, name: string): string {
+  const headers = (req as { headers?: Record<string, string | string[] | undefined> }).headers ?? {};
+  const raw = headers[name.toLowerCase()];
+  if (Array.isArray(raw)) return raw[0] ?? "";
+  return typeof raw === "string" ? raw : "";
+}
+
+function hasBridgeWriteAccess(req: unknown): boolean {
+  const expectedToken = process.env.SHELLCORP_STATE_BRIDGE_TOKEN?.trim();
+  if (expectedToken) {
+    const providedToken = requestHeader(req, "x-shellcorp-state-bridge-token").trim();
+    if (!providedToken || providedToken !== expectedToken) return false;
+  }
+  const role = requestHeader(req, "x-shellcorp-actor-role").trim().toLowerCase() || "operator";
+  const allowed = requestHeader(req, "x-shellcorp-allowed-permissions").trim();
+  if (!allowed) return role === "operator";
+  if (allowed === "*") return true;
+  const permissions = new Set(allowed.split(",").map((entry) => entry.trim()).filter(Boolean));
+  return permissions.has("state.write");
+}
+
 async function readBody(req: { on: (name: string, cb: (chunk?: Buffer) => void) => void }): Promise<unknown> {
   const chunks: Buffer[] = [];
   await new Promise<void>((resolve, reject) => {
@@ -1092,6 +1113,10 @@ function shellcorpStateBridge() {
         }
 
         if (method === "POST" && pathname === "/openclaw/office-objects") {
+          if (!hasBridgeWriteAccess(req)) {
+            writeJson(res, 403, { ok: false, error: "forbidden" });
+            return;
+          }
           const body = (await readBody(req)) as JsonObject;
           const input = Array.isArray(body.objects) ? body.objects : [];
           const objects = normalizeOfficeObjects(input);
@@ -1102,6 +1127,10 @@ function shellcorpStateBridge() {
         }
 
         if (method === "POST" && pathname === "/openclaw/company-model") {
+          if (!hasBridgeWriteAccess(req)) {
+            writeJson(res, 403, { ok: false, error: "forbidden" });
+            return;
+          }
           const body = (await readBody(req)) as JsonObject;
           const company = (body.company as JsonObject | undefined) ?? {};
           const tasks = Array.isArray(company.tasks) ? normalizeFederatedTasks(company.tasks) : [];
@@ -1118,6 +1147,10 @@ function shellcorpStateBridge() {
         }
 
         if (method === "POST" && pathname === "/openclaw/team/create") {
+          if (!hasBridgeWriteAccess(req)) {
+            writeJson(res, 403, { ok: false, error: "forbidden" });
+            return;
+          }
           const body = (await readBody(req)) as JsonObject;
           const name = typeof body.name === "string" ? body.name.trim() : "";
           const description = typeof body.description === "string" ? body.description.trim() : "";
@@ -1357,6 +1390,10 @@ function shellcorpStateBridge() {
         }
 
         if (method === "POST" && pathname === "/openclaw/pending-approvals/resolve") {
+          if (!hasBridgeWriteAccess(req)) {
+            writeJson(res, 403, { ok: false, error: "forbidden" });
+            return;
+          }
           const body = (await readBody(req)) as JsonObject;
           const approvalId = String(body.id ?? "").trim();
           const decision = String(body.decision ?? "").trim();

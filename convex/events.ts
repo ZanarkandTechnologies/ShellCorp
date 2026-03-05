@@ -6,7 +6,7 @@ import {
   reduceStatus,
   type AgentEventType,
   type AgentState,
-} from "./status-contract";
+} from "./status_contract";
 
 function initialSnapshot(): {
   state: AgentState;

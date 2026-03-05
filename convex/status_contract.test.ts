@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coerceAgentEventType, coerceAgentState, reduceStatus } from "./status-contract";
+import { coerceAgentEventType, coerceAgentState, reduceStatus } from "./status_contract";
 
 describe("status-contract", () => {
   it("accepts self-report states and falls back on unknown", () => {
@@ -54,3 +54,4 @@ describe("status-contract", () => {
     expect(finished.statusText).toContain("finished");
   });
 });
+
