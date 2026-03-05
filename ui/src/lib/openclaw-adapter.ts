@@ -64,6 +64,7 @@ import type {
   ResourceEventModel,
   CapabilitySlotModel,
   BusinessConfigModel,
+  TeamBusinessSkillSyncResult,
 } from "./openclaw-types";
 import { buildGatewayHeaders } from "./gateway-config";
 import type { GatewayWsClient } from "./gateway-ws-client";
@@ -2323,6 +2324,77 @@ export class OpenClawAdapter {
       };
     } catch {
       return { ok: false, error: "heartbeat_render_unavailable" };
+    }
+  }
+
+  async syncTeamBusinessSkillsToAgents(input: {
+    teamId: string;
+    mode?: "replace_minimum" | "append_only";
+    dryRun?: boolean;
+  }): Promise<TeamBusinessSkillSyncResult> {
+    const payload = {
+      teamId: input.teamId,
+      mode: input.mode ?? "replace_minimum",
+      dryRun: input.dryRun === true,
+    };
+    try {
+      const response = await fetch(`${this.stateUrl}/openclaw/team/business/equip-skills`, {
+        method: "POST",
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json()) as Json;
+      if (!response.ok || body.ok === false) {
+        return {
+          ok: false,
+          teamId: input.teamId,
+          projectId: "",
+          mode: payload.mode,
+          dryRun: payload.dryRun,
+          touchedAgents: [],
+          missingAgents: [],
+          preview: [],
+          error: typeof body.error === "string" ? body.error : `team_business_skill_sync_failed:${response.status}`,
+        };
+      }
+      return {
+        ok: true,
+        teamId: typeof body.teamId === "string" ? body.teamId : input.teamId,
+        projectId: typeof body.projectId === "string" ? body.projectId : "",
+        mode: body.mode === "append_only" ? "append_only" : "replace_minimum",
+        dryRun: body.dryRun === true,
+        touchedAgents: Array.isArray(body.touchedAgents) ? body.touchedAgents.filter((entry): entry is string => typeof entry === "string") : [],
+        missingAgents: Array.isArray(body.missingAgents) ? body.missingAgents.filter((entry): entry is string => typeof entry === "string") : [],
+        preview: Array.isArray(body.preview)
+          ? body.preview
+              .map((entry) => {
+                if (!entry || typeof entry !== "object") return null;
+                const row = entry as Json;
+                const agentId = typeof row.agentId === "string" ? row.agentId : "";
+                if (!agentId) return null;
+                return {
+                  agentId,
+                  role: row.role === "biz_executor" ? "biz_executor" : "biz_pm",
+                  mode: row.mode === "append_only" ? "append_only" : "replace_minimum",
+                  beforeSkills: Array.isArray(row.beforeSkills) ? row.beforeSkills.filter((item): item is string => typeof item === "string") : [],
+                  afterSkills: Array.isArray(row.afterSkills) ? row.afterSkills.filter((item): item is string => typeof item === "string") : [],
+                };
+              })
+              .filter((entry): entry is TeamBusinessSkillSyncResult["preview"][number] => entry !== null)
+          : [],
+      };
+    } catch {
+      return {
+        ok: false,
+        teamId: input.teamId,
+        projectId: "",
+        mode: payload.mode,
+        dryRun: payload.dryRun,
+        touchedAgents: [],
+        missingAgents: [],
+        preview: [],
+        error: "team_business_skill_sync_unavailable",
+      };
     }
   }
 

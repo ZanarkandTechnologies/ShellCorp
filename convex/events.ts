@@ -30,8 +30,11 @@ function normalizeTeamId(value?: string): string | undefined {
 async function applyEvent(params: {
   ctx: MutationCtx;
   teamId?: string;
+  projectId?: string;
   agentId: string;
   eventType: AgentEventType;
+  activityType?: string;
+  actorType?: string;
   label: string;
   detail?: string;
   state?: AgentState;
@@ -40,6 +43,7 @@ async function applyEvent(params: {
   stepKey?: string;
   sessionKey?: string;
   beatId?: string;
+  taskId?: string;
   occurredAt?: number;
 }): Promise<{ duplicate: boolean }> {
   // MEM-0132 decision: agent status/event logs carry teamId as first-class context.
@@ -57,11 +61,28 @@ async function applyEvent(params: {
   }
 
   const teamId = normalizeTeamId(params.teamId);
+  const projectId = params.projectId?.trim();
+  const activityType = params.activityType?.trim();
+  const actorType = params.actorType?.trim();
+  const taskId = params.taskId?.trim();
+
+  if (projectId && params.stepKey && params.stepKey.trim().length > 0) {
+    const existingProjectStep = await params.ctx.db
+      .query("agentEvents")
+      .withIndex("by_project_step_key", (q) => q.eq("projectId", projectId).eq("stepKey", params.stepKey))
+      .first();
+    if (existingProjectStep) {
+      return { duplicate: true };
+    }
+  }
 
   await params.ctx.db.insert("agentEvents", {
     teamId,
+    projectId,
     agentId: params.agentId,
     eventType: params.eventType,
+    activityType,
+    actorType,
     label: params.label,
     detail: params.detail,
     state: params.state,
@@ -70,6 +91,7 @@ async function applyEvent(params: {
     stepKey: params.stepKey,
     sessionKey: params.sessionKey,
     beatId: params.beatId,
+    taskId,
     occurredAt: eventTs,
   });
 
@@ -89,6 +111,7 @@ async function applyEvent(params: {
 
   const next = reduceStatus(base, {
     eventType: params.eventType,
+    activityType,
     label: params.label,
     detail: params.detail,
     beatId: params.beatId,
@@ -127,8 +150,11 @@ async function applyEvent(params: {
 export const ingestEvent = internalMutation({
   args: {
     teamId: v.optional(v.string()),
+    projectId: v.optional(v.string()),
     agentId: v.string(),
     eventType: v.string(),
+    activityType: v.optional(v.string()),
+    actorType: v.optional(v.string()),
     label: v.string(),
     detail: v.optional(v.string()),
     state: v.optional(v.string()),
@@ -137,6 +163,7 @@ export const ingestEvent = internalMutation({
     stepKey: v.optional(v.string()),
     sessionKey: v.optional(v.string()),
     beatId: v.optional(v.string()),
+    taskId: v.optional(v.string()),
     occurredAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -145,8 +172,11 @@ export const ingestEvent = internalMutation({
     await applyEvent({
       ctx,
       teamId: args.teamId,
+      projectId: args.projectId,
       agentId: args.agentId,
       eventType,
+      activityType: args.activityType,
+      actorType: args.actorType,
       label: args.label,
       detail: args.detail,
       state: coerceAgentState(args.state),
@@ -155,6 +185,7 @@ export const ingestEvent = internalMutation({
       stepKey: args.stepKey,
       sessionKey: args.sessionKey,
       beatId: args.beatId,
+      taskId: args.taskId,
       occurredAt: args.occurredAt,
     });
   },

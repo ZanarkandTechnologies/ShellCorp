@@ -90,14 +90,14 @@ Business kanban/task execution state now uses Convex as canonical storage for te
 
 - `teamBoardTasks` for current task state
 - `teamBoardEvents` for append-only lifecycle events
-- `teamActivityEvents` for agent activity timeline ("what agents are doing")
+- `agentEvents` (with `activityType` metadata) for both activity timeline and live status reduction
 
 CLI and UI surfaces read/write these Convex tables directly for realtime visibility. Sidecar `company.json.tasks` is no longer canonical for business team board execution flow.
 
 Status visibility uses a companion explicit self-report path:
 
-- `shellcorp team status report` writes canonical live state (`planning`, `executing`, `blocked`, `done`) for operator bubbles/chips.
-- `shellcorp team bot log` writes timeline breadcrumbs for activity auditing.
+- `shellcorp status` writes canonical live state and timeline breadcrumbs through one unified event path.
+- `shellcorp team status report` and `shellcorp team bot log` remain compatibility commands.
 
 Both should be emitted in heartbeat turns: one for current state, one for event history.
 

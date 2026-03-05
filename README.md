@@ -15,6 +15,50 @@ Read in this order:
 
 Use this to prove every agent can heartbeat and write status via CLI.
 
+## SC11 Demo In 5 Commands
+
+Use this flow to demo an affiliate team with equipped skills, seeded pipeline tasks, and visible activity:
+
+```bash
+# 1) Create Buffalos AI affiliate team
+npm run shell -- team create \
+  --name "Buffalos AI" \
+  --description "Affiliate marketing demo team" \
+  --goal "Run affiliate content loop" \
+  --business-type affiliate_marketing
+
+# 2) Set SC11 slot skills
+npm run shell -- team business set-all \
+  --team-id team-proj-buffalos-ai \
+  --business-type affiliate_marketing \
+  --measure-skill-id amazon-affiliate-metrics \
+  --execute-skill-id video-generator \
+  --distribute-skill-id tiktok-poster
+
+# 3) Preview equip sync
+npm run shell -- team business equip-skills \
+  --team-id team-proj-buffalos-ai \
+  --mode replace_minimum \
+  --dry-run \
+  --json
+
+# 4) Apply equip sync
+npm run shell -- team business equip-skills \
+  --team-id team-proj-buffalos-ai \
+  --mode replace_minimum \
+  --json
+
+# 5) Seed demo board/timeline/ledger narrative
+npm run shell -- team business seed-demo --team-id team-proj-buffalos-ai --json
+```
+
+Then open Team Panel for Buffalos AI:
+
+- `Business` tab shows slot config + Agent Skill Equip Matrix.
+- `Kanban` shows seeded affiliate pipeline tasks.
+- `Timeline`/`Communications` show seeded PM/executor activity breadcrumbs.
+- `Ledger` shows demo revenue/cost entries.
+
 ### 1) Verify OpenClaw + heartbeat wiring
 
 ```bash

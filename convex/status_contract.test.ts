@@ -12,6 +12,7 @@ describe("status-contract", () => {
 
   it("accepts self-report event types", () => {
     expect(coerceAgentEventType("status_report")).toBe("status_report");
+    expect(coerceAgentEventType("activity_log")).toBe("activity_log");
     expect(coerceAgentEventType("skill_start")).toBe("skill_start");
     expect(coerceAgentEventType("skill_end")).toBe("skill_end");
     expect(coerceAgentEventType("unknown")).toBeUndefined();
@@ -52,6 +53,38 @@ describe("status-contract", () => {
     });
     expect(finished.state).toBe("planning");
     expect(finished.statusText).toContain("finished");
+  });
+
+  it("maps activity_log transitions into live state", () => {
+    const planning = reduceStatus(
+      { state: "idle", statusText: "Idle", bubbles: [] },
+      {
+        eventType: "activity_log",
+        activityType: "planning",
+        label: "planning",
+        detail: "Planning next move",
+      },
+    );
+    expect(planning.state).toBe("planning");
+    expect(planning.statusText).toBe("Planning next move");
+
+    const blocked = reduceStatus(planning, {
+      eventType: "activity_log",
+      activityType: "blocked",
+      label: "blocked",
+      detail: "Waiting on credentials",
+    });
+    expect(blocked.state).toBe("blocked");
+    expect(blocked.bubbles[0]?.label).toBe("Error");
+
+    const finished = reduceStatus(blocked, {
+      eventType: "activity_log",
+      activityType: "summary",
+      label: "summary",
+      detail: "Turn complete",
+    });
+    expect(finished.state).toBe("done");
+    expect(finished.statusText).toBe("Turn complete");
   });
 });
 

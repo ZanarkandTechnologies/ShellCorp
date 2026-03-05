@@ -103,15 +103,13 @@ export function CommunicationsTab({
               ))}
               {filteredRows.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No activity yet. Agents should log updates with `shellcorp
-                  team bot log` during each heartbeat turn.
+                  No activity yet. Agents should publish updates with `shellcorp status` during each heartbeat turn.
                 </p>
               ) : null}
             </div>
           </ScrollArea>
           <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
-            Internal ops feed. Use `shellcorp team bot log` for structured
-            updates and timeline replay.
+            Internal ops feed. Use `shellcorp status` for structured updates and timeline replay.
           </div>
         </CardContent>
       </Card>

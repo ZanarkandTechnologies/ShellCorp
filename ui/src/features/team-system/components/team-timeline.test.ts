@@ -7,7 +7,7 @@ describe("team timeline helpers", () => {
       convexTimeline: [
         {
           _id: "row-1",
-          sourceType: "activity_event",
+          sourceType: "agent_event",
           occurredAt: 10,
           projectId: "proj-a",
           agentId: "agent-a",
@@ -37,7 +37,7 @@ describe("team timeline helpers", () => {
       projectId: "proj-b",
     });
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.sourceType).toBe("activity_event");
+    expect(rows[0]?.sourceType).toBe("agent_event");
     expect(rows[0]?.projectId).toBe("proj-b");
     expect(rows[0]?.taskId).toBe("task-1");
   });

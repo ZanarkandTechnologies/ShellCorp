@@ -100,8 +100,7 @@ Wake -> Read board state -> Decide action:
     -> Prioritize measurement and analysis
 
   ALWAYS:
-    -> Log activity via `team bot log`
-    -> Report live state via `team status report`
+    -> Publish activity + live state via `shellcorp status`
 ```
 
 ### Executor Agent Heartbeat Loop
@@ -136,7 +135,7 @@ Wake -> Get next task from board -> Route by task type:
     -> Report findings to PM via activity log
 
   ALWAYS:
-    -> Report status transitions via `team status report`
+    -> Report status transitions via `shellcorp status`
     -> Move task through board states (in_progress -> done)
 ```
 
@@ -209,7 +208,7 @@ infsh login
 
 **Post-publish:**
 - Capture post URL
-- Record via `shellcorp team bot log --team-id {id} --agent-id {agentId} --activity-type distributing --label "distributed" --detail "Posted to TikTok: {url}"`
+- Record via `shellcorp status --state distributing "Posted to TikTok: {url}"`
 
 ### 4. Instagram Poster (`skills/distribute/instagram-poster`)
 

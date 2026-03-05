@@ -167,14 +167,9 @@ export const getTeamActivityFeed = query({
     const enforceAllowedAgents = allowedAgentIds.size > 0;
     const overfetch = Math.min(Math.max(limit * 4, 80), 1200);
 
-    const [agentEventRows, activityRows, boardRows] = await Promise.all([
+    const [agentEventRows, boardRows] = await Promise.all([
       ctx.db
         .query("agentEvents")
-        .withIndex("by_team_occurred_at", (q) => (beforeTs ? q.eq("teamId", teamId).lt("occurredAt", beforeTs) : q.eq("teamId", teamId)))
-        .order("desc")
-        .take(overfetch),
-      ctx.db
-        .query("teamActivityEvents")
         .withIndex("by_team_occurred_at", (q) => (beforeTs ? q.eq("teamId", teamId).lt("occurredAt", beforeTs) : q.eq("teamId", teamId)))
         .order("desc")
         .take(overfetch),
@@ -194,15 +189,6 @@ export const getTeamActivityFeed = query({
         sessionKey: row.sessionKey,
         agentId: row.agentId,
         eventType: row.eventType,
-        label: row.label,
-        detail: row.detail,
-      })),
-      ...activityRows.map((row) => ({
-        id: String(row._id),
-        sourceType: "activity_event" as const,
-        occurredAt: row.occurredAt,
-        beatId: row.beatId,
-        agentId: row.agentId,
         activityType: row.activityType,
         label: row.label,
         detail: row.detail,
@@ -226,7 +212,13 @@ export const getTeamActivityFeed = query({
         enforceAllowedAgents ? (event.agentId ? allowedAgentIds.has(event.agentId) : false) : true,
       )
       .filter((event) => (agentFilter ? event.agentId === agentFilter : true))
-      .filter((event) => (sourceFilter && sourceFilter !== "all" ? event.sourceType === sourceFilter : true))
+      .filter((event) => {
+        if (!sourceFilter || sourceFilter === "all") return true;
+        if (sourceFilter === "activity_event") {
+          return event.sourceType === "agent_event" && typeof event.activityType === "string" && event.activityType.trim().length > 0;
+        }
+        return event.sourceType === sourceFilter;
+      })
       .sort((left, right) => right.occurredAt - left.occurredAt);
 
     const events = merged.slice(0, limit);
@@ -261,7 +253,7 @@ export const getRecentAgentEvents = query({
 
 type ActivityFeedEvent = {
   id: string;
-  sourceType: "agent_event" | "activity_event" | "board_event";
+  sourceType: "agent_event" | "board_event";
   occurredAt: number;
   beatId?: string;
   sessionKey?: string;
@@ -310,16 +302,6 @@ export const getAgentActivityFeed = query({
           await ctx.db.query("agentEvents").withIndex("by_agent", (q) => q.eq("agentId", agentId)).order("desc").take(overfetch)
         ).filter((row) => (beforeTs ? row.occurredAt < beforeTs : true));
 
-    const activityRows = teamId
-      ? await ctx.db
-          .query("teamActivityEvents")
-          .withIndex("by_team_agent_occurred_at", (q) =>
-            beforeTs ? q.eq("teamId", teamId).eq("agentId", agentId).lt("occurredAt", beforeTs) : q.eq("teamId", teamId).eq("agentId", agentId),
-          )
-          .order("desc")
-          .take(overfetch)
-      : [];
-
     const boardRows = teamId
       ? (
           await ctx.db
@@ -339,15 +321,6 @@ export const getAgentActivityFeed = query({
         sessionKey: row.sessionKey,
         agentId: row.agentId,
         eventType: row.eventType,
-        label: row.label,
-        detail: row.detail,
-      })),
-      ...activityRows.map((row) => ({
-        id: String(row._id),
-        sourceType: "activity_event" as const,
-        occurredAt: row.occurredAt,
-        beatId: row.beatId,
-        agentId: row.agentId,
         activityType: row.activityType,
         label: row.label,
         detail: row.detail,

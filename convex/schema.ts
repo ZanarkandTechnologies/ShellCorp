@@ -4,8 +4,11 @@ import { v } from "convex/values";
 export default defineSchema({
   agentEvents: defineTable({
     teamId: v.optional(v.string()),
+    projectId: v.optional(v.string()),
     agentId: v.string(),
     eventType: v.string(),
+    activityType: v.optional(v.string()),
+    actorType: v.optional(v.string()),
     label: v.string(),
     detail: v.optional(v.string()),
     state: v.optional(v.string()),
@@ -14,11 +17,15 @@ export default defineSchema({
     stepKey: v.optional(v.string()),
     sessionKey: v.optional(v.string()),
     beatId: v.optional(v.string()),
+    taskId: v.optional(v.string()),
     occurredAt: v.number(),
   })
     .index("by_agent", ["agentId"])
     .index("by_team_occurred_at", ["teamId", "occurredAt"])
     .index("by_team_agent_occurred_at", ["teamId", "agentId", "occurredAt"])
+    .index("by_project_occurred_at", ["projectId", "occurredAt"])
+    .index("by_project_agent_occurred_at", ["projectId", "agentId", "occurredAt"])
+    .index("by_project_step_key", ["projectId", "stepKey"])
     .index("by_agent_step_key", ["agentId", "stepKey"])
     .index("by_occurred_at", ["occurredAt"]),
 
@@ -87,24 +94,4 @@ export default defineSchema({
     .index("by_project_task_occurred_at", ["projectId", "taskId", "occurredAt"])
     .index("by_project_step_key", ["projectId", "stepKey"]),
 
-  teamActivityEvents: defineTable({
-    teamId: v.optional(v.string()),
-    projectId: v.string(),
-    agentId: v.string(),
-    activityType: v.string(),
-    label: v.string(),
-    detail: v.optional(v.string()),
-    actorType: v.string(),
-    taskId: v.optional(v.string()),
-    skillId: v.optional(v.string()),
-    state: v.optional(v.string()),
-    beatId: v.optional(v.string()),
-    occurredAt: v.number(),
-    stepKey: v.optional(v.string()),
-  })
-    .index("by_team_occurred_at", ["teamId", "occurredAt"])
-    .index("by_team_agent_occurred_at", ["teamId", "agentId", "occurredAt"])
-    .index("by_project_occurred_at", ["projectId", "occurredAt"])
-    .index("by_project_agent_occurred_at", ["projectId", "agentId", "occurredAt"])
-    .index("by_project_step_key", ["projectId", "stepKey"]),
 });

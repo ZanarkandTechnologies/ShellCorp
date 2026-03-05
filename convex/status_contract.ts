@@ -14,6 +14,7 @@
  *
  * MEMORY REFERENCES:
  * - MEM-0114
+ * - MEM-0140
  */
 
 export type AgentState =
@@ -33,6 +34,7 @@ export type AgentEventType =
   | "heartbeat_end"
   | "heartbeat_no_work"
   | "heartbeat_error"
+  | "activity_log"
   | "tool_call"
   | "skill_call"
   | "status_report"
@@ -59,6 +61,7 @@ export type StatusEventInput = {
   beatId?: string;
   state?: AgentState;
   skillId?: string;
+  activityType?: string;
 };
 
 const STATUS_WEIGHT = 100;
@@ -118,6 +121,28 @@ export function reduceStatus(previous: AgentStatusSnapshot, event: StatusEventIn
     statusText = event.detail ? `Heartbeat error: ${event.detail}` : "Heartbeat error";
     currentBeatId = undefined;
     bubbles = [];
+  } else if (event.eventType === "activity_log") {
+    const activityType = event.activityType?.trim();
+    if (activityType === "planning") {
+      state = "planning";
+      statusText = event.detail?.trim() || event.label.trim() || "Planning";
+      bubbles = withActivityBubble(bubbles, "Planning");
+    } else if (activityType === "executing") {
+      state = "executing";
+      statusText = event.detail?.trim() || event.label.trim() || "Executing";
+      bubbles = withActivityBubble(bubbles, "Executing");
+    } else if (activityType === "blocked") {
+      state = "blocked";
+      statusText = event.detail?.trim() || event.label.trim() || "Blocked";
+      bubbles = withActivityBubble(bubbles, "Blocked");
+    } else if (activityType === "summary") {
+      state = "done";
+      statusText = event.detail?.trim() || event.label.trim() || "Summary";
+      bubbles = withActivityBubble(bubbles, event.label || "Summary");
+    } else {
+      statusText = event.detail?.trim() || event.label.trim() || statusText;
+      bubbles = withActivityBubble(bubbles, event.label || "Status");
+    }
   } else if (event.eventType === "status_report") {
     state = event.state ?? state;
     statusText = event.detail?.trim() || event.label.trim() || statusText;
@@ -171,6 +196,7 @@ export function coerceAgentEventType(value: string | undefined): AgentEventType 
     value === "heartbeat_end" ||
     value === "heartbeat_no_work" ||
     value === "heartbeat_error" ||
+    value === "activity_log" ||
     value === "tool_call" ||
     value === "skill_call" ||
     value === "status_report" ||

@@ -42,6 +42,7 @@ type TeamRole = "builder" | "growth_marketer" | "pm";
 type BusinessTeamRole = "biz_pm" | "biz_executor";
 type BusinessType = "affiliate_marketing" | "content_creator" | "saas" | "custom";
 type CapabilityCategory = "measure" | "execute" | "distribute";
+type BusinessEquipMode = "replace_minimum" | "append_only";
 type ResourceKind = ResourceType;
 type ResourceEventKind = "refresh" | "consumption" | "adjustment";
 type BoardTaskStatus = "todo" | "in_progress" | "blocked" | "done";
@@ -216,13 +217,13 @@ function layeredHeartbeatTemplate(roleName: string, projectName: string): string
     "- Emit `executing` when work starts and `blocked` whenever blocked.",
     "- If status report fails, retry once; if still failing, output `STATUS: MOCK_STATUS(report_failed)`.",
     "- Preflight checks:",
-    "  - `export SHELLCORP_CMD=\"/home/kenjipcx/Zanarkand/ShellCorp/scripts/shellcorp-heartbeat.sh\"`",
-    "  - `sh -lc \"$SHELLCORP_CMD --help\"`",
+    "  - `command -v shellcorp`",
+    "  - `export SHELLCORP_AGENT_ID=\"<agent-id>\"`",
+    "  - `export SHELLCORP_TEAM_ID=\"<team-id>\"`",
     "  - `test -n \"$SHELLCORP_CONVEX_SITE_URL\" || test -n \"$CONVEX_SITE_URL\"`",
     "- Preferred command pattern:",
-    "  sh -lc \"$SHELLCORP_CMD team status report --team-id <team-id> --agent-id <agent-id> --state planning --status-text \\\"<your decision>\\\" --step-key \\\"hb-<agent-id>-<unix-ms>\\\"\"",
-    "- Also write timeline context:",
-    "  sh -lc \"$SHELLCORP_CMD team bot log --team-id <team-id> --agent-id <agent-id> --activity-type status --label heartbeat_decision --detail \\\"<your decision>\\\"\"",
+    "  shellcorp status --state planning \"<your decision>\"",
+    "- `status` writes both live status and timeline context in one call.",
     "- If tools are unavailable, output a clear MOCK_STATUS line instead.",
     "",
     "Output format:",
@@ -370,6 +371,27 @@ function resolveProjectOrFail(company: CompanyModel, teamId: string) {
   return { projectId, project };
 }
 
+function resolveTeamIdForAgent(company: CompanyModel, agentId: string): string {
+  const agent = company.agents.find((entry) => entry.agentId === agentId);
+  if (!agent) fail(`agent_not_found:${agentId}`);
+  const projectId = agent.projectId?.trim();
+  if (!projectId) fail(`agent_missing_project:${agentId}`);
+  const project = company.projects.find((entry) => entry.id === projectId);
+  if (!project) fail(`agent_project_not_found:${agentId}:${projectId}`);
+  return teamIdFromProjectId(projectId);
+}
+
+function resolveStatusActivityType(rawState: string): BoardActivityType {
+  if (rawState === "planning" || rawState === "research" || rawState === "executing" || rawState === "distributing" || rawState === "blocked" || rawState === "handoff" || rawState === "summary" || rawState === "status") {
+    return rawState;
+  }
+  if (rawState === "done" || rawState === "ok" || rawState === "no_work") return "summary";
+  if (rawState === "running") return "executing";
+  if (rawState === "error") return "blocked";
+  if (rawState === "idle") return "status";
+  fail(`invalid_status_state:${rawState}`);
+}
+
 function upsertTeamCluster(
   officeObjects: OfficeObjectModel[],
   input: { teamId: string; name: string; description: string },
@@ -504,6 +526,42 @@ function defaultBusinessConfig(type: BusinessType): BusinessConfigModel {
       },
     },
   };
+}
+
+function parseSkillList(value: string): string[] {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function uniqueSkills(skills: string[]): string[] {
+  return [...new Set(skills.map((entry) => entry.trim()).filter(Boolean))];
+}
+
+function buildTeamBusinessSkillTargets(project: CompanyModel["projects"][number]): {
+  pmSkills: string[];
+  executorSkills: string[];
+} {
+  const slotSkills = project.businessConfig
+    ? uniqueSkills([
+        ...parseSkillList(project.businessConfig.slots.measure.skillId),
+        ...parseSkillList(project.businessConfig.slots.execute.skillId),
+        ...parseSkillList(project.businessConfig.slots.distribute.skillId),
+      ])
+    : [];
+  const trackerSkills = uniqueSkills((project.resources ?? []).map((resource) => resource.trackerSkillId));
+  const sharedCore = ["shellcorp-team-cli", "status-self-reporter"];
+  const pmCore = ["shellcorp-kanban-ops", "ledger-manager", "experiment-runner"];
+  return {
+    pmSkills: uniqueSkills([...sharedCore, ...pmCore, ...slotSkills, ...trackerSkills]),
+    executorSkills: uniqueSkills([...sharedCore, ...slotSkills]),
+  };
+}
+
+function applyAgentSkillsByMode(currentSkills: string[], targetSkills: string[], mode: BusinessEquipMode): string[] {
+  if (mode === "append_only") return uniqueSkills([...currentSkills, ...targetSkills]);
+  return uniqueSkills(targetSkills);
 }
 
 function defaultProjectResources(projectId: string): ProjectResourceModel[] {
@@ -1292,6 +1350,74 @@ async function readBoardSnapshot(projectId: string): Promise<{
 
 export function registerTeamCommands(program: Command): void {
   const store = createSidecarStore();
+
+  program
+    .command("status")
+    .description("Report agent status with auto-resolved team/agent context")
+    .argument("<statusText>", "Operator-readable status text")
+    .option("--state <state>", "planning|research|executing|distributing|blocked|handoff|summary|status (legacy values supported)", "status")
+    .option("--agent-id <agentId>", "Optional agent id override")
+    .option("--team-id <teamId>", "Optional team id override (team-*)")
+    .option("--label <label>", "Optional activity label override")
+    .option("--task-id <taskId>", "Optional task id context")
+    .option("--skill-id <skillId>", "Optional skill id context")
+    .option("--step-key <stepKey>", "Optional idempotency key")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
+    .option("--json", "Output JSON", false)
+    .action(
+      async (
+        statusText: string,
+        opts: {
+          state: string;
+          agentId?: string;
+          teamId?: string;
+          label?: string;
+          taskId?: string;
+          skillId?: string;
+          stepKey?: string;
+          beatId?: string;
+          json?: boolean;
+        },
+      ) => {
+        ensureCommandPermission("team.activity.write");
+        const company = await store.readCompanyModel();
+        const detail = statusText.trim();
+        if (!detail) fail("invalid_status_text");
+
+        const agentId =
+          opts.agentId?.trim() || process.env.SHELLCORP_AGENT_ID?.trim() || process.env.SHELLCORP_ACTOR_AGENT_ID?.trim();
+        if (!agentId) fail("missing_agent_id:use_--agent-id_or_SHELLCORP_AGENT_ID");
+
+        const teamId = opts.teamId?.trim() || process.env.SHELLCORP_TEAM_ID?.trim() || resolveTeamIdForAgent(company, agentId);
+        const { projectId } = resolveProjectOrFail(company, teamId);
+        const activityType = resolveStatusActivityType(opts.state.trim());
+        const label =
+          opts.label?.trim() ||
+          (activityType === "planning" || activityType === "executing" || activityType === "blocked" ? activityType : "status");
+        const stepKey = opts.stepKey?.trim() || `status-${agentId}-${Date.now()}`;
+
+        const result = await postBoardCommand({
+          teamId,
+          projectId,
+          command: "activity_log",
+          actorType: "agent",
+          actorAgentId: agentId,
+          activityType,
+          label,
+          detail,
+          taskId: opts.taskId?.trim() || undefined,
+          skillId: opts.skillId?.trim() || undefined,
+          stepKey,
+          beatId: optionalBeatId(opts.beatId),
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId, projectId, agentId, activityType, label, statusText: detail, stepKey, result },
+          `Reported status for ${agentId} (${activityType})`,
+        );
+      },
+    );
+
   const team = program.command("team").description("Manage team entities mapped to company projects");
 
   team
@@ -1825,6 +1951,101 @@ export function registerTeamCommands(program: Command): void {
         );
       },
     );
+  business
+    .command("equip-skills")
+    .requiredOption("--team-id <teamId>", "Team id (team-*)")
+    .option("--mode <mode>", "replace_minimum|append_only", "replace_minimum")
+    .option("--dry-run", "Preview without writing openclaw.json", false)
+    .option("--json", "Output JSON", false)
+    .action(
+      async (opts: {
+        teamId: string;
+        mode: string;
+        dryRun?: boolean;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.business.write");
+        const mode = opts.mode.trim() as BusinessEquipMode;
+        if (mode !== "replace_minimum" && mode !== "append_only") {
+          fail(`invalid_mode:${opts.mode}`);
+        }
+        const company = await store.readCompanyModel();
+        const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+        const pmAgent = company.agents.find((entry) => entry.projectId === projectId && entry.role === "biz_pm");
+        const executorAgent = company.agents.find((entry) => entry.projectId === projectId && entry.role === "biz_executor");
+        if (!pmAgent || !executorAgent) {
+          fail(`business_agents_missing:${opts.teamId}`);
+        }
+        const targets = buildTeamBusinessSkillTargets(project);
+        const targetByAgentId = new Map<string, string[]>([
+          [pmAgent.agentId, targets.pmSkills],
+          [executorAgent.agentId, targets.executorSkills],
+        ]);
+
+        const openclawConfig = await store.readOpenclawConfig();
+        const agentsNode = asRecord(openclawConfig.agents);
+        const currentList = Array.isArray(agentsNode.list) ? [...agentsNode.list] : [];
+        const touchedAgents: string[] = [];
+        const missingAgents: string[] = [];
+        const preview: Array<{
+          agentId: string;
+          role: BusinessTeamRole;
+          mode: BusinessEquipMode;
+          beforeSkills: string[];
+          afterSkills: string[];
+        }> = [];
+        const nextList = currentList.map((entry) => {
+          const row = asRecord(entry);
+          const id = typeof row.id === "string" ? row.id.trim() : "";
+          if (!id || !targetByAgentId.has(id)) return row;
+          const targetSkills = targetByAgentId.get(id) ?? [];
+          const existingSkills = Array.isArray(row.skills)
+            ? row.skills.filter((item): item is string => typeof item === "string")
+            : [];
+          const nextSkills = applyAgentSkillsByMode(existingSkills, targetSkills, mode);
+          touchedAgents.push(id);
+          preview.push({
+            agentId: id,
+            role: id === pmAgent.agentId ? "biz_pm" : "biz_executor",
+            mode,
+            beforeSkills: existingSkills,
+            afterSkills: nextSkills,
+          });
+          return {
+            ...row,
+            skills: nextSkills,
+          };
+        });
+        for (const agentId of [pmAgent.agentId, executorAgent.agentId]) {
+          if (!touchedAgents.includes(agentId)) missingAgents.push(agentId);
+        }
+        if (!opts.dryRun) {
+          const nextConfig = {
+            ...openclawConfig,
+            agents: {
+              ...agentsNode,
+              list: nextList,
+            },
+          } as Record<string, unknown>;
+          await store.writeOpenclawConfig(nextConfig);
+        }
+        const payload = {
+          ok: true,
+          teamId: opts.teamId,
+          projectId,
+          mode,
+          dryRun: Boolean(opts.dryRun),
+          touchedAgents,
+          missingAgents,
+          preview,
+        };
+        formatOutput(
+          opts.json ? "json" : "text",
+          payload,
+          `Equipped skills for ${opts.teamId}: touched=${touchedAgents.length} missing=${missingAgents.length} dryRun=${opts.dryRun ? "yes" : "no"}`,
+        );
+      },
+    );
 
   const resources = team.command("resources").description("Manage advisory resources for a team");
   resources
@@ -2315,6 +2536,15 @@ export function registerTeamCommands(program: Command): void {
       const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
       const now = Date.now();
       const iso = (value: number): string => new Date(value).toISOString();
+      const teamAgents = company.agents.filter((entry) => entry.projectId === projectId);
+      const pmAgentId =
+        teamAgents.find((entry) => entry.role === "biz_pm")?.agentId ??
+        `${toSlug(project.name) || "team"}-pm`;
+      const executorAgentId =
+        teamAgents.find((entry) => entry.role === "biz_executor")?.agentId ??
+        `${toSlug(project.name) || "team"}-executor`;
+      const artefactVideoPath = `workspace-${executorAgentId}/artifacts/affiliate/veo-demo-v1.mp4`;
+      const artefactCaptionPath = `workspace-${executorAgentId}/artifacts/affiliate/caption-demo-v1.txt`;
       const nextProject = {
         ...project,
         ledger: [
@@ -2361,7 +2591,14 @@ export function registerTeamCommands(program: Command): void {
             projectId,
             timestamp: iso(now - 15 * 60 * 1000),
             source: "amazon_associates",
-            metrics: { clicks: 240, conversions: 3, revenue_cents: 1234 },
+            metrics: {
+              clicks: 240,
+              ordered_items: 3,
+              shipped_items: 2,
+              conversion_rate: 1.25,
+              revenue_cents: 1234,
+              commission_cents: 876,
+            },
           },
         ],
       };
@@ -2369,10 +2606,107 @@ export function registerTeamCommands(program: Command): void {
         ...company,
         projects: company.projects.map((entry) => (entry.id === projectId ? nextProject : entry)),
       });
+      const seededBoardTasks = [
+        {
+          taskId: `seed-${projectId}-research`,
+          title: "Research trending AI affiliate products",
+          status: "done" as BoardTaskStatus,
+          priority: "high" as BoardTaskPriority,
+          ownerAgentId: executorAgentId,
+          detail: "Seeded demo task for SC11 pipeline: research complete with product shortlist.",
+        },
+        {
+          taskId: `seed-${projectId}-create-content`,
+          title: "Create affiliate short video (veo demo)",
+          status: "in_progress" as BoardTaskStatus,
+          priority: "high" as BoardTaskPriority,
+          ownerAgentId: executorAgentId,
+          detail: `Artifact path: ${artefactVideoPath}`,
+        },
+        {
+          taskId: `seed-${projectId}-distribute`,
+          title: "Distribute TikTok + Instagram post",
+          status: "todo" as BoardTaskStatus,
+          priority: "medium" as BoardTaskPriority,
+          ownerAgentId: executorAgentId,
+          detail: `Caption artifact: ${artefactCaptionPath}`,
+        },
+        {
+          taskId: `seed-${projectId}-measure`,
+          title: "Measure Amazon Associates results",
+          status: "todo" as BoardTaskStatus,
+          priority: "medium" as BoardTaskPriority,
+          ownerAgentId: pmAgentId,
+          detail: "Record clicks, ordered_items, shipped_items, conversion_rate, revenue_cents, commission_cents.",
+        },
+      ];
+      let boardSeeded = false;
+      for (const task of seededBoardTasks) {
+        try {
+          await postBoardCommand({
+            projectId,
+            command: "task_add",
+            taskId: task.taskId,
+            title: task.title,
+            ownerAgentId: task.ownerAgentId,
+            priority: task.priority,
+            status: task.status,
+            actorType: "operator",
+            actorAgentId: "seed-demo",
+            detail: task.detail,
+          });
+          boardSeeded = true;
+        } catch {
+          // Optional in seed path: still keep sidecar business demo data even without Convex.
+        }
+      }
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        actorAgentId: pmAgentId,
+        activityType: "planning",
+        label: "seed_demo_planning",
+        detail: "PM seeded affiliate marketing demo narrative.",
+        source: "team.business.seed-demo",
+      });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        actorAgentId: executorAgentId,
+        activityType: "research",
+        label: "seed_demo_research",
+        detail: "Research task seeded with affiliate shortlist.",
+        source: "team.business.seed-demo",
+      });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        actorAgentId: executorAgentId,
+        activityType: "executing",
+        label: "seed_demo_video_generated",
+        detail: `Generated demo artifact at ${artefactVideoPath} via infsh CLI simulation.`,
+        source: "team.business.seed-demo",
+      });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        actorAgentId: executorAgentId,
+        activityType: "distributing",
+        label: "seed_demo_distribution_ready",
+        detail: `Distribution task prepared with caption artifact ${artefactCaptionPath}.`,
+        source: "team.business.seed-demo",
+      });
       formatOutput(
         opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, projectId },
-        `Seeded demo business data for ${opts.teamId}`,
+        {
+          ok: true,
+          teamId: opts.teamId,
+          projectId,
+          boardSeeded,
+          seededTasks: seededBoardTasks.map((task) => ({ taskId: task.taskId, status: task.status })),
+          seededArtifacts: [artefactVideoPath, artefactCaptionPath],
+        },
+        `Seeded demo business data for ${opts.teamId} (board=${boardSeeded ? "yes" : "no"})`,
       );
     });
 

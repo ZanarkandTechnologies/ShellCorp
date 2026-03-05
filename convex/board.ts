@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import {
   coerceActivityEventType,
@@ -109,6 +110,14 @@ function permissionSetFromInput(actorRole: string, raw?: string): Set<BoardPermi
   return new Set(ROLE_PERMISSIONS[actorRole] ?? ROLE_PERMISSIONS.operator);
 }
 
+function mapActivityTypeToAgentState(activityType: string): "planning" | "executing" | "blocked" | "done" | undefined {
+  if (activityType === "planning") return "planning";
+  if (activityType === "executing") return "executing";
+  if (activityType === "blocked") return "blocked";
+  if (activityType === "summary") return "done";
+  return undefined;
+}
+
 export const boardCommand = mutation({
   args: {
     teamId: v.optional(v.string()),
@@ -158,7 +167,7 @@ export const boardCommand = mutation({
         teamMembershipCache.set(agentId, true);
         return true;
       }
-      const [statusRow, agentEvent, activityEvent] = await Promise.all([
+      const [statusRow, agentEvent] = await Promise.all([
         ctx.db
           .query("agentStatus")
           .withIndex("by_team_agent", (q) => q.eq("teamId", teamId).eq("agentId", agentId))
@@ -168,13 +177,8 @@ export const boardCommand = mutation({
           .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", agentId))
           .order("desc")
           .first(),
-        ctx.db
-          .query("teamActivityEvents")
-          .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", agentId))
-          .order("desc")
-          .first(),
       ]);
-      const inTeam = Boolean(statusRow || agentEvent || activityEvent);
+      const inTeam = Boolean(statusRow || agentEvent);
       teamMembershipCache.set(agentId, inTeam);
       return inTeam;
     };
@@ -191,25 +195,26 @@ export const boardCommand = mutation({
       if (!activityType) throw new Error(`invalid_activity_type:${args.activityType ?? ""}`);
       if (stepKey) {
         const existing = await ctx.db
-          .query("teamActivityEvents")
+          .query("agentEvents")
           .withIndex("by_project_step_key", (q) => q.eq("projectId", projectId).eq("stepKey", stepKey))
           .first();
         if (existing) return { ok: true, duplicate: true, taskId: trimOrUndefined(args.taskId) };
       }
-      await ctx.db.insert("teamActivityEvents", {
+      await ctx.runMutation(internal.events.ingestEvent, {
         teamId,
         projectId,
-        agentId: actorAgentId,
-        activityType,
+        agentId: actorAgentId!,
+        eventType: "activity_log",
+        activityType: activityType!,
+        actorType,
         label: trimOrUndefined(args.label) ?? activityType,
         detail: trimOrUndefined(args.detail),
-        actorType,
         taskId: trimOrUndefined(args.taskId),
         skillId: trimOrUndefined(args.skillId),
-        state: coerceBoardTaskStatus(args.status),
+        state: mapActivityTypeToAgentState(activityType),
         beatId,
-        occurredAt,
         stepKey,
+        occurredAt,
       });
       return { ok: true, duplicate: false, taskId: trimOrUndefined(args.taskId) };
     }
@@ -451,33 +456,46 @@ export const getProjectActivity = query({
   },
   handler: async (ctx, args) => {
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
+    const overfetch = Math.min(Math.max(limit * 3, 60), 1000);
     const teamId = normalizeTeamId(args.teamId);
     if (args.agentId?.trim()) {
       if (teamId) {
-        return ctx.db
-          .query("teamActivityEvents")
+        const rows = await ctx.db
+          .query("agentEvents")
           .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", args.agentId!.trim()))
           .order("desc")
-          .take(limit);
+          .take(overfetch);
+        return rows
+          .filter((row) => row.projectId === args.projectId && typeof row.activityType === "string" && row.activityType.trim().length > 0)
+          .slice(0, limit);
       }
-      return ctx.db
-        .query("teamActivityEvents")
+      const rows = await ctx.db
+        .query("agentEvents")
         .withIndex("by_project_agent_occurred_at", (q) => q.eq("projectId", args.projectId).eq("agentId", args.agentId!.trim()))
         .order("desc")
-        .take(limit);
+        .take(overfetch);
+      return rows
+        .filter((row) => typeof row.activityType === "string" && row.activityType.trim().length > 0)
+        .slice(0, limit);
     }
     if (teamId) {
-      return ctx.db
-        .query("teamActivityEvents")
+      const rows = await ctx.db
+        .query("agentEvents")
         .withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId))
         .order("desc")
-        .take(limit);
+        .take(overfetch);
+      return rows
+        .filter((row) => row.projectId === args.projectId && typeof row.activityType === "string" && row.activityType.trim().length > 0)
+        .slice(0, limit);
     }
-    return ctx.db
-      .query("teamActivityEvents")
+    const rows = await ctx.db
+      .query("agentEvents")
       .withIndex("by_project_occurred_at", (q) => q.eq("projectId", args.projectId))
       .order("desc")
-      .take(limit);
+      .take(overfetch);
+    return rows
+      .filter((row) => typeof row.activityType === "string" && row.activityType.trim().length > 0)
+      .slice(0, limit);
   },
 });
 
@@ -503,12 +521,12 @@ export const getTeamTimeline = query({
         .take(limit),
       agentId
         ? ctx.db
-            .query("teamActivityEvents")
+            .query("agentEvents")
             .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", agentId))
             .order("desc")
             .take(limit)
         : ctx.db
-            .query("teamActivityEvents")
+            .query("agentEvents")
             .withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId))
             .order("desc")
             .take(limit),
@@ -516,7 +534,9 @@ export const getTeamTimeline = query({
 
     const merged = [
       ...boardEvents.map((row) => ({ ...row, sourceType: "board_event" as const })),
-      ...activityEvents.map((row) => ({ ...row, sourceType: "activity_event" as const })),
+      ...activityEvents
+        .filter((row) => typeof row.activityType === "string" && row.activityType.trim().length > 0)
+        .map((row) => ({ ...row, sourceType: "activity_event" as const })),
     ]
       .filter((row) => (projectId ? row.projectId === projectId : true))
       .sort((a, b) => b.occurredAt - a.occurredAt);

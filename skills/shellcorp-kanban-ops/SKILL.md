@@ -33,14 +33,14 @@ npm run shell -- team board task move --team-id team-proj-<slug> --task-id <task
 1. Log progress/status:
 
 ```bash
-npm run shell -- team bot log \
-  --team-id team-proj-<slug> \
-  --agent-id <agentId> \
-  --activity-type status \
-  --label "Execution update" \
-  --detail "what changed" \
+export SHELLCORP_AGENT_ID=<agentId>
+export SHELLCORP_TEAM_ID=team-proj-<slug>
+
+npm run shell -- status \
+  --state executing \
   --task-id <taskId> \
-  --step-key <idempotencyKey>
+  --step-key <idempotencyKey> \
+  "Execution update: what changed"
 ```
 
 1. Finish or block:
@@ -78,5 +78,6 @@ If denied, CLI returns:
 
 - Always include `--team-id`.
 - Use `--json` when output is consumed by another tool.
+- Use `status` with `SHELLCORP_AGENT_ID` + `SHELLCORP_TEAM_ID` exported in-shell.
 - Use `--step-key` for idempotent status logs.
 - Prefer `task update` over delete/recreate so history stays auditable.

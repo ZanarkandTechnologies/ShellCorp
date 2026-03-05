@@ -34,7 +34,7 @@ type AgentCandidate = {
 
 type FeedEvent = {
   id: string;
-  sourceType: "agent_event" | "activity_event" | "board_event";
+  sourceType: "agent_event" | "board_event";
   occurredAt: number;
   beatId?: string;
   sessionKey?: string;
@@ -76,7 +76,6 @@ function eventTypeLabel(event: FeedEvent): string {
 
 function sourceGlyph(sourceType: FeedEvent["sourceType"]): string {
   if (sourceType === "board_event") return "$";
-  if (sourceType === "activity_event") return "#";
   return "S";
 }
 
@@ -137,7 +136,6 @@ export function AgentActivityFeed({ teamId, candidates }: AgentActivityFeedProps
     const counts: Record<string, number> = {
       all: allEvents.length,
       agent_event: 0,
-      activity_event: 0,
       board_event: 0,
     };
     for (const event of allEvents) counts[event.sourceType] = (counts[event.sourceType] ?? 0) + 1;
@@ -184,8 +182,7 @@ export function AgentActivityFeed({ teamId, candidates }: AgentActivityFeedProps
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All ({sourceCounts.all ?? 0})</SelectItem>
-              <SelectItem value="agent_event">Status ({sourceCounts.agent_event ?? 0})</SelectItem>
-              <SelectItem value="activity_event">Activity ({sourceCounts.activity_event ?? 0})</SelectItem>
+              <SelectItem value="agent_event">Agent ({sourceCounts.agent_event ?? 0})</SelectItem>
               <SelectItem value="board_event">Board ({sourceCounts.board_event ?? 0})</SelectItem>
             </SelectContent>
           </Select>

@@ -16,7 +16,7 @@ export type CommunicationRow = {
 
 export type TeamTimelineRow = {
   _id: string;
-  sourceType: "board_event" | "activity_event";
+  sourceType: "board_event" | "agent_event";
   occurredAt: number;
   projectId: string;
   agentId?: string;
@@ -36,7 +36,7 @@ export function buildTeamTimelineRows(params: {
   if (Array.isArray(params.convexTimeline) && params.convexTimeline.length > 0) return params.convexTimeline;
   return params.communicationRows.map((row) => ({
     _id: row.id,
-    sourceType: "activity_event",
+    sourceType: "agent_event",
     occurredAt: row.occurredAt,
     projectId: params.projectId ?? "project",
     agentId: row.agentId,

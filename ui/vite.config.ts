@@ -11,6 +11,7 @@ type TaskProvider = "internal" | "notion" | "vibe" | "linear";
 type TaskSyncState = "healthy" | "pending" | "conflict" | "error";
 type TeamRole = "builder" | "growth_marketer" | "pm" | "biz_pm" | "biz_executor";
 type BusinessType = "affiliate_marketing" | "content_creator" | "saas" | "custom";
+type BusinessEquipMode = "replace_minimum" | "append_only";
 
 const OPENCLAW_HOME = process.env.OPENCLAW_STATE_DIR || path.join(process.env.HOME || "", ".openclaw");
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || path.join(OPENCLAW_HOME, "openclaw.json");
@@ -649,6 +650,47 @@ function defaultProjectResources(projectId: string): JsonObject[] {
       metadata: { platform: "tiktok" },
     } satisfies JsonObject,
   ];
+}
+
+function parseSkillList(value: string): string[] {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function uniqueSkills(skills: string[]): string[] {
+  return [...new Set(skills.map((entry) => entry.trim()).filter(Boolean))];
+}
+
+function applyAgentSkillsByMode(currentSkills: string[], targetSkills: string[], mode: BusinessEquipMode): string[] {
+  if (mode === "append_only") return uniqueSkills([...currentSkills, ...targetSkills]);
+  return uniqueSkills(targetSkills);
+}
+
+function buildTeamBusinessSkillTargets(project: JsonObject): { pmSkills: string[]; executorSkills: string[] } {
+  const businessConfig = project.businessConfig && typeof project.businessConfig === "object" ? (project.businessConfig as JsonObject) : {};
+  const slots = businessConfig.slots && typeof businessConfig.slots === "object" ? (businessConfig.slots as JsonObject) : {};
+  const measureSlot = slots.measure && typeof slots.measure === "object" ? (slots.measure as JsonObject) : {};
+  const executeSlot = slots.execute && typeof slots.execute === "object" ? (slots.execute as JsonObject) : {};
+  const distributeSlot = slots.distribute && typeof slots.distribute === "object" ? (slots.distribute as JsonObject) : {};
+  const slotSkills = uniqueSkills([
+    ...parseSkillList(typeof measureSlot.skillId === "string" ? measureSlot.skillId : ""),
+    ...parseSkillList(typeof executeSlot.skillId === "string" ? executeSlot.skillId : ""),
+    ...parseSkillList(typeof distributeSlot.skillId === "string" ? distributeSlot.skillId : ""),
+  ]);
+  const resources = Array.isArray(project.resources) ? (project.resources as JsonObject[]) : [];
+  const trackerSkills = uniqueSkills(
+    resources
+      .map((resource) => (typeof resource.trackerSkillId === "string" ? resource.trackerSkillId : ""))
+      .filter(Boolean),
+  );
+  const sharedCore = ["shellcorp-team-cli", "status-self-reporter"];
+  const pmCore = ["shellcorp-kanban-ops", "ledger-manager", "experiment-runner"];
+  return {
+    pmSkills: uniqueSkills([...sharedCore, ...pmCore, ...slotSkills, ...trackerSkills]),
+    executorSkills: uniqueSkills([...sharedCore, ...slotSkills]),
+  };
 }
 
 function ensureBusinessHeartbeatProfiles(company: JsonObject): JsonObject {
@@ -1346,6 +1388,102 @@ function shellcorpStateBridge() {
             writeJson(res, 500, { ok: false, error: "heartbeat_render_template_unavailable" });
             return;
           }
+        }
+
+        if (method === "POST" && pathname === "/openclaw/team/business/equip-skills") {
+          if (!hasBridgeWriteAccess(req)) {
+            writeJson(res, 403, { ok: false, error: "forbidden" });
+            return;
+          }
+          const body = (await readBody(req)) as JsonObject;
+          const teamId = typeof body.teamId === "string" ? body.teamId.trim() : "";
+          const mode = body.mode === "append_only" ? "append_only" : "replace_minimum";
+          const dryRun = body.dryRun === true;
+          if (!teamId) {
+            writeJson(res, 400, { ok: false, error: "team_business_skill_sync_invalid_payload" });
+            return;
+          }
+          const projectId = projectIdFromTeamId(teamId);
+          const company = await readJsonFile<JsonObject>(COMPANY_MODEL_PATH, {});
+          const projects = Array.isArray(company.projects) ? (company.projects as JsonObject[]) : [];
+          const project = projects.find((entry) => String(entry.id ?? "").trim() === projectId);
+          if (!project) {
+            writeJson(res, 404, { ok: false, error: "team_business_skill_sync_project_not_found" });
+            return;
+          }
+          const companyAgents = Array.isArray(company.agents) ? (company.agents as JsonObject[]) : [];
+          const pmAgent = companyAgents.find(
+            (entry) => String(entry.projectId ?? "").trim() === projectId && String(entry.role ?? "").trim() === "biz_pm",
+          );
+          const executorAgent = companyAgents.find(
+            (entry) => String(entry.projectId ?? "").trim() === projectId && String(entry.role ?? "").trim() === "biz_executor",
+          );
+          if (!pmAgent || !executorAgent) {
+            writeJson(res, 404, { ok: false, error: "team_business_skill_sync_agents_missing" });
+            return;
+          }
+          const pmAgentId = String(pmAgent.agentId ?? "").trim();
+          const executorAgentId = String(executorAgent.agentId ?? "").trim();
+          if (!pmAgentId || !executorAgentId) {
+            writeJson(res, 404, { ok: false, error: "team_business_skill_sync_agents_invalid" });
+            return;
+          }
+          const targets = buildTeamBusinessSkillTargets(project);
+          const targetByAgentId = new Map<string, string[]>([
+            [pmAgentId, targets.pmSkills],
+            [executorAgentId, targets.executorSkills],
+          ]);
+          const config = await readJsonFile<JsonObject>(OPENCLAW_CONFIG_PATH, {});
+          const agentsNode = config.agents && typeof config.agents === "object" ? { ...(config.agents as JsonObject) } : {};
+          const list = Array.isArray(agentsNode.list) ? [...(agentsNode.list as JsonObject[])] : [];
+          const touchedAgents: string[] = [];
+          const missingAgents: string[] = [];
+          const preview: JsonObject[] = [];
+          const nextList = list.map((entry) => {
+            const id = String(entry.id ?? "").trim();
+            if (!id || !targetByAgentId.has(id)) return entry;
+            const beforeSkills = Array.isArray(entry.skills)
+              ? (entry.skills as unknown[]).filter((item): item is string => typeof item === "string")
+              : [];
+            const afterSkills = applyAgentSkillsByMode(beforeSkills, targetByAgentId.get(id) ?? [], mode);
+            touchedAgents.push(id);
+            preview.push({
+              agentId: id,
+              role: id === pmAgentId ? "biz_pm" : "biz_executor",
+              mode,
+              beforeSkills,
+              afterSkills,
+            });
+            return {
+              ...entry,
+              skills: afterSkills,
+            } satisfies JsonObject;
+          });
+          for (const id of [pmAgentId, executorAgentId]) {
+            if (!touchedAgents.includes(id)) missingAgents.push(id);
+          }
+          if (!dryRun) {
+            const nextConfig = {
+              ...config,
+              agents: {
+                ...agentsNode,
+                list: nextList,
+              },
+            } satisfies JsonObject;
+            await mkdir(path.dirname(OPENCLAW_CONFIG_PATH), { recursive: true });
+            await writeFile(OPENCLAW_CONFIG_PATH, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf-8");
+          }
+          writeJson(res, 200, {
+            ok: true,
+            teamId,
+            projectId,
+            mode,
+            dryRun,
+            touchedAgents,
+            missingAgents,
+            preview,
+          });
+          return;
         }
 
         if (method === "POST" && pathname === "/openclaw/config/preview") {

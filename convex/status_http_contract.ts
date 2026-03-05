@@ -6,8 +6,11 @@
 
 export type ParsedIngestPayload = {
   teamId?: string;
+  projectId?: string;
   agentId: string;
   eventType: string;
+  activityType?: string;
+  actorType?: string;
   label: string;
   detail?: string;
   state?: string;
@@ -16,6 +19,7 @@ export type ParsedIngestPayload = {
   stepKey?: string;
   sessionKey?: string;
   beatId?: string;
+  taskId?: string;
   occurredAt?: number;
 };
 
@@ -45,8 +49,11 @@ export function parseIngestPayload(body: unknown): ParsedIngestPayload | null {
   if (!agentId || !eventType || !label) return null;
   return {
     teamId: typeof row.teamId === "string" ? row.teamId : undefined,
+    projectId: typeof row.projectId === "string" ? row.projectId : undefined,
     agentId,
     eventType,
+    activityType: typeof row.activityType === "string" ? row.activityType : undefined,
+    actorType: typeof row.actorType === "string" ? row.actorType : undefined,
     label,
     detail: typeof row.detail === "string" ? row.detail : undefined,
     state: typeof row.state === "string" ? row.state : undefined,
@@ -55,6 +62,7 @@ export function parseIngestPayload(body: unknown): ParsedIngestPayload | null {
     stepKey: typeof row.stepKey === "string" ? row.stepKey : undefined,
     sessionKey: typeof row.sessionKey === "string" ? row.sessionKey : undefined,
     beatId: typeof row.beatId === "string" ? row.beatId : undefined,
+    taskId: typeof row.taskId === "string" ? row.taskId : undefined,
     occurredAt: typeof row.occurredAt === "number" ? row.occurredAt : undefined,
   };
 }

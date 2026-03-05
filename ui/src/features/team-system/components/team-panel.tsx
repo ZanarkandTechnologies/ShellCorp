@@ -82,6 +82,7 @@ export function TeamPanel({
   const [selectedBusinessSlot, setSelectedBusinessSlot] = useState<BusinessSlotKey>("measure");
   const [ledgerActionState, setLedgerActionState] = useState<{ pending: boolean; error?: string; ok?: string }>({ pending: false });
   const [trackingContext, setTrackingContext] = useState("");
+  const [agentConfiguredSkills, setAgentConfiguredSkills] = useState<Record<string, string[]>>({});
 
   const team = useMemo(() => {
     if (!teamId || globalMode) return null;
@@ -212,6 +213,25 @@ export function TeamPanel({
     return map;
   }, [employees, globalMode, teamEmployees]);
 
+  const businessSkillRows = useMemo(
+    () =>
+      teamEmployees
+        .filter((employee) => employee.builtInRole === "biz_pm" || employee.builtInRole === "biz_executor")
+        .map((employee) => {
+          const rawId = String(employee._id ?? "");
+          const agentId = rawId.startsWith("employee-") ? rawId.replace(/^employee-/, "") : rawId;
+          return {
+            agentId,
+            name: employee.name,
+            role: employee.builtInRole,
+            statusText: employee.statusMessage ?? "Idle",
+            heartbeatState: employee.heartbeatState,
+            equippedSkills: agentConfiguredSkills[agentId] ?? [],
+          };
+        }),
+    [agentConfiguredSkills, teamEmployees],
+  );
+
   const projectTaskCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const task of companyModel?.tasks ?? []) {
@@ -311,6 +331,41 @@ export function TeamPanel({
     setCommunicationsFilter("all");
   }, [isOpen, project?.id]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    async function loadAgentConfiguredSkills(): Promise<void> {
+      try {
+        const snapshot = await adapter.getConfigSnapshot();
+        if (cancelled) return;
+        const config = snapshot.config;
+        const agentsNode =
+          config.agents && typeof config.agents === "object"
+            ? (config.agents as Record<string, unknown>)
+            : {};
+        const list = Array.isArray(agentsNode.list) ? agentsNode.list : [];
+        const next: Record<string, string[]> = {};
+        for (const entry of list) {
+          if (!entry || typeof entry !== "object") continue;
+          const row = entry as Record<string, unknown>;
+          const id = typeof row.id === "string" ? row.id.trim() : "";
+          if (!id) continue;
+          const skills = Array.isArray(row.skills)
+            ? row.skills.filter((item): item is string => typeof item === "string")
+            : [];
+          next[id] = skills;
+        }
+        setAgentConfiguredSkills(next);
+      } catch {
+        if (!cancelled) setAgentConfiguredSkills({});
+      }
+    }
+    void loadAgentConfiguredSkills();
+    return () => {
+      cancelled = true;
+    };
+  }, [adapter, isOpen, project?.id]);
+
   if (!globalMode && !team) return null;
 
   function toggleCapabilitySkill(slot: BusinessSlotKey, skillId: string): void {
@@ -342,6 +397,27 @@ export function TeamPanel({
     });
     if (!saved.ok) {
       setBuilderSaveState({ pending: false, error: saved.error ?? "business_builder_save_failed" });
+      return;
+    }
+    const targetTeamId = globalMode ? `team-${project.id}` : String(team?._id ?? "");
+    if (targetTeamId) {
+      const sync = await adapter.syncTeamBusinessSkillsToAgents({
+        teamId: targetTeamId,
+        mode: "replace_minimum",
+      });
+      if (!sync.ok) {
+        await refresh();
+        setBuilderSaveState({
+          pending: false,
+          error: `business_saved_but_skill_sync_failed:${sync.error ?? "unknown_error"}`,
+        });
+        return;
+      }
+      await refresh();
+      setBuilderSaveState({
+        pending: false,
+        ok: `Saved. Equipped skills synced for ${sync.touchedAgents.length} agent(s).`,
+      });
       return;
     }
     await refresh();
@@ -504,6 +580,7 @@ export function TeamPanel({
               onViewProjects={() => setActiveTab("projects")}
               resources={project?.resources ?? []}
               hasBusinessConfig={hasBusinessConfig}
+              teamSkillRows={businessSkillRows}
             />
           </TabsContent>
 

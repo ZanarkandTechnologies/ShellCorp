@@ -124,6 +124,8 @@ afterEach(() => {
   delete process.env.SHELLCORP_ACTOR_ROLE;
   delete process.env.SHELLCORP_ALLOWED_PERMISSIONS;
   delete process.env.SHELLCORP_BOARD_OPERATOR_TOKEN;
+  delete process.env.SHELLCORP_AGENT_ID;
+  delete process.env.SHELLCORP_TEAM_ID;
   process.exitCode = undefined;
 });
 
@@ -505,6 +507,133 @@ describe("team CLI", () => {
     expect(removedProject?.trackingContext).toContain("CAC");
   });
 
+  it("equips business skills into PM/executor agent config with replace_minimum mode", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Buffalos AI",
+      "--description",
+      "Affiliate demo team",
+      "--goal",
+      "Run affiliate loop",
+      "--business-type",
+      "affiliate_marketing",
+    ]);
+    await runCommand([
+      "team",
+      "business",
+      "set-all",
+      "--team-id",
+      "team-proj-buffalos-ai",
+      "--business-type",
+      "affiliate_marketing",
+      "--measure-skill-id",
+      "amazon-affiliate-metrics",
+      "--execute-skill-id",
+      "video-generator",
+      "--distribute-skill-id",
+      "tiktok-poster",
+    ]);
+    await runCommand([
+      "team",
+      "business",
+      "equip-skills",
+      "--team-id",
+      "team-proj-buffalos-ai",
+      "--mode",
+      "replace_minimum",
+      "--json",
+    ]);
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclawConfig = JSON.parse(openclawRaw) as {
+      agents?: { list?: Array<{ id?: string; skills?: string[] }> };
+    };
+    const pm = (openclawConfig.agents?.list ?? []).find((entry) => entry.id === "buffalos-ai-pm");
+    const executor = (openclawConfig.agents?.list ?? []).find((entry) => entry.id === "buffalos-ai-executor");
+    expect(pm?.skills ?? []).toEqual(
+      expect.arrayContaining([
+        "amazon-affiliate-metrics",
+        "video-generator",
+        "tiktok-poster",
+        "shellcorp-team-cli",
+        "status-self-reporter",
+        "shellcorp-kanban-ops",
+      ]),
+    );
+    expect(executor?.skills ?? []).toEqual(
+      expect.arrayContaining(["amazon-affiliate-metrics", "video-generator", "tiktok-poster", "shellcorp-team-cli"]),
+    );
+  });
+
+  it("supports dry-run and append_only equip mode without mutating unrelated skills", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Delta",
+      "--description",
+      "Affiliate demo team",
+      "--goal",
+      "Run affiliate loop",
+      "--business-type",
+      "affiliate_marketing",
+    ]);
+    const beforeRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const beforeConfig = JSON.parse(beforeRaw) as {
+      version: number;
+      agents?: { list?: Array<{ id?: string; skills?: string[]; workspace?: string; agentDir?: string }> };
+    };
+    const nextList = (beforeConfig.agents?.list ?? []).map((entry) =>
+      entry.id === "delta-executor" ? { ...entry, skills: ["custom-existing-skill"] } : entry,
+    );
+    await writeFile(
+      path.join(stateDir, "openclaw.json"),
+      `${JSON.stringify({ ...beforeConfig, agents: { ...(beforeConfig.agents ?? {}), list: nextList } }, null, 2)}\n`,
+      "utf-8",
+    );
+    await runCommand([
+      "team",
+      "business",
+      "equip-skills",
+      "--team-id",
+      "team-proj-delta",
+      "--mode",
+      "append_only",
+      "--dry-run",
+      "--json",
+    ]);
+    const afterDryRunRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const afterDryRunConfig = JSON.parse(afterDryRunRaw) as {
+      agents?: { list?: Array<{ id?: string; skills?: string[] }> };
+    };
+    const afterDryRunExecutor = (afterDryRunConfig.agents?.list ?? []).find((entry) => entry.id === "delta-executor");
+    expect(afterDryRunExecutor?.skills ?? []).toEqual(["custom-existing-skill"]);
+
+    await runCommand([
+      "team",
+      "business",
+      "equip-skills",
+      "--team-id",
+      "team-proj-delta",
+      "--mode",
+      "append_only",
+      "--json",
+    ]);
+    const afterApplyRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const afterApplyConfig = JSON.parse(afterApplyRaw) as {
+      agents?: { list?: Array<{ id?: string; skills?: string[] }> };
+    };
+    const afterApplyExecutor = (afterApplyConfig.agents?.list ?? []).find((entry) => entry.id === "delta-executor");
+    expect(afterApplyExecutor?.skills ?? []).toEqual(
+      expect.arrayContaining(["custom-existing-skill", "amazon-affiliate-metrics", "video-generator", "tiktok-poster"]),
+    );
+  });
+
   it("does not duplicate existing openclaw agent entries when IDs already exist", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
@@ -837,6 +966,52 @@ describe("team CLI", () => {
       stepKey: "step-123",
       skillId: "video-generator",
       beatId: "beat-status-1",
+    });
+  });
+
+  it("supports top-level status shortcut and routes via board activity_log", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "https://example.convex.site";
+    process.env.SHELLCORP_AGENT_ID = "shortcut-executor";
+    process.env.SHELLCORP_TEAM_ID = "team-proj-shortcut";
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Shortcut",
+      "--description",
+      "Shortcut team",
+      "--goal",
+      "Track status",
+      "--business-type",
+      "affiliate_marketing",
+    ]);
+
+    const commandPayloads: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      const payload = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      if (url.endsWith("/board/command")) {
+        commandPayloads.push(payload);
+        return new Response(JSON.stringify({ ok: true, duplicate: false, taskId: payload.taskId ?? "task-1" }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runCommand(["status", "--state", "planning", "Planning shortcut turn"]);
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(commandPayloads).toHaveLength(1);
+    expect(commandPayloads[0]).toMatchObject({
+      teamId: "team-proj-shortcut",
+      command: "activity_log",
+      actorAgentId: "shortcut-executor",
+      activityType: "planning",
+      label: "planning",
+      detail: "Planning shortcut turn",
     });
   });
 

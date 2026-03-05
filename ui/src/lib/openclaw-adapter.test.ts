@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  OpenClawAdapter,
   deriveAgentLiveStatus,
   hashSchemaVersion,
   parseHeartbeatWindows,
@@ -10,6 +11,10 @@ import {
   toProviderIndexProfile,
   toTask,
 } from "./openclaw-adapter";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("openclaw federation normalization", () => {
   it("normalizes federated task defaults", () => {
@@ -219,5 +224,57 @@ describe("heartbeat parsing", () => {
     );
     expect(windows).toHaveLength(1);
     expect(windows[0].status).toBe("no_work");
+  });
+});
+
+describe("team business skill sync adapter", () => {
+  it("normalizes successful sync payload", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        teamId: "team-proj-buffalos-ai",
+        projectId: "proj-buffalos-ai",
+        mode: "replace_minimum",
+        dryRun: false,
+        touchedAgents: ["buffalos-ai-pm", "buffalos-ai-executor"],
+        missingAgents: [],
+        preview: [
+          {
+            agentId: "buffalos-ai-pm",
+            role: "biz_pm",
+            mode: "replace_minimum",
+            beforeSkills: [],
+            afterSkills: ["shellcorp-team-cli", "video-generator"],
+          },
+        ],
+      }),
+    } as Response);
+    const adapter = new OpenClawAdapter("http://127.0.0.1:8787", "http://127.0.0.1:8787");
+    const result = await adapter.syncTeamBusinessSkillsToAgents({
+      teamId: "team-proj-buffalos-ai",
+      mode: "replace_minimum",
+    });
+    expect(fetchMock).toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(result.touchedAgents).toEqual(["buffalos-ai-pm", "buffalos-ai-executor"]);
+    expect(result.preview[0]?.agentId).toBe("buffalos-ai-pm");
+    expect(result.preview[0]?.afterSkills).toEqual(expect.arrayContaining(["video-generator"]));
+  });
+
+  it("returns typed error shape when endpoint fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ ok: false, error: "team_business_skill_sync_unavailable" }),
+    } as Response);
+    const adapter = new OpenClawAdapter("http://127.0.0.1:8787", "http://127.0.0.1:8787");
+    const result = await adapter.syncTeamBusinessSkillsToAgents({
+      teamId: "team-proj-buffalos-ai",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("team_business_skill_sync_unavailable");
+    expect(result.touchedAgents).toEqual([]);
   });
 });

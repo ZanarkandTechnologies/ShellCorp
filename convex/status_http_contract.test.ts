@@ -11,8 +11,11 @@ describe("status-http-contract", () => {
     });
     expect(parsed).toEqual({
       teamId: undefined,
+      projectId: undefined,
       agentId: "main",
       eventType: "status_report",
+      activityType: undefined,
+      actorType: undefined,
       label: "planning",
       detail: "Reviewing backlog",
       state: undefined,
@@ -21,6 +24,7 @@ describe("status-http-contract", () => {
       stepKey: undefined,
       sessionKey: undefined,
       beatId: undefined,
+      taskId: undefined,
       occurredAt: undefined,
     });
   });

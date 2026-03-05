@@ -4,9 +4,9 @@
  * Shared task board and activity contracts for Convex-backed team command boards.
  *
  * KEY CONCEPTS:
- * - Convex is canonical for team task state and team activity logs.
+ * - Convex is canonical for team task state and agent activity logs.
  * - Task lifecycle writes always emit append-only board events.
- * - Activity timeline is separate from task events to keep "what agents are doing" visible.
+ * - Activity timeline rows are stored in `agentEvents` with `activityType` metadata.
  *
  * USAGE:
  * - Validate mutation/query inputs and HTTP command payloads.
@@ -14,6 +14,7 @@
  *
  * MEMORY REFERENCES:
  * - MEM-0129
+ * - MEM-0140
  */
 
 export type BoardTaskStatus = "todo" | "in_progress" | "blocked" | "done";

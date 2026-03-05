@@ -768,3 +768,23 @@ export interface SkillStatusReport {
   managedSkillsDir: string;
   skills: SkillStatusEntry[];
 }
+
+export interface TeamBusinessSkillSyncPreviewRow {
+  agentId: string;
+  role: "biz_pm" | "biz_executor";
+  mode: "replace_minimum" | "append_only";
+  beforeSkills: string[];
+  afterSkills: string[];
+}
+
+export interface TeamBusinessSkillSyncResult {
+  ok: boolean;
+  teamId: string;
+  projectId: string;
+  mode: "replace_minimum" | "append_only";
+  dryRun: boolean;
+  touchedAgents: string[];
+  missingAgents: string[];
+  preview: TeamBusinessSkillSyncPreviewRow[];
+  error?: string;
+}

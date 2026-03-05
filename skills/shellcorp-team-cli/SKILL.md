@@ -88,12 +88,12 @@ npm run shell -- team board task delete --team-id team-proj-buffalos-ai --task-i
 - Agent status + ops timeline:
 
 ```bash
-npm run shell -- team bot log \
-  --team-id team-proj-buffalos-ai \
-  --agent-id buffalos-ai-pm \
-  --activity-type status \
-  --label "Working queue triage" \
-  --detail "prioritized top 3 tasks"
+export SHELLCORP_AGENT_ID=buffalos-ai-pm
+export SHELLCORP_TEAM_ID=team-proj-buffalos-ai
+
+npm run shell -- status \
+  --state planning \
+  "Working queue triage: prioritized top 3 tasks"
 
 npm run shell -- team bot timeline --team-id team-proj-buffalos-ai --json
 ```

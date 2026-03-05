@@ -23,6 +23,7 @@ import { BusinessFlowComposer } from "./business-flow/business-flow-composer";
 import { BusinessReadinessPanel } from "./business-flow/business-readiness-panel";
 import { BusinessSkillLibrary, type BusinessSlotKey } from "./business-flow/business-skill-library";
 import { ResourcesSection } from "./business-flow/resources-section";
+import { TeamSkillEquipMatrix, type TeamSkillEquipRow } from "./business-flow/team-skill-equip-matrix";
 import type { BusinessBuilderDraft } from "@/lib/business-builder";
 import type { BusinessReadinessIssue } from "@/lib/business-builder";
 
@@ -41,6 +42,7 @@ interface BusinessTabProps {
   onViewProjects: () => void;
   resources: ProjectResourceModel[];
   hasBusinessConfig: boolean;
+  teamSkillRows: TeamSkillEquipRow[];
 }
 
 export function BusinessTab({
@@ -58,6 +60,7 @@ export function BusinessTab({
   onViewProjects,
   resources,
   hasBusinessConfig,
+  teamSkillRows,
 }: BusinessTabProps): JSX.Element {
   return (
     <ScrollArea className="h-full pr-2">
@@ -117,6 +120,8 @@ export function BusinessTab({
           issues={readinessIssues}
           fallbackReady={fallbackReady}
         />
+
+        <TeamSkillEquipMatrix rows={teamSkillRows} />
 
         <Card>
           <CardContent className="flex items-center justify-between gap-3 pt-4 text-sm">
