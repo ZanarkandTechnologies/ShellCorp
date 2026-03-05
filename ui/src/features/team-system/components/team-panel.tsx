@@ -21,6 +21,7 @@ import { BusinessFlowComposer } from "./business-flow/business-flow-composer";
 import { BusinessReadinessPanel } from "./business-flow/business-readiness-panel";
 import { BusinessSkillLibrary, type BusinessSlotKey } from "./business-flow/business-skill-library";
 import { LedgerTabPanel } from "./business-flow/ledger-tab-panel";
+import { ProjectArtefactPanel } from "./project-artefact-panel";
 import { ResourcesSection } from "./business-flow/resources-section";
 import { buildTeamTimelineRows, type TeamTimelineRow } from "./team-timeline";
 
@@ -62,6 +63,7 @@ type PanelTask = {
   priority: string;
   provider: "internal" | "notion" | "vibe" | "linear";
   providerUrl?: string;
+  artefactPath?: string;
   syncState: "healthy" | "pending" | "conflict" | "error";
   syncError?: string;
 };
@@ -89,6 +91,18 @@ function statusColumns(tasks: PanelTask[]): Record<"todo" | "in_progress" | "blo
     blocked: tasks.filter((task) => task.status === "blocked"),
     done: tasks.filter((task) => task.status === "done"),
   };
+}
+
+function extractArtefactPath(entry: unknown): string | undefined {
+  if (!entry || typeof entry !== "object") return undefined;
+  const row = entry as Record<string, unknown>;
+  const raw = typeof row.artefactPath === "string"
+    ? row.artefactPath
+    : typeof row.artifactPath === "string"
+      ? row.artifactPath
+      : "";
+  const value = raw.trim();
+  return value || undefined;
 }
 
 export function TeamPanel({
@@ -123,6 +137,7 @@ export function TeamPanel({
   const [selectedBusinessSlot, setSelectedBusinessSlot] = useState<BusinessSlotKey>("measure");
   const [ledgerActionState, setLedgerActionState] = useState<{ pending: boolean; error?: string; ok?: string }>({ pending: false });
   const [trackingContext, setTrackingContext] = useState("");
+  const [selectedArtefactProjectId, setSelectedArtefactProjectId] = useState<string | null>(null);
 
   function toggleCapabilitySkill(slot: BusinessSlotKey, skillId: string): void {
     setBuilderDraft((current) => {
@@ -198,6 +213,7 @@ export function TeamPanel({
         priority: (task.priority as PanelTask["priority"]) ?? "medium",
         provider: (task.provider as PanelTask["provider"]) ?? "internal",
         providerUrl: task.providerUrl,
+        artefactPath: extractArtefactPath(task),
         syncState: (task.syncState as PanelTask["syncState"]) ?? "healthy",
         syncError: task.syncError,
       }));
@@ -215,6 +231,7 @@ export function TeamPanel({
         priority: task.priority,
         provider: task.provider,
         providerUrl: task.providerUrl,
+        artefactPath: extractArtefactPath(task),
         syncState: task.syncState,
         syncError: task.syncError,
       }));
@@ -273,6 +290,27 @@ export function TeamPanel({
   const projectProfitCents = projectRevenueCents - projectCostCents;
   const hasBusinessConfig = Boolean(project?.businessConfig);
   const allProjects = globalMode ? companyModel?.projects ?? [] : project ? [project] : [];
+  const selectedArtefactProject = useMemo(
+    () => allProjects.find((entry) => entry.id === selectedArtefactProjectId) ?? null,
+    [allProjects, selectedArtefactProjectId],
+  );
+  const selectedArtefactAgentIds = useMemo(() => {
+    if (!selectedArtefactProject || !companyModel) return [];
+    return companyModel.agents
+      .filter((agent) => agent.projectId === selectedArtefactProject.id)
+      .map((agent) => agent.agentId);
+  }, [companyModel, selectedArtefactProject]);
+  const selectedArtefactTaskHints = useMemo(() => {
+    if (!selectedArtefactProject || !companyModel) return [];
+    return companyModel.tasks
+      .filter((task) => task.projectId === selectedArtefactProject.id && typeof task.artefactPath === "string" && task.artefactPath.trim())
+      .slice(0, 40)
+      .map((task) => ({
+        taskId: task.id,
+        title: task.title,
+        artefactPath: task.artefactPath,
+      }));
+  }, [companyModel, selectedArtefactProject]);
   const projectTaskCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const task of companyModel?.tasks ?? []) {
@@ -786,66 +824,80 @@ export function TeamPanel({
           </TabsContent>
 
           <TabsContent value="projects" className="mt-4 min-h-0 flex-1 overflow-hidden">
-            <ScrollArea className="h-full pr-3">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {allProjects.map((entry) => {
-                  const isActiveProject = project?.id === entry.id;
-                  const openCount = projectTaskCounts.get(entry.id) ?? 0;
-                  const entryRevenue = (entry.ledger ?? [])
-                    .filter((row) => row.type === "revenue")
-                    .reduce((total, row) => total + Math.max(0, Math.round(row.amount)), 0);
-                  const entryCost = (entry.ledger ?? [])
-                    .filter((row) => row.type === "cost")
-                    .reduce((total, row) => total + Math.max(0, Math.round(row.amount)), 0);
-                  const entryProfit = entryRevenue - entryCost;
-                  return (
-                    <Card key={entry.id} className={isActiveProject ? "border-primary/60" : undefined}>
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <CardTitle className="text-sm">{entry.name}</CardTitle>
-                          <Badge variant="secondary">{entry.status}</Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-3 text-sm">
-                        <p className="line-clamp-2 text-muted-foreground">{entry.goal || "No goal available."}</p>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Open tasks</span>
-                          <span className="font-medium">{openCount}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Profit pulse</span>
-                          <span className={entryProfit >= 0 ? "font-medium text-emerald-500" : "font-medium text-red-500"}>
-                            {currencyFormatter.format(entryProfit / 100)}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {(entry.kpis ?? []).slice(0, 4).map((kpi) => (
-                            <Badge key={`${entry.id}-${kpi}`} variant="outline">
-                              {kpi}
-                            </Badge>
-                          ))}
-                          {(entry.kpis ?? []).length === 0 ? <span className="text-xs text-muted-foreground">No KPIs yet.</span> : null}
-                        </div>
-                        {globalMode ? (
-                          <Button
-                            size="sm"
-                            variant={isActiveProject ? "secondary" : "outline"}
-                            onClick={() => setSelectedProjectId(entry.id)}
-                          >
-                            {isActiveProject ? "Active scope" : "Focus project"}
+            {selectedArtefactProject ? (
+              <ProjectArtefactPanel
+                projectId={selectedArtefactProject.id}
+                projectName={selectedArtefactProject.name}
+                agentIds={selectedArtefactAgentIds}
+                taskHints={selectedArtefactTaskHints}
+                trackingContext={selectedArtefactProject.trackingContext}
+                onBack={() => setSelectedArtefactProjectId(null)}
+              />
+            ) : (
+              <ScrollArea className="h-full pr-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {allProjects.map((entry) => {
+                    const isActiveProject = project?.id === entry.id;
+                    const openCount = projectTaskCounts.get(entry.id) ?? 0;
+                    const entryRevenue = (entry.ledger ?? [])
+                      .filter((row) => row.type === "revenue")
+                      .reduce((total, row) => total + Math.max(0, Math.round(row.amount)), 0);
+                    const entryCost = (entry.ledger ?? [])
+                      .filter((row) => row.type === "cost")
+                      .reduce((total, row) => total + Math.max(0, Math.round(row.amount)), 0);
+                    const entryProfit = entryRevenue - entryCost;
+                    return (
+                      <Card key={entry.id} className={isActiveProject ? "border-primary/60" : undefined}>
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <CardTitle className="text-sm">{entry.name}</CardTitle>
+                            <Badge variant="secondary">{entry.status}</Badge>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-3 text-sm">
+                          <p className="line-clamp-2 text-muted-foreground">{entry.goal || "No goal available."}</p>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Open tasks</span>
+                            <span className="font-medium">{openCount}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Profit pulse</span>
+                            <span className={entryProfit >= 0 ? "font-medium text-emerald-500" : "font-medium text-red-500"}>
+                              {currencyFormatter.format(entryProfit / 100)}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {(entry.kpis ?? []).slice(0, 4).map((kpi) => (
+                              <Badge key={`${entry.id}-${kpi}`} variant="outline">
+                                {kpi}
+                              </Badge>
+                            ))}
+                            {(entry.kpis ?? []).length === 0 ? <span className="text-xs text-muted-foreground">No KPIs yet.</span> : null}
+                          </div>
+                          {globalMode ? (
+                            <Button
+                              size="sm"
+                              variant={isActiveProject ? "secondary" : "outline"}
+                              onClick={() => setSelectedProjectId(entry.id)}
+                            >
+                              {isActiveProject ? "Active scope" : "Focus project"}
+                            </Button>
+                          ) : null}
+                          <Button size="sm" variant="outline" onClick={() => setSelectedArtefactProjectId(entry.id)}>
+                            View Artefacts
                           </Button>
-                        ) : null}
-                      </CardContent>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                  {allProjects.length === 0 ? (
+                    <Card>
+                      <CardContent className="pt-4 text-sm text-muted-foreground">No projects available yet.</CardContent>
                     </Card>
-                  );
-                })}
-                {allProjects.length === 0 ? (
-                  <Card>
-                    <CardContent className="pt-4 text-sm text-muted-foreground">No projects available yet.</CardContent>
-                  </Card>
-                ) : null}
-              </div>
-            </ScrollArea>
+                  ) : null}
+                </div>
+              </ScrollArea>
+            )}
           </TabsContent>
 
           <TabsContent value="communications" className="mt-4 min-h-0 flex-1 overflow-hidden">
