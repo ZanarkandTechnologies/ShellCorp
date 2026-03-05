@@ -21,8 +21,15 @@ function initialSnapshot(): {
   };
 }
 
+function normalizeTeamId(value?: string): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.toLowerCase() : undefined;
+}
+
 async function applyEvent(params: {
   ctx: MutationCtx;
+  teamId?: string;
   agentId: string;
   eventType: AgentEventType;
   label: string;
@@ -35,6 +42,7 @@ async function applyEvent(params: {
   beatId?: string;
   occurredAt?: number;
 }): Promise<{ duplicate: boolean }> {
+  // MEM-0132 decision: agent status/event logs carry teamId as first-class context.
   const now = Date.now();
   const eventTs = params.occurredAt ?? now;
 
@@ -48,7 +56,10 @@ async function applyEvent(params: {
     }
   }
 
+  const teamId = normalizeTeamId(params.teamId);
+
   await params.ctx.db.insert("agentEvents", {
+    teamId,
     agentId: params.agentId,
     eventType: params.eventType,
     label: params.label,
@@ -87,6 +98,7 @@ async function applyEvent(params: {
 
   if (existing) {
     await params.ctx.db.patch(existing._id, {
+      teamId: teamId ?? existing.teamId,
       state: next.state,
       statusText: next.statusText,
       bubbles: next.bubbles,
@@ -99,6 +111,7 @@ async function applyEvent(params: {
   }
 
   await params.ctx.db.insert("agentStatus", {
+    teamId,
     agentId: params.agentId,
     state: next.state,
     statusText: next.statusText,
@@ -113,6 +126,7 @@ async function applyEvent(params: {
 
 export const ingestEvent = internalMutation({
   args: {
+    teamId: v.optional(v.string()),
     agentId: v.string(),
     eventType: v.string(),
     label: v.string(),
@@ -130,6 +144,7 @@ export const ingestEvent = internalMutation({
     if (!eventType) return;
     await applyEvent({
       ctx,
+      teamId: args.teamId,
       agentId: args.agentId,
       eventType,
       label: args.label,
@@ -147,6 +162,7 @@ export const ingestEvent = internalMutation({
 
 export const reportStatus = internalMutation({
   args: {
+    teamId: v.optional(v.string()),
     agentId: v.string(),
     state: v.string(),
     statusText: v.string(),
@@ -171,6 +187,7 @@ export const reportStatus = internalMutation({
         : "status";
     const applied = await applyEvent({
       ctx,
+      teamId: args.teamId,
       agentId: args.agentId,
       eventType: "status_report",
       label,

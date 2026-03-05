@@ -61,6 +61,11 @@ function trimOrUndefined(value?: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function normalizeTeamId(value?: string): string | undefined {
+  const trimmed = trimOrUndefined(value);
+  return trimmed ? trimmed.toLowerCase() : undefined;
+}
+
 function ensureTaskId(input?: string): string {
   const cleaned = trimOrUndefined(input);
   if (cleaned) return cleaned;
@@ -106,6 +111,7 @@ function permissionSetFromInput(actorRole: string, raw?: string): Set<BoardPermi
 
 export const boardCommand = mutation({
   args: {
+    teamId: v.optional(v.string()),
     projectId: v.string(),
     command: v.string(),
     taskId: v.optional(v.string()),
@@ -127,6 +133,8 @@ export const boardCommand = mutation({
     occurredAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    // MEM-0132 decision: persist first-class teamId for timeline isolation/audits.
+    const teamId = normalizeTeamId(args.teamId);
     const command = args.command.trim();
     if (!isCommand(command)) throw new Error(`invalid_command:${command}`);
     const projectId = args.projectId.trim();
@@ -153,6 +161,7 @@ export const boardCommand = mutation({
         if (existing) return { ok: true, duplicate: true, taskId: trimOrUndefined(args.taskId) };
       }
       await ctx.db.insert("teamActivityEvents", {
+        teamId,
         projectId,
         agentId: actorAgentId,
         activityType,
@@ -210,6 +219,7 @@ export const boardCommand = mutation({
         dueAt: args.dueAt,
       });
       await ctx.db.insert("teamBoardEvents", {
+        teamId,
         projectId,
         taskId: nextTaskId,
         eventType: "task_created",
@@ -234,6 +244,7 @@ export const boardCommand = mutation({
     if (command === "task_delete") {
       await ctx.db.delete(existingTask._id);
       await ctx.db.insert("teamBoardEvents", {
+        teamId,
         projectId,
         taskId,
         eventType: "task_deleted",
@@ -307,6 +318,7 @@ export const boardCommand = mutation({
     if (notes !== undefined) patch.notes = notes;
     await ctx.db.patch(existingTask._id, patch);
     await ctx.db.insert("teamBoardEvents", {
+      teamId,
       projectId,
       taskId,
       eventType,
@@ -361,17 +373,27 @@ export const getProjectBoard = query({
 export const getProjectBoardEvents = query({
   args: {
     projectId: v.string(),
+    teamId: v.optional(v.string()),
     limit: v.optional(v.number()),
     taskId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const limit = Math.min(Math.max(args.limit ?? 40, 1), 200);
+    const teamId = normalizeTeamId(args.teamId);
     if (args.taskId?.trim()) {
       return ctx.db
         .query("teamBoardEvents")
         .withIndex("by_project_task_occurred_at", (q) => q.eq("projectId", args.projectId).eq("taskId", args.taskId!.trim()))
         .order("desc")
         .take(limit);
+    }
+    if (teamId) {
+      const rows = await ctx.db
+        .query("teamBoardEvents")
+        .withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId))
+        .order("desc")
+        .take(limit);
+      if (rows.length > 0) return rows;
     }
     return ctx.db
       .query("teamBoardEvents")
@@ -384,23 +406,85 @@ export const getProjectBoardEvents = query({
 export const getProjectActivity = query({
   args: {
     projectId: v.string(),
+    teamId: v.optional(v.string()),
     limit: v.optional(v.number()),
     agentId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
+    const teamId = normalizeTeamId(args.teamId);
     if (args.agentId?.trim()) {
+      if (teamId) {
+        const rowsByTeam = await ctx.db
+          .query("teamActivityEvents")
+          .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", args.agentId!.trim()))
+          .order("desc")
+          .take(limit);
+        if (rowsByTeam.length > 0) return rowsByTeam;
+      }
       return ctx.db
         .query("teamActivityEvents")
         .withIndex("by_project_agent_occurred_at", (q) => q.eq("projectId", args.projectId).eq("agentId", args.agentId!.trim()))
         .order("desc")
         .take(limit);
     }
+    if (teamId) {
+      const rowsByTeam = await ctx.db
+        .query("teamActivityEvents")
+        .withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId))
+        .order("desc")
+        .take(limit);
+      if (rowsByTeam.length > 0) return rowsByTeam;
+    }
     return ctx.db
       .query("teamActivityEvents")
       .withIndex("by_project_occurred_at", (q) => q.eq("projectId", args.projectId))
       .order("desc")
       .take(limit);
+  },
+});
+
+export const getTeamTimeline = query({
+  args: {
+    teamId: v.string(),
+    projectId: v.optional(v.string()),
+    agentId: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(args.limit ?? 60, 1), 200);
+    const teamId = normalizeTeamId(args.teamId);
+    if (!teamId) return [];
+    const projectId = trimOrUndefined(args.projectId);
+    const agentId = trimOrUndefined(args.agentId);
+
+    const [boardEvents, activityEvents] = await Promise.all([
+      ctx.db
+        .query("teamBoardEvents")
+        .withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId))
+        .order("desc")
+        .take(limit),
+      agentId
+        ? ctx.db
+            .query("teamActivityEvents")
+            .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", agentId))
+            .order("desc")
+            .take(limit)
+        : ctx.db
+            .query("teamActivityEvents")
+            .withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId))
+            .order("desc")
+            .take(limit),
+    ]);
+
+    const merged = [
+      ...boardEvents.map((row) => ({ ...row, sourceType: "board_event" as const })),
+      ...activityEvents.map((row) => ({ ...row, sourceType: "activity_event" as const })),
+    ]
+      .filter((row) => (projectId ? row.projectId === projectId : true))
+      .sort((a, b) => b.occurredAt - a.occurredAt);
+
+    return merged.slice(0, limit);
   },
 });
 

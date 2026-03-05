@@ -5,6 +5,7 @@
  */
 
 export type ParsedIngestPayload = {
+  teamId?: string;
   agentId: string;
   eventType: string;
   label: string;
@@ -19,6 +20,7 @@ export type ParsedIngestPayload = {
 };
 
 export type ParsedStatusReportPayload = {
+  teamId?: string;
   agentId: string;
   state: string;
   statusText: string;
@@ -41,6 +43,7 @@ export function parseIngestPayload(body: unknown): ParsedIngestPayload | null {
   const label = asTrimmedString(row.label);
   if (!agentId || !eventType || !label) return null;
   return {
+    teamId: typeof row.teamId === "string" ? row.teamId : undefined,
     agentId,
     eventType,
     label,
@@ -64,6 +67,7 @@ export function parseStatusReportPayload(body: unknown): ParsedStatusReportPaylo
   const stepKey = asTrimmedString(row.stepKey);
   if (!agentId || !state || !statusText || !stepKey) return null;
   return {
+    teamId: typeof row.teamId === "string" ? row.teamId : undefined,
     agentId,
     state,
     statusText,

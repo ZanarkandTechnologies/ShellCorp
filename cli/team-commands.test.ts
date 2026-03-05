@@ -39,6 +39,19 @@ type CompanySnapshot = {
         distribute: { skillId: string; category: string; config: Record<string, string> };
       };
     };
+    trackingContext?: string;
+    account?: { id: string; projectId: string; currency: string; balanceCents: number; updatedAt: string };
+    accountEvents?: Array<{
+      id: string;
+      projectId: string;
+      accountId: string;
+      timestamp: string;
+      type: "credit" | "debit";
+      amountCents: number;
+      source: string;
+      note?: string;
+      balanceAfterCents: number;
+    }>;
     ledger?: unknown[];
     experiments?: unknown[];
     metricEvents?: unknown[];
@@ -451,6 +464,20 @@ describe("team CLI", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await runCommand(["team", "business", "get", "--team-id", "team-proj-affiliate", "--json"]);
     expect(logSpy).toHaveBeenCalled();
+    await runCommand([
+      "team",
+      "business",
+      "context",
+      "set",
+      "--team-id",
+      "team-proj-affiliate",
+      "--text",
+      "We track CAC and conversion from short-form distribution.",
+      "--json",
+    ]);
+    expect(logSpy).toHaveBeenCalled();
+    await runCommand(["team", "business", "context", "get", "--team-id", "team-proj-affiliate", "--json"]);
+    expect(logSpy).toHaveBeenCalled();
     await runCommand(["team", "resources", "list", "--team-id", "team-proj-affiliate", "--json"]);
     expect(logSpy).toHaveBeenCalled();
     await runCommand(["team", "resources", "events", "--team-id", "team-proj-affiliate", "--limit", "3", "--json"]);
@@ -474,6 +501,7 @@ describe("team CLI", () => {
     const removedModel = JSON.parse(removedRaw) as CompanySnapshot;
     const removedProject = removedModel.projects.find((entry) => entry.id === "proj-affiliate");
     expect((removedProject?.resources ?? []).some((entry) => entry.id === "proj-affiliate:distribution")).toBe(false);
+    expect(removedProject?.trackingContext).toContain("CAC");
   });
 
   it("does not duplicate existing openclaw agent entries when IDs already exist", async () => {
@@ -556,16 +584,20 @@ describe("team CLI", () => {
       "affiliate_marketing",
     ]);
 
+    const commandPayloads: Array<Record<string, unknown>> = [];
+    const queryPayloads: Array<Record<string, unknown>> = [];
     const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input);
       const payload = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
       if (url.endsWith("/board/command")) {
+        commandPayloads.push(payload);
         if (payload.command === "task_add") {
           return new Response(JSON.stringify({ ok: true, duplicate: false, taskId: "task-1" }), { status: 200 });
         }
         return new Response(JSON.stringify({ ok: true, duplicate: false, taskId: payload.taskId ?? "task-1" }), { status: 200 });
       }
       if (url.endsWith("/board/query")) {
+        queryPayloads.push(payload);
         if (payload.query === "tasks") {
           return new Response(
             JSON.stringify({
@@ -656,6 +688,8 @@ describe("team CLI", () => {
     expect(fetchMock).toHaveBeenCalled();
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/board/command"))).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/board/query"))).toBe(true);
+    expect(commandPayloads.some((payload) => payload.teamId === "team-proj-delta")).toBe(true);
+    expect(queryPayloads.some((payload) => payload.teamId === "team-proj-delta")).toBe(true);
   });
 
   it("enforces permission denials for restricted actor roles", async () => {
@@ -675,6 +709,60 @@ describe("team CLI", () => {
         "N/A",
       ]),
     ).rejects.toThrow("permission_denied:team.meta.write:role=operator");
+  });
+
+  it("supports team funds deposit, spend, ledger, and balance", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Funds",
+      "--description",
+      "Funds team",
+      "--goal",
+      "Stay solvent",
+      "--business-type",
+      "affiliate_marketing",
+    ]);
+    await runCommand([
+      "team",
+      "funds",
+      "deposit",
+      "--team-id",
+      "team-proj-funds",
+      "--amount",
+      "50000",
+      "--source",
+      "seed_capital",
+      "--note",
+      "initial funding",
+    ]);
+    await runCommand([
+      "team",
+      "funds",
+      "spend",
+      "--team-id",
+      "team-proj-funds",
+      "--amount",
+      "1200",
+      "--source",
+      "openai_api",
+      "--note",
+      "batch run",
+    ]);
+    await runCommand(["team", "funds", "balance", "--team-id", "team-proj-funds", "--json"]);
+    await runCommand(["team", "funds", "ledger", "--team-id", "team-proj-funds", "--limit", "5", "--json"]);
+
+    const finalRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const finalModel = JSON.parse(finalRaw) as CompanySnapshot;
+    const project = finalModel.projects.find((entry) => entry.id === "proj-funds");
+    expect(project?.account?.balanceCents).toBe(48800);
+    expect((project?.accountEvents ?? []).length).toBe(2);
+    expect((project?.accountEvents ?? [])[0]?.type).toBe("credit");
+    expect((project?.accountEvents ?? [])[1]?.type).toBe("debit");
+    expect((project?.ledger ?? []).length).toBe(2);
   });
 });
 

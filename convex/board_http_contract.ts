@@ -5,6 +5,7 @@
  */
 
 export type ParsedBoardCommandPayload = {
+  teamId?: string;
   projectId: string;
   command: string;
   taskId?: string;
@@ -25,6 +26,7 @@ export type ParsedBoardCommandPayload = {
 };
 
 export type ParsedBoardQueryPayload = {
+  teamId?: string;
   projectId: string;
   query: "tasks" | "board_events" | "activity" | "next";
   taskId?: string;
@@ -58,6 +60,7 @@ export function parseBoardCommandPayload(value: unknown): ParsedBoardCommandPayl
     projectId,
     command,
   };
+  const teamId = asTrimmedString(record.teamId);
   const taskId = asTrimmedString(record.taskId);
   const title = asTrimmedString(record.title);
   const status = asTrimmedString(record.status);
@@ -73,6 +76,7 @@ export function parseBoardCommandPayload(value: unknown): ParsedBoardCommandPayl
   const stepKey = asTrimmedString(record.stepKey);
   const dueAt = asFiniteNumber(record.dueAt);
   const occurredAt = asFiniteNumber(record.occurredAt);
+  if (teamId) payload.teamId = teamId;
   if (taskId) payload.taskId = taskId;
   if (title) payload.title = title;
   if (status) payload.status = status;
@@ -102,9 +106,11 @@ export function parseBoardQueryPayload(value: unknown): ParsedBoardQueryPayload 
     projectId,
     query,
   };
+  const teamId = asTrimmedString(record.teamId);
   const taskId = asTrimmedString(record.taskId);
   const agentId = asTrimmedString(record.agentId);
   const limit = asFiniteNumber(record.limit);
+  if (teamId) payload.teamId = teamId;
   if (taskId) payload.taskId = taskId;
   if (agentId) payload.agentId = agentId;
   if (typeof limit === "number") payload.limit = limit;

@@ -140,6 +140,7 @@ http.route({
       if (parsed.query === "board_events") {
         const data = await ctx.runQuery(api.board.getProjectBoardEvents, {
           projectId: parsed.projectId,
+          teamId: parsed.teamId,
           limit: parsed.limit,
           taskId: parsed.taskId,
         });
@@ -151,6 +152,7 @@ http.route({
       if (parsed.query === "activity") {
         const data = await ctx.runQuery(api.board.getProjectActivity, {
           projectId: parsed.projectId,
+          teamId: parsed.teamId,
           limit: parsed.limit,
           agentId: parsed.agentId,
         });

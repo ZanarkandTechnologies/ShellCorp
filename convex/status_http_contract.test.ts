@@ -10,6 +10,7 @@ describe("status-http-contract", () => {
       detail: "Reviewing backlog",
     });
     expect(parsed).toEqual({
+      teamId: undefined,
       agentId: "main",
       eventType: "status_report",
       label: "planning",
@@ -36,6 +37,7 @@ describe("status-http-contract", () => {
       stepKey: "main-step-1",
     });
     expect(parsed?.agentId).toBe("main");
+    expect(parsed?.teamId).toBeUndefined();
     expect(parsed?.state).toBe("executing");
     expect(parsed?.statusText).toBe("Running distribution");
     expect(parsed?.stepKey).toBe("main-step-1");
@@ -50,6 +52,24 @@ describe("status-http-contract", () => {
         stepKey: "   ",
       }),
     ).toBeNull();
+  });
+
+  it("parses optional teamId in status payloads", () => {
+    const ingest = parseIngestPayload({
+      teamId: "team-proj-alpha",
+      agentId: "main",
+      eventType: "status_report",
+      label: "planning",
+    });
+    const report = parseStatusReportPayload({
+      teamId: "team-proj-alpha",
+      agentId: "main",
+      state: "planning",
+      statusText: "Planning",
+      stepKey: "main-step",
+    });
+    expect(ingest?.teamId).toBe("team-proj-alpha");
+    expect(report?.teamId).toBe("team-proj-alpha");
   });
 });
 

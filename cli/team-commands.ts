@@ -28,6 +28,8 @@ import {
   type HeartbeatProfileModel,
   type OfficeObjectModel,
   type ProjectResourceModel,
+  type ProjectAccountModel,
+  type ProjectAccountEventModel,
   type ResourceEventModel,
   type ResourceType,
   type RoleSlotModel,
@@ -272,6 +274,23 @@ function parseSpawnPolicy(raw: string): SpawnPolicy {
   if (raw === "manual") return "manual";
   if (raw === "queue_pressure") return "queue_pressure";
   fail(`invalid_spawn_policy: ${raw}`);
+}
+
+function ensureProjectAccount(projectId: string, project: CompanyModel["projects"][number]): ProjectAccountModel {
+  const existing = (project as { account?: ProjectAccountModel }).account;
+  if (existing && existing.id) return existing;
+  const accountEvents = (project as { accountEvents?: ProjectAccountEventModel[] }).accountEvents ?? [];
+  const derivedBalance =
+    accountEvents.length > 0
+      ? accountEvents[accountEvents.length - 1]?.balanceAfterCents ?? 0
+      : (project.ledger ?? []).reduce((total, entry) => total + (entry.type === "revenue" ? entry.amount : -entry.amount), 0);
+  return {
+    id: `${projectId}:account`,
+    projectId,
+    currency: "USD",
+    balanceCents: derivedBalance,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 function resolveProjectOrFail(company: CompanyModel, teamId: string) {
@@ -891,6 +910,10 @@ function resolveConvexSiteUrl(): string {
 
 async function postBoardCommand(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const baseUrl = resolveConvexSiteUrl();
+  const normalizedPayload = { ...payload };
+  if (typeof normalizedPayload.teamId !== "string" && typeof normalizedPayload.projectId === "string") {
+    normalizedPayload.teamId = teamIdFromProjectId(normalizedPayload.projectId);
+  }
   const headers: Record<string, string> = {
     "content-type": "application/json",
     "x-shellcorp-actor-role": readActorRole(),
@@ -902,7 +925,7 @@ async function postBoardCommand(payload: Record<string, unknown>): Promise<Recor
   const response = await fetch(`${baseUrl}/board/command`, {
     method: "POST",
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify(normalizedPayload),
   });
   let body: unknown = null;
   try {
@@ -923,6 +946,10 @@ async function postBoardCommand(payload: Record<string, unknown>): Promise<Recor
 
 async function postBoardQuery(payload: Record<string, unknown>): Promise<unknown> {
   const baseUrl = resolveConvexSiteUrl();
+  const normalizedPayload = { ...payload };
+  if (typeof normalizedPayload.teamId !== "string" && typeof normalizedPayload.projectId === "string") {
+    normalizedPayload.teamId = teamIdFromProjectId(normalizedPayload.projectId);
+  }
   const headers: Record<string, string> = {
     "content-type": "application/json",
     "x-shellcorp-actor-role": readActorRole(),
@@ -934,7 +961,7 @@ async function postBoardQuery(payload: Record<string, unknown>): Promise<unknown
   const response = await fetch(`${baseUrl}/board/query`, {
     method: "POST",
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify(normalizedPayload),
   });
   let body: unknown = null;
   try {
@@ -1082,6 +1109,14 @@ export function registerTeamCommands(program: Command): void {
           goal: opts.goal.trim(),
           kpis,
           ...(businessType ? { businessConfig: defaultBusinessConfig(businessType) } : {}),
+          account: {
+            id: `${projectId}:account`,
+            projectId,
+            currency: "USD",
+            balanceCents: 0,
+            updatedAt: new Date().toISOString(),
+          },
+          accountEvents: [],
           ledger: [],
           experiments: [],
           metricEvents: [],
@@ -1338,6 +1373,7 @@ export function registerTeamCommands(program: Command): void {
         teamId: opts.teamId,
         projectId,
         businessConfig: project.businessConfig ?? null,
+        trackingContext: project.trackingContext ?? "",
       };
       formatOutput(
         opts.json ? "json" : "text",
@@ -1345,6 +1381,48 @@ export function registerTeamCommands(program: Command): void {
         project.businessConfig
           ? `${opts.teamId} | type=${project.businessConfig.type} | measure=${project.businessConfig.slots.measure.skillId} | execute=${project.businessConfig.slots.execute.skillId} | distribute=${project.businessConfig.slots.distribute.skillId}`
           : `${opts.teamId} has no business config`,
+      );
+    });
+  const businessContext = business.command("context").description("Manage freeform business tracking context");
+  businessContext
+    .command("get")
+    .requiredOption("--team-id <teamId>", "Team id (team-*)")
+    .option("--json", "Output JSON", false)
+    .action(async (opts: { teamId: string; json?: boolean }) => {
+      ensureCommandPermission("team.read");
+      const company = await store.readCompanyModel();
+      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+      const text = project.trackingContext ?? "";
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, teamId: opts.teamId, projectId, trackingContext: text },
+        text ? text : `${opts.teamId} has no tracking context`,
+      );
+    });
+  businessContext
+    .command("set")
+    .requiredOption("--team-id <teamId>", "Team id (team-*)")
+    .requiredOption("--text <text>", "Tracking context text")
+    .option("--json", "Output JSON", false)
+    .action(async (opts: { teamId: string; text: string; json?: boolean }) => {
+      ensureCommandPermission("team.business.write");
+      const company = await store.readCompanyModel();
+      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+      const nextText = opts.text.trim();
+      const nextProject = nextText
+        ? { ...project, trackingContext: nextText }
+        : (() => {
+            const { trackingContext: _trackingContext, ...rest } = project;
+            return rest;
+          })();
+      await store.writeCompanyModel({
+        ...company,
+        projects: company.projects.map((entry) => (entry.id === projectId ? nextProject : entry)),
+      });
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, teamId: opts.teamId, projectId, trackingContext: nextText },
+        `Updated business tracking context for ${opts.teamId}`,
       );
     });
   business
@@ -1396,6 +1474,8 @@ export function registerTeamCommands(program: Command): void {
         const nextProject = {
           ...project,
           businessConfig: nextBusinessConfig,
+          account: project.account ?? ensureProjectAccount(projectId, project),
+          accountEvents: project.accountEvents ?? [],
           ledger: project.ledger ?? [],
           experiments: project.experiments ?? [],
           metricEvents: project.metricEvents ?? [],
@@ -1454,6 +1534,8 @@ export function registerTeamCommands(program: Command): void {
         const nextProject = {
           ...project,
           businessConfig: nextBusinessConfig,
+          account: project.account ?? ensureProjectAccount(projectId, project),
+          accountEvents: project.accountEvents ?? [],
           resources: project.resources ?? defaultProjectResources(projectId),
           resourceEvents: project.resourceEvents ?? [],
           ledger: project.ledger ?? [],
@@ -1636,6 +1718,8 @@ export function registerTeamCommands(program: Command): void {
         };
         const nextProject = {
           ...project,
+          account: project.account ?? ensureProjectAccount(projectId, project),
+          accountEvents: project.accountEvents ?? [],
           resources: nextResources,
           resourceEvents: [...(project.resourceEvents ?? []), event],
           ledger: project.ledger ?? [],
@@ -1966,6 +2050,169 @@ export function registerTeamCommands(program: Command): void {
         opts.json ? "json" : "text",
         { ok: true, teamId: opts.teamId, projectId },
         `Seeded demo business data for ${opts.teamId}`,
+      );
+    });
+
+  const funds = team.command("funds").description("Manage team account funding and spend ledger");
+  funds
+    .command("balance")
+    .requiredOption("--team-id <teamId>", "Team id (team-*)")
+    .option("--json", "Output JSON", false)
+    .action(async (opts: { teamId: string; json?: boolean }) => {
+      ensureCommandPermission("team.read");
+      const company = await store.readCompanyModel();
+      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+      const account = ensureProjectAccount(projectId, project);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, teamId: opts.teamId, projectId, account },
+        `${opts.teamId} | balance=${account.balanceCents} ${account.currency.toLowerCase()}_cents`,
+      );
+    });
+
+  funds
+    .command("deposit")
+    .requiredOption("--team-id <teamId>", "Team id (team-*)")
+    .requiredOption("--amount <amount>", "Amount in cents")
+    .requiredOption("--source <source>", "Funding source")
+    .option("--note <note>", "Optional note")
+    .option("--json", "Output JSON", false)
+    .action(async (opts: { teamId: string; amount: string; source: string; note?: string; json?: boolean }) => {
+      ensureCommandPermission("team.business.write");
+      const amount = Number(opts.amount);
+      if (!Number.isFinite(amount) || amount <= 0) fail("invalid_amount_cents");
+      const company = await store.readCompanyModel();
+      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+      const account = ensureProjectAccount(projectId, project);
+      const nextBalance = account.balanceCents + Math.round(amount);
+      const nowIso = new Date().toISOString();
+      const accountEvent: ProjectAccountEventModel = {
+        id: `acct-event-${projectId}-${Date.now()}`,
+        projectId,
+        accountId: account.id,
+        timestamp: nowIso,
+        type: "credit",
+        amountCents: Math.round(amount),
+        source: opts.source.trim(),
+        ...(opts.note?.trim() ? { note: opts.note.trim() } : {}),
+        balanceAfterCents: nextBalance,
+      };
+      const ledgerEntry = {
+        id: `ledger-revenue-${projectId}-${Date.now()}`,
+        projectId,
+        timestamp: nowIso,
+        type: "revenue" as const,
+        amount: Math.round(amount),
+        currency: account.currency,
+        source: opts.source.trim(),
+        description: opts.note?.trim() || "Funds deposit",
+      };
+      await store.writeCompanyModel({
+        ...company,
+        projects: company.projects.map((entry) =>
+          entry.id === projectId
+            ? {
+                ...entry,
+                account: {
+                  ...account,
+                  balanceCents: nextBalance,
+                  updatedAt: nowIso,
+                },
+                accountEvents: [...(entry.accountEvents ?? []), accountEvent],
+                ledger: [...(entry.ledger ?? []), ledgerEntry],
+              }
+            : entry,
+        ),
+      });
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, teamId: opts.teamId, projectId, balanceCents: nextBalance, event: accountEvent },
+        `Deposited ${Math.round(amount)} cents for ${opts.teamId}`,
+      );
+    });
+
+  funds
+    .command("spend")
+    .requiredOption("--team-id <teamId>", "Team id (team-*)")
+    .requiredOption("--amount <amount>", "Amount in cents")
+    .requiredOption("--source <source>", "Spend source")
+    .option("--note <note>", "Optional note")
+    .option("--json", "Output JSON", false)
+    .action(async (opts: { teamId: string; amount: string; source: string; note?: string; json?: boolean }) => {
+      ensureCommandPermission("team.business.write");
+      const amount = Number(opts.amount);
+      if (!Number.isFinite(amount) || amount <= 0) fail("invalid_amount_cents");
+      const company = await store.readCompanyModel();
+      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+      const account = ensureProjectAccount(projectId, project);
+      const roundedAmount = Math.round(amount);
+      if (account.balanceCents < roundedAmount) fail("insufficient_funds");
+      const nextBalance = account.balanceCents - roundedAmount;
+      const nowIso = new Date().toISOString();
+      const accountEvent: ProjectAccountEventModel = {
+        id: `acct-event-${projectId}-${Date.now()}`,
+        projectId,
+        accountId: account.id,
+        timestamp: nowIso,
+        type: "debit",
+        amountCents: roundedAmount,
+        source: opts.source.trim(),
+        ...(opts.note?.trim() ? { note: opts.note.trim() } : {}),
+        balanceAfterCents: nextBalance,
+      };
+      const ledgerEntry = {
+        id: `ledger-cost-${projectId}-${Date.now()}`,
+        projectId,
+        timestamp: nowIso,
+        type: "cost" as const,
+        amount: roundedAmount,
+        currency: account.currency,
+        source: opts.source.trim(),
+        description: opts.note?.trim() || "Team spend",
+      };
+      await store.writeCompanyModel({
+        ...company,
+        projects: company.projects.map((entry) =>
+          entry.id === projectId
+            ? {
+                ...entry,
+                account: {
+                  ...account,
+                  balanceCents: nextBalance,
+                  updatedAt: nowIso,
+                },
+                accountEvents: [...(entry.accountEvents ?? []), accountEvent],
+                ledger: [...(entry.ledger ?? []), ledgerEntry],
+              }
+            : entry,
+        ),
+      });
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, teamId: opts.teamId, projectId, balanceCents: nextBalance, event: accountEvent },
+        `Recorded spend ${roundedAmount} cents for ${opts.teamId}`,
+      );
+    });
+
+  funds
+    .command("ledger")
+    .requiredOption("--team-id <teamId>", "Team id (team-*)")
+    .option("--limit <limit>", "Limit entries", "20")
+    .option("--json", "Output JSON", false)
+    .action(async (opts: { teamId: string; limit: string; json?: boolean }) => {
+      ensureCommandPermission("team.read");
+      const company = await store.readCompanyModel();
+      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+      const limit = Number.isFinite(Number(opts.limit)) ? Math.max(1, Math.min(200, Math.floor(Number(opts.limit)))) : 20;
+      const rows = [...(project.accountEvents ?? [])]
+        .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))
+        .slice(0, limit);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, teamId: opts.teamId, projectId, count: rows.length, rows },
+        rows
+          .map((row) => `${row.timestamp} | ${row.type.toUpperCase()} | ${row.amountCents} usd_cents | source=${row.source}`)
+          .join("\n") || `${opts.teamId} has no account events`,
       );
     });
 

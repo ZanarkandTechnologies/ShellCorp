@@ -18,6 +18,7 @@ export interface HookEvent {
 }
 
 export interface ConvexStatusEvent {
+  teamId?: string;
   agentId: string;
   eventType: "heartbeat_start" | "heartbeat_ok" | "heartbeat_no_work" | "heartbeat_error" | "tool_call" | "skill_call";
   label: string;
@@ -49,6 +50,34 @@ function parseAgentId(sessionKey?: string): string | null {
   if (!sessionKey) return null;
   const match = sessionKey.match(/^agent:([^:]+):/i);
   return match?.[1] ?? null;
+}
+
+function teamIdFromProjectId(projectId?: string): string | null {
+  if (!projectId) return null;
+  const trimmed = projectId.trim();
+  if (!trimmed) return null;
+  return `team-${trimmed}`;
+}
+
+function extractTeamId(event: HookEvent & Record<string, unknown>): string | null {
+  const directTeam = firstString(
+    (event as { teamId?: string }).teamId,
+    (event as { team?: { id?: string; teamId?: string } }).team?.id,
+    (event as { team?: { id?: string; teamId?: string } }).team?.teamId,
+  );
+  if (directTeam) return directTeam;
+
+  const payload = (event as { payload?: Record<string, unknown> }).payload;
+  const payloadTeam = firstString(
+    typeof payload?.teamId === "string" ? payload.teamId : "",
+    typeof payload?.targetTeamId === "string" ? payload.targetTeamId : "",
+  );
+  if (payloadTeam) return payloadTeam;
+  const payloadProjectId = firstString(
+    typeof payload?.projectId === "string" ? payload.projectId : "",
+    typeof payload?.targetProjectId === "string" ? payload.targetProjectId : "",
+  );
+  return teamIdFromProjectId(payloadProjectId);
 }
 
 function extractAgentId(event: HookEvent & Record<string, unknown>, sessionKey: string): string | null {
@@ -120,7 +149,9 @@ export function classifyEvent(event: HookEvent): ConvexStatusEvent[] {
   const trimmedText = text.trim();
 
   const occurredAt = event.timestamp instanceof Date ? event.timestamp.getTime() : Date.now();
+  const teamId = extractTeamId(event as HookEvent & Record<string, unknown>) ?? undefined;
   const common = {
+    teamId,
     agentId,
     sessionKey,
     occurredAt,
