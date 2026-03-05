@@ -406,7 +406,7 @@ function toOfficeData(
       status:
         heartbeatStatus ??
         (!isRuntimeRunning ? "warning" : pressure === "high" ? "warning" : (runtimeAgent?.sessionCount ?? 0) > 0 ? "success" : "info"),
-      statusMessage: `${heartbeat?.goal ?? "No heartbeat profile"} | heartbeat=${liveStatus?.statusText ?? "Idle"} | runtime=${isRuntimeRunning ? "running" : "not-running"} | sandbox=${agent.sandboxMode} | sessions=${runtimeAgent?.sessionCount ?? 0}`,
+      statusMessage: liveStatus?.statusText ?? heartbeat?.goal ?? "Idle",
       notificationCount: agentApprovals?.count,
       notificationPriority: agentApprovals?.maxRisk,
       heartbeatState: liveStatus?.state,

@@ -73,17 +73,17 @@ function getCSSColor(variable: string): THREE.Color {
     return new THREE.Color(value || '#cccccc');
 }
 
-// Sample status messages
+// Sample idle thought messages (for simulation flavor while idle)
 const SAMPLE_MESSAGES = [
-    'Working on task...',
-    'Analyzing data',
-    'Writing report',
-    'In a meeting',
-    'Taking a break',
-    'Debugging code',
-    'Planning sprint',
-    'Reviewing PR',
-    'On a call',
+    "Pondering if bugs dream of electric stack traces.",
+    "Rehearsing a TED talk for zero attendees.",
+    "Negotiating with a rubber duck about architecture.",
+    "Wondering if this sprint is actually a treadmill.",
+    "Staring into the backlog until it blinks first.",
+    "Inventing a new KPI: vibes per minute.",
+    "Mentally renaming variables for fun and profit.",
+    "Questioning whether semicolons feel lonely.",
+    "Trying to remember why Monday exists.",
 ];
 
 // Simple hash function to generate deterministic "random" values from employee ID
@@ -118,6 +118,10 @@ function assignRandomStatuses(
     const now = Date.now();
 
     return employees.map((emp) => {
+        const hasActiveHeartbeatState = Boolean(
+            emp.heartbeatState && emp.heartbeatState !== "idle" && emp.heartbeatState !== "no_work",
+        );
+        const isIdleHeartbeatState = emp.heartbeatState === "idle" || emp.heartbeatState === "no_work";
         // Check if employee's team has an active wander lock
         const teamLockUntil = teamWanderLocks.get(emp.teamId);
         const isTeamLocked = teamLockUntil !== undefined && teamLockUntil > now;
@@ -144,6 +148,13 @@ function assignRandomStatuses(
         // Otherwise, use deterministic "random" (50% chance based on ID)
         const wantsToWander = isTeamLocked ? false : wanderRandom < 0.5;
 
+        if (hasActiveHeartbeatState) {
+            return {
+                ...emp,
+                wantsToWander,
+            };
+        }
+
         // Give ~60% of employees a random status (deterministic per employee)
         if (statusRandom < 0.6) {
             const randomStatus =
@@ -154,11 +165,11 @@ function assignRandomStatuses(
             const randomMessage = shouldHaveMessage
                 ? SAMPLE_MESSAGES[Math.floor(messageIndexRandom * SAMPLE_MESSAGES.length)]
                 : emp.statusMessage;
-
+            const nextMessage = isIdleHeartbeatState ? randomMessage || emp.statusMessage : emp.statusMessage;
             return {
                 ...emp,
                 status: randomStatus as StatusType,
-                statusMessage: randomMessage || emp.statusMessage,
+                statusMessage: nextMessage,
                 wantsToWander,
             };
         }
@@ -716,6 +727,8 @@ const SceneContents = ({
                     teamId={emp.teamId}
                     notificationCount={emp.notificationCount}
                     notificationPriority={emp.notificationPriority}
+                    heartbeatState={emp.heartbeatState}
+                    heartbeatBubbles={emp.heartbeatBubbles}
                     profileImageUrl={emp.profileImageUrl}
                 />
             ))}

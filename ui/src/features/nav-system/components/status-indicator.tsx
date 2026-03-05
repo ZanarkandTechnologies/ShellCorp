@@ -216,36 +216,43 @@ export default function StatusIndicator({
         return (
             <group ref={groupRef} position={[0, 0.75, 0]} onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
                 <Html center distanceFactor={8} zIndexRange={[2, 0]}>
-                    <div style={{ display: "flex", gap: "6px", alignItems: "center", pointerEvents: "none" }}>
-                        <span
-                            style={{
-                                background: statusColor,
-                                color: "white",
-                                borderRadius: "999px",
-                                padding: "3px 8px",
-                                fontSize: "10px",
-                                fontWeight: 700,
-                                boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
-                            }}
-                        >
-                            {safeStatus.toUpperCase()}
-                        </span>
-                        {bubbles.slice(0, 3).map((bubble, index) => (
-                            <span
-                                key={`${bubble.label}-${index}`}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center", pointerEvents: "none" }}>
+                        {message ? (
+                            <div
                                 style={{
-                                    background: "rgba(17, 24, 39, 0.88)",
+                                    background: "rgba(17, 24, 39, 0.94)",
                                     color: "white",
-                                    borderRadius: "999px",
-                                    padding: "3px 8px",
-                                    fontSize: "10px",
-                                    fontWeight: 600,
+                                    borderRadius: "10px",
+                                    padding: "6px 10px",
+                                    maxWidth: "360px",
+                                    fontSize: "11px",
+                                    fontWeight: 700,
+                                    lineHeight: 1.25,
                                     boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
+                                    whiteSpace: "normal",
+                                    textAlign: "left",
                                 }}
                             >
-                                {bubble.label}
-                            </span>
-                        ))}
+                                {message}
+                            </div>
+                        ) : null}
+                        {!message ? (
+                            <div style={{ display: "flex", gap: "6px", alignItems: "center", justifyContent: "center" }}>
+                                <span
+                                    style={{
+                                        background: "rgba(17, 24, 39, 0.88)",
+                                        color: "white",
+                                        borderRadius: "999px",
+                                        padding: "3px 8px",
+                                        fontSize: "10px",
+                                        fontWeight: 700,
+                                        boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
+                                    }}
+                                >
+                                    {bubbles[0]?.label || safeStatus.toUpperCase()}
+                                </span>
+                            </div>
+                        ) : null}
                     </div>
                 </Html>
             </group>
