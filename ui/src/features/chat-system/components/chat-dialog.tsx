@@ -18,6 +18,8 @@ export default function ChatDialog() {
     const setIsChatOpen = useChatStore((state) => state.setIsChatOpen);
     const sidebarOpen = useChatStore((state) => state.sidebarOpen);
     const setSidebarOpen = useChatStore((state) => state.setSidebarOpen);
+    const showWorkingOutput = useChatStore((state) => state.showWorkingOutput);
+    const setShowWorkingOutput = useChatStore((state) => state.setShowWorkingOutput);
 
     const { headerTitle, headerSubtitle, isEmployeeScopedChat } = useChatContext();
     const {
@@ -67,6 +69,8 @@ export default function ChatDialog() {
                             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
                             title={headerTitle}
                             subtitle={headerSubtitle}
+                            showWorkingOutput={showWorkingOutput}
+                            onToggleWorkingOutput={() => setShowWorkingOutput(!showWorkingOutput)}
                         />
                         {!isEmployeeScopedChat ? (
                             <div className="px-4 py-2 border-b bg-background/80">

@@ -11,6 +11,7 @@ export type LocalChatMessage = {
     role: "user" | "assistant";
     text: string;
     createdAt: number;
+    kind?: "default" | "working_output";
 };
 
 export type LocalChatThread = {
@@ -39,6 +40,8 @@ type ChatState = {
     setThreads: (threads: LocalChatThread[]) => void;
     messagesByThread: Record<string, LocalChatMessage[]>;
     setMessagesByThread: (next: Record<string, LocalChatMessage[]>) => void;
+    showWorkingOutput: boolean;
+    setShowWorkingOutput: (next: boolean) => void;
 };
 
 function createThreadId(prefix: string): string {
@@ -71,12 +74,15 @@ export const useChatStore = create<ChatState>()(
             setThreads: (threads) => set({ threads }),
             messagesByThread: {},
             setMessagesByThread: (messagesByThread) => set({ messagesByThread }),
+            showWorkingOutput: false,
+            setShowWorkingOutput: (showWorkingOutput) => set({ showWorkingOutput }),
         }),
         {
             name: "shellcorp-chat-store",
             partialize: (state) => ({
                 sidebarOpen: state.sidebarOpen,
                 currentMode: state.currentMode,
+                showWorkingOutput: state.showWorkingOutput,
             }),
         },
     ),

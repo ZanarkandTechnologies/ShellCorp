@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useChatStore } from "@/features/chat-system/chat-store";
 import { useAppStore } from "@/lib/app-store";
-import { stateBase } from "@/lib/gateway-config";
 import type { AgentCardModel, SessionRowModel } from "@/lib/openclaw-types";
 import { useGateway } from "@/providers/gateway-provider";
 
@@ -232,105 +231,48 @@ export function useChatThreads(): {
 
     const handleDeleteThread = useCallback(
         async (deleteThreadId: string): Promise<{ ok: boolean; error?: string }> => {
-            // #region agent log
-            fetch("http://127.0.0.1:7441/ingest/6430476e-9d36-400f-ba65-8018f53bec18", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8dc679" },
-                body: JSON.stringify({
-                    sessionId: "8dc679",
-                    location: "use-chat-threads.ts:handleDeleteThread-entry",
-                    message: "handleDeleteThread called",
-                    data: { deleteThreadId },
-                    timestamp: Date.now(),
-                    hypothesisId: "H5",
-                }),
-            }).catch(() => {});
-            // #endregion
             if (!deleteThreadId) return { ok: false, error: "session_delete_invalid_key" };
             try {
-            let deleteResult: SessionsDeleteResult | null = null;
-            try {
-                deleteResult = await client.request<SessionsDeleteResult>("sessions.delete", {
+                const deleteResult = await client.request<SessionsDeleteResult>("sessions.delete", {
                     key: deleteThreadId,
                     deleteTranscript: true,
                 });
-                // #region agent log
-                fetch("http://127.0.0.1:7441/ingest/6430476e-9d36-400f-ba65-8018f53bec18", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8dc679" },
-                    body: JSON.stringify({
-                        sessionId: "8dc679",
-                        location: "use-chat-threads.ts:handleDeleteThread-gateway-result",
-                        message: "sessions.delete gateway response",
-                        data: { deleteResult, ok: deleteResult?.ok },
-                        timestamp: Date.now(),
-                        hypothesisId: "H5",
-                    }),
-                }).catch(() => {});
-                // #endregion
-            } catch (wsError) {
-                const errMsg = wsError instanceof Error ? wsError.message : String(wsError);
-                // #region agent log
-                fetch("http://127.0.0.1:7441/ingest/6430476e-9d36-400f-ba65-8018f53bec18", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8dc679" },
-                    body: JSON.stringify({
-                        sessionId: "8dc679",
-                        runId: "pre-fix-2",
-                        hypothesisId: "H6",
-                        location: "use-chat-threads.ts:handleDeleteThread-ws-catch",
-                        message: "sessions.delete ws error observed",
-                        data: {
-                            errMsg,
-                            hasWebchatToken: errMsg.toLowerCase().includes("webchat"),
-                            hasWindow: typeof window !== "undefined",
-                            stateBase,
-                        },
-                        timestamp: Date.now(),
-                    }),
-                }).catch(() => {});
-                // #endregion
-                throw wsError;
-            }
-            if (deleteResult?.ok === false) {
-                return { ok: false, error: "session_delete_failed" };
-            }
-            const targetAgentId = parseAgentIdFromKey(deleteThreadId);
-            const refreshAgentId = selectedAgentId || targetAgentId;
-            if (!refreshAgentId) {
-                return { ok: false, error: "session_delete_agent_missing" };
-            }
-            const nextMessagesByThread = { ...messagesByThread };
-            delete nextMessagesByThread[deleteThreadId];
-            setMessagesByThread(nextMessagesByThread);
-            const mappedThreads = await syncSessionsForAgent(refreshAgentId);
-            if (mappedThreads.length === 0) {
-                const resolvedKey = await resolveSessionKeyForAgent(refreshAgentId);
-                if (resolvedKey) {
-                    setThreads([{ _id: resolvedKey, title: "New Chat", agentId: refreshAgentId, sessionKey: resolvedKey, isPendingNew: true }]);
-                    setSelectedSessionKey(resolvedKey);
-                } else {
-                    setSelectedSessionKey(null);
+
+                if (deleteResult?.ok === false) {
+                    return { ok: false, error: "session_delete_failed" };
                 }
-            } else if (selectedSessionKey === deleteThreadId || !mappedThreads.some((thread) => thread._id === selectedSessionKey)) {
-                setSelectedSessionKey(mappedThreads[0]._id);
-            }
-            return { ok: true };
-        } catch (error) {
-                // #region agent log
-                fetch("http://127.0.0.1:7441/ingest/6430476e-9d36-400f-ba65-8018f53bec18", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "8dc679" },
-                    body: JSON.stringify({
-                        sessionId: "8dc679",
-                        location: "use-chat-threads.ts:handleDeleteThread-catch",
-                        message: "handleDeleteThread threw",
-                        data: { error: String(error), message: error instanceof Error ? error.message : "" },
-                        timestamp: Date.now(),
-                        hypothesisId: "H5",
-                    }),
-                }).catch(() => {});
-                // #endregion
+                const targetAgentId = parseAgentIdFromKey(deleteThreadId);
+                const refreshAgentId = selectedAgentId || targetAgentId;
+                if (!refreshAgentId) {
+                    return { ok: false, error: "session_delete_agent_missing" };
+                }
+
+                const nextMessagesByThread = { ...messagesByThread };
+                delete nextMessagesByThread[deleteThreadId];
+                setMessagesByThread(nextMessagesByThread);
+
+                const mappedThreads = await syncSessionsForAgent(refreshAgentId);
+                if (mappedThreads.length === 0) {
+                    const resolvedKey = await resolveSessionKeyForAgent(refreshAgentId);
+                    if (resolvedKey) {
+                        setThreads([
+                            {
+                                _id: resolvedKey,
+                                title: "New Chat",
+                                agentId: refreshAgentId,
+                                sessionKey: resolvedKey,
+                                isPendingNew: true,
+                            },
+                        ]);
+                        setSelectedSessionKey(resolvedKey);
+                    } else {
+                        setSelectedSessionKey(null);
+                    }
+                } else if (selectedSessionKey === deleteThreadId || !mappedThreads.some((thread) => thread._id === selectedSessionKey)) {
+                    setSelectedSessionKey(mappedThreads[0]._id);
+                }
+                return { ok: true };
+            } catch (error) {
                 return {
                     ok: false,
                     error: error instanceof Error ? error.message : "session_delete_failed",

@@ -74,6 +74,7 @@ const CLIENT_ID = "openclaw-control-ui";
 const CLIENT_MODE = "webchat";
 const ROLE = "operator";
 const SCOPES = ["operator.admin", "operator.approvals", "operator.pairing"];
+const CLIENT_CAPS = ["tool-events"];
 const CONNECT_FAILED_CLOSE_CODE = 4008;
 
 // --- Helpers ---
@@ -288,7 +289,7 @@ export class GatewayWsClient {
       role: ROLE,
       scopes: SCOPES,
       device,
-      caps: [],
+      caps: CLIENT_CAPS,
       auth,
       userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
       locale: typeof navigator !== "undefined" ? navigator.language : "en-US",
