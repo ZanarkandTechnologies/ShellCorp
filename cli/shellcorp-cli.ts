@@ -23,6 +23,14 @@ import { registerDoctorCommands } from "./team-commands.js";
 import { registerTeamCommands } from "./team-commands.js";
 
 async function main(): Promise<void> {
+  // Avoid throwing on broken pipe when output is being piped to a consumer that exits early.
+  // (Common with `| head` / `| jq` workflows.)
+  process.stdout.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EPIPE") {
+      process.exit(0);
+    }
+  });
+
   const program = new Command();
   program
     .name("shellcorp")
