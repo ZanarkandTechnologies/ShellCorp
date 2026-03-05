@@ -453,6 +453,45 @@ export function App({ initialTab = "operations" }: AppProps): JSX.Element {
       {activeTab === "operations" ? (
         <section className="panel">
           <h2>Agent Sessions</h2>
+
+          <article className="panel">
+            <h3>Agent Roster</h3>
+            <div className="tableWrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Agent</th>
+                    <th>Sandbox</th>
+                    <th>Sessions</th>
+                    <th>Workspace</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agents.map((agent) => (
+                    <tr
+                      key={agent.agentId}
+                      className={agent.agentId === selectedAgentId ? "active" : ""}
+                      onClick={() => setSelectedAgentId(agent.agentId)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td>
+                        {agent.displayName} <span className="eyebrow">({agent.agentId})</span>
+                      </td>
+                      <td>{agent.sandboxMode}</td>
+                      <td>{agent.sessionCount}</td>
+                      <td className="content">{agent.workspacePath || "n/a"}</td>
+                    </tr>
+                  ))}
+                  {agents.length === 0 ? (
+                    <tr>
+                      <td colSpan={4}>No agents loaded.</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
           <div className="controls">
             <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value)}>
               {agents.map((agent) => (

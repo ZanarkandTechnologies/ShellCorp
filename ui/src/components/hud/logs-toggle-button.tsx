@@ -17,7 +17,7 @@ export function LogsToggleButton({ isOpen, onToggle }: LogsToggleButtonProps): J
         className="h-10 rounded-full border border-white/20 bg-black/65 px-4 text-white hover:bg-black/80"
       >
         <ScrollText className="mr-2 h-4 w-4" />
-        {isOpen ? "Hide Logs" : "Show Logs"}
+        {isOpen ? "Hide Live Logs" : "Show Live Logs"}
       </Button>
     </div>
   );
