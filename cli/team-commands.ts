@@ -184,6 +184,48 @@ function parseRoles(raw: string): TeamRole[] {
   return [...new Set(out)];
 }
 
+function layeredHeartbeatTemplate(roleName: string, projectName: string): string {
+  return [
+    `You are the ${roleName} for the project "${projectName}".`,
+    "",
+    "Heartbeat protocol (context-first, then decision):",
+    "",
+    "1) Topmost context (strategic):",
+    "- Fetch business goal, business KPIs, and active projects.",
+    "- Understand what success looks like before choosing work.",
+    "",
+    "2) Long-term context:",
+    "- Fetch memory/history, prior decisions, prior experiments, and recurring blockers.",
+    "- Fetch external context tools when available (Notion or other connected sources).",
+    "",
+    "3) Short-term context:",
+    "- Fetch the common board state (todo, in_progress, blocked, done).",
+    "- Fetch your assigned tasks and immediate dependencies.",
+    "",
+    "4) Decide next action:",
+    "- Choose one action only:",
+    "  - add/adjust a todo on the common board, or",
+    "  - execute the highest-value ticket.",
+    "- In testing mode, it is okay to mock execution if tools are unavailable.",
+    "",
+    "5) Status reporting:",
+    "- After deciding, call the status tooling if available.",
+    "- Preferred command pattern:",
+    "  SHELLCORP_CONVEX_SITE_URL=http://127.0.0.1:3211 npm --prefix /home/kenjipcx/Zanarkand/ShellCorp run shell -- team bot log --team-id <team-id> --agent-id <agent-id> --activity-type status --label heartbeat_decision --detail \"<your decision>\"",
+    "- If tools are unavailable, output a clear MOCK_STATUS line instead.",
+    "",
+    "Output format:",
+    "- TOP_CONTEXT: <one line>",
+    "- LONG_CONTEXT: <one line>",
+    "- SHORT_CONTEXT: <one line>",
+    "- DECISION: <one line>",
+    "- BOARD_ACTION: <what you would add/update on common board>",
+    "- STATUS: <status tool result or MOCK_STATUS>",
+    "- HEARTBEAT_OK",
+    "",
+  ].join("\n");
+}
+
 function parseBusinessType(raw: string): BusinessType {
   if (raw === "affiliate_marketing" || raw === "content_creator" || raw === "saas" || raw === "custom") {
     return raw;
@@ -627,9 +669,7 @@ async function upsertBusinessCronJobs(projectId: string, agentIds: string[]): Pr
   for (const agentId of agentIds) {
     const isPm = /-pm$/.test(agentId);
     const jobId = `biz-heartbeat-${projectId}-${isPm ? "pm" : "executor"}`;
-    const payloadMessage = isPm
-      ? "Read HEARTBEAT.md, review KPIs and P&L, reprioritize kanban tasks, and return HEARTBEAT_OK."
-      : "Read HEARTBEAT.md, execute the highest-priority business task, and return HEARTBEAT_OK.";
+    const payloadMessage = "Read HEARTBEAT.md and follow it exactly. End your response with HEARTBEAT_OK.";
     existingById.set(jobId, {
       id: jobId,
       agentId,
@@ -664,7 +704,7 @@ async function ensureWorkspaceWithBootstrap(opts: {
   const templatesRoot = path.resolve(process.cwd(), "templates", "workspace");
   const defaultAgents = `# AGENTS\n\nRole: ${roleLabel(opts.agent.role)}\nProject: ${opts.projectName}\n\n- Follow HEARTBEAT.md for current operating loop.\n- Keep actions reversible and explicit.\n`;
   const defaultSoul = `# SOUL\n\nYou are the ${roleLabel(opts.agent.role)} for project "${opts.projectName}".\nAct with clarity, speed, and measurable outcomes.\n`;
-  const defaultHeartbeat = `You are the ${roleLabel(opts.agent.role)} for the project "${opts.projectName}".\nRead this workspace context before each heartbeat and return HEARTBEAT_OK after a concrete update.\n`;
+  const defaultHeartbeat = layeredHeartbeatTemplate(roleLabel(opts.agent.role), opts.projectName);
 
   const agentsTemplatePath =
     opts.agent.role === "biz_pm"
@@ -898,6 +938,104 @@ async function renderBusinessHeartbeatTemplate(opts: {
     rendered = rendered.split(needle).join(value);
   }
   return rendered;
+}
+
+function resolveOpenclawStateRoot(): string {
+  return process.env.OPENCLAW_STATE_DIR?.trim() ? path.resolve(process.env.OPENCLAW_STATE_DIR.trim()) : path.join(process.env.HOME || "", ".openclaw");
+}
+
+async function writeTeamHeartbeatFiles(opts: {
+  store: ReturnType<typeof createSidecarStore>;
+  project: CompanyModel["projects"][number];
+  agents: CompanyAgentModel[];
+}): Promise<number> {
+  const stateRoot = resolveOpenclawStateRoot();
+  let written = 0;
+  for (const agent of opts.agents) {
+    const workspacePath = resolveAgentWorkspacePath(stateRoot, agent.agentId);
+    const role = agent.role;
+    const heartbeatContent =
+      role === "biz_pm"
+        ? await renderBusinessHeartbeatTemplate({ role: "biz_pm", project: opts.project })
+        : role === "biz_executor"
+          ? await renderBusinessHeartbeatTemplate({ role: "biz_executor", project: opts.project })
+          : layeredHeartbeatTemplate(roleLabel(role), opts.project.name);
+    await mkdir(workspacePath, { recursive: true });
+    await writeFile(path.join(workspacePath, "HEARTBEAT.md"), heartbeatContent, "utf-8");
+    written += 1;
+  }
+  return written;
+}
+
+async function ensureOpenclawHeartbeatScaffold(opts: {
+  store: ReturnType<typeof createSidecarStore>;
+  agentIds: string[];
+}): Promise<number> {
+  const config = await opts.store.readOpenclawConfig();
+  const agentsNode = asRecord(config.agents);
+  const defaultsNode = asRecord(agentsNode.defaults);
+  const defaultsHeartbeatNode = asRecord(defaultsNode.heartbeat);
+  const list = Array.isArray(agentsNode.list) ? [...agentsNode.list] : [];
+  const targetAgentIds = new Set(opts.agentIds);
+  let touched = 0;
+  const nextList = list.map((entry) => {
+    const row = asRecord(entry);
+    const id = typeof row.id === "string" ? row.id : "";
+    if (!id || !targetAgentIds.has(id)) return row;
+    const heartbeat = asRecord(row.heartbeat);
+    touched += 1;
+    return {
+      ...row,
+      heartbeat: {
+        ...heartbeat,
+        every: "3m",
+      },
+    };
+  });
+
+  const toolsNode = asRecord(config.tools);
+  const hooksNode = asRecord(config.hooks);
+  const internalHooksNode = asRecord(hooksNode.internal);
+  const hookEntriesNode = asRecord(internalHooksNode.entries);
+  const shellcorpStatusNode = asRecord(hookEntriesNode["shellcorp-status"]);
+
+  const nextConfig = {
+    ...config,
+    tools: {
+      ...toolsNode,
+      profile: "coding",
+    },
+    hooks: {
+      ...hooksNode,
+      internal: {
+        ...internalHooksNode,
+        enabled: true,
+        entries: {
+          ...hookEntriesNode,
+          "shellcorp-status": {
+            ...shellcorpStatusNode,
+            enabled: true,
+          },
+        },
+      },
+    },
+    agents: {
+      ...agentsNode,
+      defaults: {
+        ...defaultsNode,
+        heartbeat: {
+          ...defaultsHeartbeatNode,
+          every: "3m",
+          includeReasoning: true,
+          target: "last",
+          prompt: "Read HEARTBEAT.md and follow it exactly. End your response with HEARTBEAT_OK.",
+        },
+      },
+      list: nextList,
+    },
+  } as Record<string, unknown>;
+  await opts.store.writeOpenclawConfig(nextConfig);
+  return touched;
 }
 
 function resolveConvexSiteUrl(): string {
@@ -2713,6 +2851,44 @@ export function registerTeamCommands(program: Command): void {
         );
       },
     );
+  heartbeat
+    .command("bootstrap")
+    .description("Write layered HEARTBEAT.md files and scaffold OpenClaw heartbeat config")
+    .requiredOption("--team-id <teamId>", "Team id (team-*)")
+    .option("--json", "Output JSON", false)
+    .action(async (opts: { teamId: string; json?: boolean }) => {
+      ensureCommandPermission("team.heartbeat.write");
+      const company = await store.readCompanyModel();
+      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+      const teamAgents = company.agents.filter((agent) => agent.projectId === projectId);
+      if (teamAgents.length === 0) {
+        fail(`team_has_no_agents:${opts.teamId}`);
+      }
+      const written = await writeTeamHeartbeatFiles({
+        store,
+        project,
+        agents: teamAgents,
+      });
+      const configUpdatedAgents = await ensureOpenclawHeartbeatScaffold({
+        store,
+        agentIds: teamAgents.map((agent) => agent.agentId),
+      });
+      formatOutput(
+        opts.json ? "json" : "text",
+        {
+          ok: true,
+          teamId: opts.teamId,
+          projectId,
+          writtenHeartbeatFiles: written,
+          updatedOpenclawAgents: configUpdatedAgents,
+          notes: [
+            "Restart OpenClaw gateway after bootstrap to apply config.",
+            "Heartbeats now use layered context protocol and status-first reporting.",
+          ],
+        },
+        `Heartbeat bootstrap completed for ${opts.teamId} (${written} workspace file(s), ${configUpdatedAgents} config agent(s))`,
+      );
+    });
 }
 
 export function registerDoctorCommands(program: Command): void {

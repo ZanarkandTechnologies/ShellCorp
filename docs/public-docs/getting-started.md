@@ -49,6 +49,12 @@ cp templates/sidecar/office-objects.template.json ./officeObjects.json
 
 `openclaw.json` should include `agents.list` entries with stable `id`, `workspace`, sandbox mode, and tool policy.
 
+This template already includes:
+
+- `tools.profile: coding` (agents can run CLI/status commands)
+- default + per-agent heartbeat cadence (`3m`)
+- `shellcorp-status` internal hook enabled
+
 ## Install Repo Skills (Vercel Skills CLI)
 
 ShellCorp keeps reusable skills in `skills/`.
@@ -87,10 +93,25 @@ Skill-to-feature mapping:
 
 ## ShellCorp CLI (Result Workflow CLI)
 
-ShellCorp CLI is provided by the repo script and becomes available after `npm install`:
+ShellCorp CLI can be used in three ways:
+
+1. Repo-local:
 
 ```bash
 npm run shell -- team list
+```
+
+1. Globally from your machine:
+
+```bash
+npm link
+shellcorp --version
+```
+
+1. Agent-safe absolute invocation (recommended in heartbeat/task prompts):
+
+```bash
+npm --prefix /home/kenjipcx/Zanarkand/ShellCorp run shell -- team list --json
 ```
 
 Core command families:
@@ -105,6 +126,45 @@ Useful first checks:
 npm run shell -- team list --json
 npm run shell -- office print
 npm run shell -- doctor team-data --json
+```
+
+## Heartbeat Bootstrap (CLI)
+
+Set up layered heartbeat prompts and OpenClaw heartbeat defaults for a team in one command:
+
+```bash
+npm run shell -- team heartbeat bootstrap --team-id team-proj-shellcorp-v2 --json
+openclaw gateway restart
+```
+
+This command:
+
+- writes `HEARTBEAT.md` in each team agent workspace
+- enforces layered context protocol (top -> long-term -> short-term)
+- configures OpenClaw heartbeat defaults (`every: 3m`, `target: last`, structured prompt)
+- enables `tools.profile: coding` and `shellcorp-status` hook in OpenClaw config
+
+## Heartbeat Smoke Test (All Agents)
+
+Run one command to verify each target agent can execute the layered heartbeat flow and emit both required markers (`STATUS:` + `HEARTBEAT_OK`):
+
+```bash
+./scripts/heartbeat-smoke.sh --team-id team-proj-shellcorp-v2
+```
+
+Expected output:
+
+- `RESULT|<agent-id>|pass|status_and_heartbeat_ok` for each agent
+- `heartbeat-smoke:ok count=<N>` at the end
+- non-zero exit if any agent does not emit required markers
+
+Optional overrides:
+
+```bash
+./scripts/heartbeat-smoke.sh \
+  --team-id team-proj-shellcorp-v2 \
+  --convex-url http://127.0.0.1:3211 \
+  --agents "shellcorp-pm shellcorp-builder"
 ```
 
 ## Next

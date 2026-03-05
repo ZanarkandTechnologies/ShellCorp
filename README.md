@@ -9,6 +9,83 @@ Read in this order:
 1. `docs/getting-started.md`
 2. `docs/features-overview.md`
 
+## Multi-Agent Heartbeat Proof Loop
+
+Use this to prove every agent can heartbeat and write status via CLI.
+
+### 1) Verify OpenClaw + heartbeat wiring
+
+```bash
+openclaw --version
+openclaw status
+openclaw hooks list
+```
+
+Expected:
+
+- `Heartbeat` shows a cadence for each agent (for example `3m (...)`), not `disabled`.
+- `shellcorp-status` hook is `ready`.
+
+If non-default agents show `disabled`, add per-agent heartbeat config under `agents.list[].heartbeat` in `~/.openclaw/openclaw.json`.
+
+### 2) Ensure agents have runtime tools
+
+```bash
+openclaw config set tools.profile coding
+openclaw gateway restart
+openclaw config get tools.profile
+```
+
+Expected: `coding`
+
+Without this, agents only get messaging tools and cannot run CLI commands.
+
+### 3) Install ShellCorp CLI command for operator use
+
+From repo root:
+
+```bash
+npm link
+shellcorp --version
+```
+
+### 4) Run one-command heartbeat smoke test
+
+```bash
+./scripts/heartbeat-smoke.sh --team-id team-proj-shellcorp-v2
+```
+
+Expected output:
+
+- One line per agent:
+  - `RESULT|<agent-id>|pass|status_and_heartbeat_ok`
+- Final line:
+  - `heartbeat-smoke:ok count=<N>`
+- Exit code `1` if any agent fails marker checks.
+
+Override defaults when needed:
+
+```bash
+./scripts/heartbeat-smoke.sh \
+  --team-id team-proj-shellcorp-v2 \
+  --convex-url http://127.0.0.1:3211 \
+  --agents "shellcorp-pm shellcorp-builder"
+```
+
+### 5) Confirm timeline event landed in ShellCorp
+
+```bash
+SHELLCORP_CONVEX_SITE_URL=http://127.0.0.1:3211 \
+  npm run shell -- team bot timeline --team-id team-proj-shellcorp-v2 --json
+
+```
+
+Expected:
+
+- Timeline includes one or more new `heartbeat_smoke` events from the smoke run.
+
+Reference: [OpenClaw Multi-Agent Routing](https://docs.openclaw.ai/concepts/multi-agent)
+
 ## Concept Video
 
 Original concept demo of what an AI office could look like:

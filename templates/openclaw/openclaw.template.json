@@ -1,11 +1,35 @@
 {
   "version": 1,
+  "tools": {
+    "profile": "coding"
+  },
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "shellcorp-status": {
+          "enabled": true
+        }
+      }
+    }
+  },
   "agents": {
+    "defaults": {
+      "heartbeat": {
+        "every": "3m",
+        "includeReasoning": true,
+        "target": "last",
+        "prompt": "Read HEARTBEAT.md and follow it exactly. End your response with HEARTBEAT_OK."
+      }
+    },
     "list": [
       {
         "id": "main",
         "name": "CEO Agent",
         "workspace": "/srv/agents/main",
+        "heartbeat": {
+          "every": "3m"
+        },
         "sandbox": {
           "mode": "off"
         },
@@ -22,6 +46,9 @@
         "id": "shellcorp-builder",
         "name": "ShellCorp Builder",
         "workspace": "/srv/agents/shellcorp-builder",
+        "heartbeat": {
+          "every": "3m"
+        },
         "sandbox": {
           "mode": "workspace-write"
         },
@@ -38,6 +65,9 @@
         "id": "shellcorp-pm",
         "name": "ShellCorp PM",
         "workspace": "/srv/agents/shellcorp-pm",
+        "heartbeat": {
+          "every": "3m"
+        },
         "sandbox": {
           "mode": "workspace-write"
         },
