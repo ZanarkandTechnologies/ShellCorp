@@ -129,6 +129,7 @@ export const boardCommand = mutation({
     allowedPermissions: v.optional(v.string()),
     skillId: v.optional(v.string()),
     stepKey: v.optional(v.string()),
+    beatId: v.optional(v.string()),
     dueAt: v.optional(v.number()),
     occurredAt: v.optional(v.number()),
   },
@@ -141,6 +142,7 @@ export const boardCommand = mutation({
     if (!projectId) throw new Error("missing_project_id");
 
     const stepKey = trimOrUndefined(args.stepKey);
+    const beatId = trimOrUndefined(args.beatId);
     const occurredAt = nowMs(args.occurredAt);
     const actorType = coerceBoardActorType(args.actorType) ?? (command === "activity_log" ? "agent" : "operator");
     const actorRole = trimOrUndefined(args.actorRole)?.toLowerCase() ?? "operator";
@@ -148,6 +150,40 @@ export const boardCommand = mutation({
     const requiredPermission = requiredPermissionForCommand(command);
     const permissions = permissionSetFromInput(actorRole, trimOrUndefined(args.allowedPermissions));
     if (!permissions.has(requiredPermission)) throw new Error(`permission_denied:${requiredPermission}:role=${actorRole}`);
+    const teamMembershipCache = new Map<string, boolean>();
+    const isAgentInTeam = async (agentId: string): Promise<boolean> => {
+      const cached = teamMembershipCache.get(agentId);
+      if (typeof cached === "boolean") return cached;
+      if (!teamId) {
+        teamMembershipCache.set(agentId, true);
+        return true;
+      }
+      const [statusRow, agentEvent, activityEvent] = await Promise.all([
+        ctx.db
+          .query("agentStatus")
+          .withIndex("by_team_agent", (q) => q.eq("teamId", teamId).eq("agentId", agentId))
+          .first(),
+        ctx.db
+          .query("agentEvents")
+          .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", agentId))
+          .order("desc")
+          .first(),
+        ctx.db
+          .query("teamActivityEvents")
+          .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", agentId))
+          .order("desc")
+          .first(),
+      ]);
+      const inTeam = Boolean(statusRow || agentEvent || activityEvent);
+      teamMembershipCache.set(agentId, inTeam);
+      return inTeam;
+    };
+    if (teamId && actorType === "agent") {
+      if (!actorAgentId) throw new Error("missing_actor_agent_id");
+      if (!(await isAgentInTeam(actorAgentId))) {
+        throw new Error(`actor_not_in_team:${actorAgentId}:${teamId}`);
+      }
+    }
 
     if (command === "activity_log") {
       if (!actorAgentId) throw new Error("missing_actor_agent_id");
@@ -171,6 +207,7 @@ export const boardCommand = mutation({
         taskId: trimOrUndefined(args.taskId),
         skillId: trimOrUndefined(args.skillId),
         state: coerceBoardTaskStatus(args.status),
+        beatId,
         occurredAt,
         stepKey,
       });
@@ -228,6 +265,7 @@ export const boardCommand = mutation({
         label: trimOrUndefined(args.label) ?? "Task created",
         detail,
         toStatus: status,
+        beatId,
         occurredAt,
         stepKey,
       });
@@ -253,6 +291,7 @@ export const boardCommand = mutation({
         label: trimOrUndefined(args.label) ?? "Task deleted",
         detail,
         fromStatus: existingTask.status,
+        beatId,
         occurredAt,
         stepKey,
       });
@@ -328,6 +367,7 @@ export const boardCommand = mutation({
       detail,
       fromStatus: existingTask.status,
       toStatus,
+      beatId,
       occurredAt,
       stepKey,
     });
@@ -388,12 +428,11 @@ export const getProjectBoardEvents = query({
         .take(limit);
     }
     if (teamId) {
-      const rows = await ctx.db
+      return ctx.db
         .query("teamBoardEvents")
         .withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId))
         .order("desc")
         .take(limit);
-      if (rows.length > 0) return rows;
     }
     return ctx.db
       .query("teamBoardEvents")
@@ -415,12 +454,11 @@ export const getProjectActivity = query({
     const teamId = normalizeTeamId(args.teamId);
     if (args.agentId?.trim()) {
       if (teamId) {
-        const rowsByTeam = await ctx.db
+        return ctx.db
           .query("teamActivityEvents")
           .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", args.agentId!.trim()))
           .order("desc")
           .take(limit);
-        if (rowsByTeam.length > 0) return rowsByTeam;
       }
       return ctx.db
         .query("teamActivityEvents")
@@ -429,12 +467,11 @@ export const getProjectActivity = query({
         .take(limit);
     }
     if (teamId) {
-      const rowsByTeam = await ctx.db
+      return ctx.db
         .query("teamActivityEvents")
         .withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId))
         .order("desc")
         .take(limit);
-      if (rowsByTeam.length > 0) return rowsByTeam;
     }
     return ctx.db
       .query("teamActivityEvents")
