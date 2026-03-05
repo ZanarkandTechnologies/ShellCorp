@@ -27,6 +27,7 @@ export type ParsedStatusReportPayload = {
   stepKey: string;
   skillId?: string;
   sessionKey?: string;
+  beatId?: string;
   source?: string;
   occurredAt?: number;
 };
@@ -74,6 +75,7 @@ export function parseStatusReportPayload(body: unknown): ParsedStatusReportPaylo
     stepKey,
     skillId: typeof row.skillId === "string" ? row.skillId : undefined,
     sessionKey: typeof row.sessionKey === "string" ? row.sessionKey : undefined,
+    beatId: typeof row.beatId === "string" ? row.beatId : undefined,
     source: typeof row.source === "string" ? row.source : undefined,
     occurredAt: typeof row.occurredAt === "number" ? row.occurredAt : undefined,
   };

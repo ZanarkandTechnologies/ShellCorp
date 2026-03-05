@@ -120,6 +120,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.OPENCLAW_STATE_DIR;
   delete process.env.SHELLCORP_CONVEX_SITE_URL;
+  delete process.env.CONVEX_SITE_URL;
   delete process.env.SHELLCORP_ACTOR_ROLE;
   delete process.env.SHELLCORP_ALLOWED_PERMISSIONS;
   delete process.env.SHELLCORP_BOARD_OPERATOR_TOKEN;
@@ -641,6 +642,8 @@ describe("team CLI", () => {
       "high",
       "--owner-agent-id",
       "delta-executor",
+      "--beat-id",
+      "beat-delta-1",
     ]);
     await runCommand([
       "team",
@@ -671,6 +674,34 @@ describe("team CLI", () => {
       "Working task-1",
       "--task-id",
       "task-1",
+      "--beat-id",
+      "beat-delta-1",
+    ]);
+    await runCommand([
+      "team",
+      "funds",
+      "deposit",
+      "--team-id",
+      "team-proj-delta",
+      "--amount",
+      "500",
+      "--source",
+      "test-seed",
+      "--beat-id",
+      "beat-delta-1",
+    ]);
+    await runCommand([
+      "team",
+      "funds",
+      "spend",
+      "--team-id",
+      "team-proj-delta",
+      "--amount",
+      "120",
+      "--source",
+      "test-api",
+      "--beat-id",
+      "beat-delta-1",
     ]);
     await runCommand(["team", "bot", "timeline", "--team-id", "team-proj-delta", "--json"]);
     await runCommand(["team", "bot", "next", "--team-id", "team-proj-delta", "--json"]);
@@ -689,7 +720,124 @@ describe("team CLI", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/board/command"))).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/board/query"))).toBe(true);
     expect(commandPayloads.some((payload) => payload.teamId === "team-proj-delta")).toBe(true);
+    expect(commandPayloads.some((payload) => payload.beatId === "beat-delta-1")).toBe(true);
+    expect(commandPayloads.some((payload) => payload.command === "activity_log" && payload.beatId === "beat-delta-1")).toBe(true);
     expect(queryPayloads.some((payload) => payload.teamId === "team-proj-delta")).toBe(true);
+  });
+
+  it("validates Convex site URL before board calls", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "127.0.0.1:3211";
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "InvalidUrl",
+      "--description",
+      "Invalid URL team",
+      "--goal",
+      "Test URL validation",
+      "--business-type",
+      "affiliate_marketing",
+    ]);
+
+    await expect(runCommand(["team", "board", "task", "list", "--team-id", "team-proj-invalidurl"])).rejects.toThrow(
+      "invalid_convex_site_url:127.0.0.1:3211",
+    );
+  });
+
+  it("reports actionable board query network errors", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "http://127.0.0.1:3211";
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "NetworkError",
+      "--description",
+      "Network team",
+      "--goal",
+      "Test fetch diagnostics",
+      "--business-type",
+      "affiliate_marketing",
+    ]);
+
+    const fetchMock = vi.fn(async () => {
+      throw Object.assign(new Error("connect failed"), { cause: { code: "ECONNREFUSED" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(runCommand(["team", "board", "task", "list", "--team-id", "team-proj-networkerror"])).rejects.toThrow(
+      "board_query_request_failed:connection_refused:url=http://127.0.0.1:3211/board/query",
+    );
+  });
+
+  it("reports explicit status via /status/report endpoint", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "https://example.convex.site";
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "StatusTeam",
+      "--description",
+      "Status team",
+      "--goal",
+      "Track progress",
+      "--business-type",
+      "affiliate_marketing",
+    ]);
+
+    const statusPayloads: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      const payload = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      if (url.endsWith("/status/report")) {
+        statusPayloads.push(payload);
+        return new Response(JSON.stringify({ ok: true, duplicate: false }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runCommand([
+      "team",
+      "status",
+      "report",
+      "--team-id",
+      "team-proj-statusteam",
+      "--agent-id",
+      "status-executor",
+      "--state",
+      "executing",
+      "--status-text",
+      "Generating video variant",
+      "--step-key",
+      "step-123",
+      "--skill-id",
+      "video-generator",
+      "--beat-id",
+      "beat-status-1",
+    ]);
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/status/report"))).toBe(true);
+    expect(statusPayloads).toHaveLength(1);
+    expect(statusPayloads[0]).toMatchObject({
+      teamId: "team-proj-statusteam",
+      agentId: "status-executor",
+      state: "executing",
+      statusText: "Generating video variant",
+      stepKey: "step-123",
+      skillId: "video-generator",
+      beatId: "beat-status-1",
+    });
   });
 
   it("enforces permission denials for restricted actor roles", async () => {

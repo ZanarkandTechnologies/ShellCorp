@@ -169,6 +169,7 @@ export const reportStatus = internalMutation({
     stepKey: v.string(),
     skillId: v.optional(v.string()),
     sessionKey: v.optional(v.string()),
+    beatId: v.optional(v.string()),
     source: v.optional(v.string()),
     occurredAt: v.optional(v.number()),
   },
@@ -197,6 +198,7 @@ export const reportStatus = internalMutation({
       source: args.source ?? "agent.self_report",
       stepKey,
       sessionKey: args.sessionKey,
+      beatId: args.beatId,
       occurredAt: args.occurredAt,
     });
     return { ok: true, duplicate: applied.duplicate };
@@ -209,6 +211,8 @@ export const clearStaleEvents = internalMutation({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    // Deprecated cleanup helper retained for manual operations only.
+    // Scheduled pruning was removed so timeline history stays auditable.
     const cutoff = Date.now() - (args.olderThanMs ?? 24 * 60 * 60 * 1000);
     const maxRows = Math.min(Math.max(args.limit ?? 200, 1), 1000);
     const staleRows = await ctx.db

@@ -78,6 +78,7 @@ export default defineSchema({
     detail: v.optional(v.string()),
     fromStatus: v.optional(v.string()),
     toStatus: v.optional(v.string()),
+    beatId: v.optional(v.string()),
     occurredAt: v.number(),
     stepKey: v.optional(v.string()),
   })
@@ -97,6 +98,7 @@ export default defineSchema({
     taskId: v.optional(v.string()),
     skillId: v.optional(v.string()),
     state: v.optional(v.string()),
+    beatId: v.optional(v.string()),
     occurredAt: v.number(),
     stepKey: v.optional(v.string()),
   })

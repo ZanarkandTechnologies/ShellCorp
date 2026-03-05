@@ -211,14 +211,18 @@ function layeredHeartbeatTemplate(roleName: string, projectName: string): string
     "- In testing mode, it is okay to mock execution if tools are unavailable.",
     "",
     "5) Status reporting:",
-    "- After deciding, call the status tooling if available.",
+    "- Status reporting is REQUIRED (do not skip).",
+    "- Always emit `planning` at turn start and `done` at turn end.",
+    "- Emit `executing` when work starts and `blocked` whenever blocked.",
+    "- If status report fails, retry once; if still failing, output `STATUS: MOCK_STATUS(report_failed)`.",
     "- Preflight checks:",
-    "  - `shellcorp --help`",
+    "  - `export SHELLCORP_CMD=\"/home/kenjipcx/Zanarkand/ShellCorp/scripts/shellcorp-heartbeat.sh\"`",
+    "  - `sh -lc \"$SHELLCORP_CMD --help\"`",
     "  - `test -n \"$SHELLCORP_CONVEX_SITE_URL\" || test -n \"$CONVEX_SITE_URL\"`",
     "- Preferred command pattern:",
-    "  shellcorp team status report --team-id <team-id> --agent-id <agent-id> --state planning --status-text \"<your decision>\" --step-key \"hb-<agent-id>-<unix-ms>\"",
+    "  sh -lc \"$SHELLCORP_CMD team status report --team-id <team-id> --agent-id <agent-id> --state planning --status-text \\\"<your decision>\\\" --step-key \\\"hb-<agent-id>-<unix-ms>\\\"\"",
     "- Also write timeline context:",
-    "  shellcorp team bot log --team-id <team-id> --agent-id <agent-id> --activity-type status --label heartbeat_decision --detail \"<your decision>\"",
+    "  sh -lc \"$SHELLCORP_CMD team bot log --team-id <team-id> --agent-id <agent-id> --activity-type status --label heartbeat_decision --detail \\\"<your decision>\\\"\"",
     "- If tools are unavailable, output a clear MOCK_STATUS line instead.",
     "",
     "Output format:",
@@ -1056,7 +1060,6 @@ async function ensureOpenclawHeartbeatScaffold(opts: {
     };
   });
 
-  const toolsNode = asRecord(config.tools);
   const hooksNode = asRecord(config.hooks);
   const internalHooksNode = asRecord(hooksNode.internal);
   const hookEntriesNode = asRecord(internalHooksNode.entries);
@@ -1064,10 +1067,6 @@ async function ensureOpenclawHeartbeatScaffold(opts: {
 
   const nextConfig = {
     ...config,
-    tools: {
-      ...toolsNode,
-      profile: "coding",
-    },
     hooks: {
       ...hooksNode,
       internal: {
@@ -1215,6 +1214,42 @@ async function postStatusReport(payload: Record<string, unknown>): Promise<Recor
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     fail(message.replace("convex_http_", "status_report_"));
+  }
+}
+
+function optionalBeatId(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+async function tryLogCliActivity(payload: {
+  projectId: string;
+  teamId: string;
+  actorAgentId?: string;
+  activityType: BoardActivityType;
+  label: string;
+  detail?: string;
+  source?: string;
+  beatId?: string;
+}): Promise<void> {
+  const actorAgentId = payload.actorAgentId?.trim() || process.env.SHELLCORP_ACTOR_AGENT_ID?.trim() || "agent-unknown";
+  try {
+    await postBoardCommand({
+      projectId: payload.projectId,
+      teamId: payload.teamId,
+      command: "activity_log",
+      actorType: "agent",
+      actorAgentId,
+      activityType: payload.activityType,
+      label: payload.label,
+      detail: payload.detail,
+      beatId: optionalBeatId(payload.beatId),
+      stepKey: `cli-log-${actorAgentId}-${Date.now()}`,
+      status: "planning",
+      skillId: payload.source?.trim() || "shellcorp_cli",
+    });
+  } catch {
+    // Fire-and-forget sink: CLI sidecar mutations must still succeed even if Convex logging is unavailable.
   }
 }
 
@@ -1877,6 +1912,7 @@ export function registerTeamCommands(program: Command): void {
     .option("--event-kind <kind>", "refresh|consumption|adjustment", "adjustment")
     .option("--source <source>", "Event source", "team.resources.set")
     .option("--note <note>", "Event note")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
     .action(
       async (opts: {
@@ -1896,6 +1932,7 @@ export function registerTeamCommands(program: Command): void {
         eventKind: string;
         source: string;
         note?: string;
+        beatId?: string;
         json?: boolean;
       }) => {
         ensureCommandPermission("team.resources.write");
@@ -1967,6 +2004,15 @@ export function registerTeamCommands(program: Command): void {
           ...company,
           projects: company.projects.map((entry) => (entry.id === projectId ? nextProject : entry)),
         });
+        await tryLogCliActivity({
+          projectId,
+          teamId: opts.teamId.trim(),
+          activityType: "status",
+          label: `resource_set:${resourceId}`,
+          detail: `remaining=${nextResource.remaining} limit=${nextResource.limit}`,
+          source: opts.source,
+          beatId: opts.beatId,
+        });
         formatOutput(
           opts.json ? "json" : "text",
           { ok: true, teamId: opts.teamId, resourceId, remaining: nextResource.remaining, limit: nextResource.limit },
@@ -1985,8 +2031,9 @@ export function registerTeamCommands(program: Command): void {
     })
     .option("--source <source>", "Event source", "resource_tracker")
     .option("--note <note>", "Event note")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; resourceId: string; remaining: number; source: string; note?: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; resourceId: string; remaining: number; source: string; note?: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.resources.write");
       const company = await store.readCompanyModel();
       const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
@@ -2024,6 +2071,15 @@ export function registerTeamCommands(program: Command): void {
             : entry,
         ),
       });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        activityType: "status",
+        label: `resource_refresh:${current.id}`,
+        detail: `remaining=${opts.remaining}`,
+        source: opts.source,
+        beatId: opts.beatId,
+      });
       formatOutput(
         opts.json ? "json" : "text",
         { ok: true, teamId: opts.teamId, resourceId: current.id, remaining: opts.remaining },
@@ -2036,8 +2092,9 @@ export function registerTeamCommands(program: Command): void {
     .requiredOption("--resource-id <resourceId>", "Resource id")
     .option("--source <source>", "Event source", "team.resources.remove")
     .option("--note <note>", "Event note")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; resourceId: string; source: string; note?: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; resourceId: string; source: string; note?: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.resources.write");
       const company = await store.readCompanyModel();
       const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
@@ -2067,6 +2124,15 @@ export function registerTeamCommands(program: Command): void {
             : entry,
         ),
       });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        activityType: "status",
+        label: `resource_remove:${resourceId}`,
+        detail: `removed_remaining=${existing.remaining}`,
+        source: opts.source,
+        beatId: opts.beatId,
+      });
       formatOutput(opts.json ? "json" : "text", { ok: true, teamId: opts.teamId, resourceId }, `Removed resource '${resourceId}'`);
     });
   resources
@@ -2080,8 +2146,9 @@ export function registerTeamCommands(program: Command): void {
     })
     .option("--source <source>", "Event source", "team.resources.reserve")
     .option("--note <note>", "Event note")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; resourceId: string; amount: number; source: string; note?: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; resourceId: string; amount: number; source: string; note?: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.resources.write");
       const company = await store.readCompanyModel();
       const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
@@ -2121,6 +2188,15 @@ export function registerTeamCommands(program: Command): void {
             : entry,
         ),
       });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        activityType: "executing",
+        label: `resource_reserve:${current.id}`,
+        detail: `amount=${opts.amount} reserved=${nextReserved}`,
+        source: opts.source,
+        beatId: opts.beatId,
+      });
       formatOutput(
         opts.json ? "json" : "text",
         { ok: true, teamId: opts.teamId, resourceId: current.id, reserved: nextReserved },
@@ -2138,8 +2214,9 @@ export function registerTeamCommands(program: Command): void {
     })
     .option("--source <source>", "Event source", "team.resources.release")
     .option("--note <note>", "Event note")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; resourceId: string; amount: number; source: string; note?: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; resourceId: string; amount: number; source: string; note?: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.resources.write");
       const company = await store.readCompanyModel();
       const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
@@ -2178,6 +2255,15 @@ export function registerTeamCommands(program: Command): void {
               }
             : entry,
         ),
+      });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        activityType: "executing",
+        label: `resource_release:${current.id}`,
+        detail: `amount=${opts.amount} reserved=${nextReserved}`,
+        source: opts.source,
+        beatId: opts.beatId,
       });
       formatOutput(
         opts.json ? "json" : "text",
@@ -2313,8 +2399,9 @@ export function registerTeamCommands(program: Command): void {
     .requiredOption("--amount <amount>", "Amount in cents")
     .requiredOption("--source <source>", "Funding source")
     .option("--note <note>", "Optional note")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; amount: string; source: string; note?: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; amount: string; source: string; note?: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.business.write");
       const amount = Number(opts.amount);
       if (!Number.isFinite(amount) || amount <= 0) fail("invalid_amount_cents");
@@ -2361,6 +2448,15 @@ export function registerTeamCommands(program: Command): void {
             : entry,
         ),
       });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        activityType: "status",
+        label: `funds_deposit:${Math.round(amount)}`,
+        detail: `source=${opts.source.trim()} balance=${nextBalance}`,
+        source: "team.funds.deposit",
+        beatId: opts.beatId,
+      });
       formatOutput(
         opts.json ? "json" : "text",
         { ok: true, teamId: opts.teamId, projectId, balanceCents: nextBalance, event: accountEvent },
@@ -2374,8 +2470,9 @@ export function registerTeamCommands(program: Command): void {
     .requiredOption("--amount <amount>", "Amount in cents")
     .requiredOption("--source <source>", "Spend source")
     .option("--note <note>", "Optional note")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; amount: string; source: string; note?: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; amount: string; source: string; note?: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.business.write");
       const amount = Number(opts.amount);
       if (!Number.isFinite(amount) || amount <= 0) fail("invalid_amount_cents");
@@ -2424,6 +2521,15 @@ export function registerTeamCommands(program: Command): void {
             : entry,
         ),
       });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        activityType: "executing",
+        label: `funds_spend:${roundedAmount}`,
+        detail: `source=${opts.source.trim()} balance=${nextBalance}`,
+        source: "team.funds.spend",
+        beatId: opts.beatId,
+      });
       formatOutput(
         opts.json ? "json" : "text",
         { ok: true, teamId: opts.teamId, projectId, balanceCents: nextBalance, event: accountEvent },
@@ -2464,6 +2570,7 @@ export function registerTeamCommands(program: Command): void {
     .option("--priority <priority>", "low|medium|high", "medium")
     .option("--status <status>", "todo|in_progress|blocked|done", "todo")
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--detail <detail>", "Optional detail")
     .option("--json", "Output JSON", false)
     .action(
@@ -2475,6 +2582,7 @@ export function registerTeamCommands(program: Command): void {
         priority: string;
         status: string;
         actorAgentId: string;
+        beatId?: string;
         detail?: string;
         json?: boolean;
       }) => {
@@ -2491,6 +2599,7 @@ export function registerTeamCommands(program: Command): void {
           status: parseBoardTaskStatus(opts.status),
           actorType: "operator",
           actorAgentId: opts.actorAgentId.trim(),
+          beatId: optionalBeatId(opts.beatId),
           detail: opts.detail?.trim() || undefined,
         });
         formatOutput(
@@ -2506,9 +2615,10 @@ export function registerTeamCommands(program: Command): void {
     .requiredOption("--task-id <taskId>", "Task id")
     .requiredOption("--status <status>", "todo|in_progress|blocked|done")
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--detail <detail>", "Optional detail")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; status: string; actorAgentId: string; detail?: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; taskId: string; status: string; actorAgentId: string; beatId?: string; detail?: string; json?: boolean }) => {
       ensureCommandPermission("team.board.write");
       const company = await store.readCompanyModel();
       const { projectId } = resolveProjectOrFail(company, opts.teamId);
@@ -2519,6 +2629,7 @@ export function registerTeamCommands(program: Command): void {
         status: parseBoardTaskStatus(opts.status),
         actorType: "operator",
         actorAgentId: opts.actorAgentId.trim(),
+        beatId: optionalBeatId(opts.beatId),
         detail: opts.detail?.trim() || undefined,
       });
       formatOutput(
@@ -2539,6 +2650,7 @@ export function registerTeamCommands(program: Command): void {
       return parsed;
     })
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
     .action(
       async (opts: {
@@ -2548,6 +2660,7 @@ export function registerTeamCommands(program: Command): void {
         detail?: string;
         dueAt?: number;
         actorAgentId: string;
+        beatId?: string;
         json?: boolean;
       }) => {
         ensureCommandPermission("team.board.write");
@@ -2565,6 +2678,7 @@ export function registerTeamCommands(program: Command): void {
           dueAt: opts.dueAt,
           actorType: "operator",
           actorAgentId: opts.actorAgentId.trim(),
+          beatId: optionalBeatId(opts.beatId),
         });
         formatOutput(
           opts.json ? "json" : "text",
@@ -2578,8 +2692,9 @@ export function registerTeamCommands(program: Command): void {
     .requiredOption("--team-id <teamId>", "Team id (team-*)")
     .requiredOption("--task-id <taskId>", "Task id")
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; actorAgentId: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; taskId: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.board.write");
       const company = await store.readCompanyModel();
       const { projectId } = resolveProjectOrFail(company, opts.teamId);
@@ -2589,6 +2704,7 @@ export function registerTeamCommands(program: Command): void {
         taskId: opts.taskId.trim(),
         actorType: "operator",
         actorAgentId: opts.actorAgentId.trim(),
+        beatId: optionalBeatId(opts.beatId),
       });
       formatOutput(
         opts.json ? "json" : "text",
@@ -2602,8 +2718,9 @@ export function registerTeamCommands(program: Command): void {
     .requiredOption("--task-id <taskId>", "Task id")
     .requiredOption("--owner-agent-id <agentId>", "Owner agent id")
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; ownerAgentId: string; actorAgentId: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; taskId: string; ownerAgentId: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.board.write");
       const company = await store.readCompanyModel();
       const { projectId } = resolveProjectOrFail(company, opts.teamId);
@@ -2614,6 +2731,7 @@ export function registerTeamCommands(program: Command): void {
         ownerAgentId: opts.ownerAgentId.trim(),
         actorType: "operator",
         actorAgentId: opts.actorAgentId.trim(),
+        beatId: optionalBeatId(opts.beatId),
       });
       formatOutput(
         opts.json ? "json" : "text",
@@ -2627,8 +2745,9 @@ export function registerTeamCommands(program: Command): void {
     .requiredOption("--task-id <taskId>", "Task id")
     .option("--reason <reason>", "Block reason")
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; reason?: string; actorAgentId: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; taskId: string; reason?: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.board.write");
       const company = await store.readCompanyModel();
       const { projectId } = resolveProjectOrFail(company, opts.teamId);
@@ -2638,6 +2757,7 @@ export function registerTeamCommands(program: Command): void {
         taskId: opts.taskId.trim(),
         actorType: "operator",
         actorAgentId: opts.actorAgentId.trim(),
+        beatId: optionalBeatId(opts.beatId),
         detail: opts.reason?.trim() || undefined,
       });
       formatOutput(
@@ -2652,8 +2772,9 @@ export function registerTeamCommands(program: Command): void {
     .requiredOption("--task-id <taskId>", "Task id")
     .option("--note <note>", "Completion note")
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; note?: string; actorAgentId: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; taskId: string; note?: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.board.write");
       const company = await store.readCompanyModel();
       const { projectId } = resolveProjectOrFail(company, opts.teamId);
@@ -2663,6 +2784,7 @@ export function registerTeamCommands(program: Command): void {
         taskId: opts.taskId.trim(),
         actorType: "operator",
         actorAgentId: opts.actorAgentId.trim(),
+        beatId: optionalBeatId(opts.beatId),
         detail: opts.note?.trim() || undefined,
       });
       formatOutput(
@@ -2677,8 +2799,9 @@ export function registerTeamCommands(program: Command): void {
     .requiredOption("--task-id <taskId>", "Task id")
     .option("--note <note>", "Reopen note")
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; note?: string; actorAgentId: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; taskId: string; note?: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.board.write");
       const company = await store.readCompanyModel();
       const { projectId } = resolveProjectOrFail(company, opts.teamId);
@@ -2688,6 +2811,7 @@ export function registerTeamCommands(program: Command): void {
         taskId: opts.taskId.trim(),
         actorType: "operator",
         actorAgentId: opts.actorAgentId.trim(),
+        beatId: optionalBeatId(opts.beatId),
         detail: opts.note?.trim() || undefined,
       });
       formatOutput(
@@ -2702,8 +2826,9 @@ export function registerTeamCommands(program: Command): void {
     .requiredOption("--task-id <taskId>", "Task id")
     .requiredOption("--priority <priority>", "low|medium|high")
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; priority: string; actorAgentId: string; json?: boolean }) => {
+    .action(async (opts: { teamId: string; taskId: string; priority: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
       ensureCommandPermission("team.board.write");
       const company = await store.readCompanyModel();
       const { projectId } = resolveProjectOrFail(company, opts.teamId);
@@ -2714,6 +2839,7 @@ export function registerTeamCommands(program: Command): void {
         priority: parseBoardTaskPriority(opts.priority),
         actorType: "operator",
         actorAgentId: opts.actorAgentId.trim(),
+        beatId: optionalBeatId(opts.beatId),
       });
       formatOutput(
         opts.json ? "json" : "text",
@@ -2766,6 +2892,7 @@ export function registerTeamCommands(program: Command): void {
     .option("--step-key <stepKey>", "Idempotency key")
     .option("--skill-id <skillId>", "Optional related skill id")
     .option("--session-key <sessionKey>", "Optional OpenClaw session key")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--source <source>", "Optional source label", "shellcorp_cli")
     .option("--occurred-at <epochMs>", "Optional occurred timestamp", (value) => {
       const parsed = Number.parseInt(value, 10);
@@ -2782,6 +2909,7 @@ export function registerTeamCommands(program: Command): void {
         stepKey?: string;
         skillId?: string;
         sessionKey?: string;
+        beatId?: string;
         source?: string;
         occurredAt?: number;
         json?: boolean;
@@ -2803,6 +2931,7 @@ export function registerTeamCommands(program: Command): void {
           stepKey,
           skillId: opts.skillId?.trim() || undefined,
           sessionKey: opts.sessionKey?.trim() || undefined,
+          beatId: optionalBeatId(opts.beatId),
           source: opts.source?.trim() || "shellcorp_cli",
           occurredAt: opts.occurredAt,
         });
@@ -2826,6 +2955,7 @@ export function registerTeamCommands(program: Command): void {
     .option("--skill-id <skillId>", "Skill id context")
     .option("--state <state>", "Optional task state context")
     .option("--step-key <stepKey>", "Idempotency key")
+    .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
     .action(
       async (opts: {
@@ -2838,6 +2968,7 @@ export function registerTeamCommands(program: Command): void {
         skillId?: string;
         state?: string;
         stepKey?: string;
+        beatId?: string;
         json?: boolean;
       }) => {
         ensureCommandPermission("team.activity.write");
@@ -2855,6 +2986,7 @@ export function registerTeamCommands(program: Command): void {
           skillId: opts.skillId?.trim() || undefined,
           status: opts.state?.trim() || undefined,
           stepKey: opts.stepKey?.trim() || undefined,
+          beatId: optionalBeatId(opts.beatId),
         });
         formatOutput(
           opts.json ? "json" : "text",

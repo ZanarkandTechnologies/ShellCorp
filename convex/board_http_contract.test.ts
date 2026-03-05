@@ -9,12 +9,14 @@ describe("board_http_contract", () => {
       command: "task_add",
       title: "Draft hook",
       priority: "high",
+      beatId: "beat-42",
     });
     expect(parsed?.teamId).toBe("team-proj-affiliate");
     expect(parsed?.projectId).toBe("proj-affiliate");
     expect(parsed?.command).toBe("task_add");
     expect(parsed?.title).toBe("Draft hook");
     expect(parsed?.priority).toBe("high");
+    expect(parsed?.beatId).toBe("beat-42");
   });
 
   it("rejects invalid board command payload", () => {

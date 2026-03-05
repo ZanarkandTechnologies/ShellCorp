@@ -21,6 +21,7 @@ export type ParsedBoardCommandPayload = {
   actorAgentId?: string;
   skillId?: string;
   stepKey?: string;
+  beatId?: string;
   dueAt?: number;
   occurredAt?: number;
 };
@@ -74,6 +75,7 @@ export function parseBoardCommandPayload(value: unknown): ParsedBoardCommandPayl
   const actorAgentId = asTrimmedString(record.actorAgentId);
   const skillId = asTrimmedString(record.skillId);
   const stepKey = asTrimmedString(record.stepKey);
+  const beatId = asTrimmedString(record.beatId);
   const dueAt = asFiniteNumber(record.dueAt);
   const occurredAt = asFiniteNumber(record.occurredAt);
   if (teamId) payload.teamId = teamId;
@@ -90,6 +92,7 @@ export function parseBoardCommandPayload(value: unknown): ParsedBoardCommandPayl
   if (actorAgentId) payload.actorAgentId = actorAgentId;
   if (skillId) payload.skillId = skillId;
   if (stepKey) payload.stepKey = stepKey;
+  if (beatId) payload.beatId = beatId;
   if (typeof dueAt === "number") payload.dueAt = dueAt;
   if (typeof occurredAt === "number") payload.occurredAt = occurredAt;
   return payload;

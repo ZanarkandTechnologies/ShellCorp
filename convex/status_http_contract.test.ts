@@ -35,12 +35,14 @@ describe("status-http-contract", () => {
       state: "executing",
       statusText: "Running distribution",
       stepKey: "main-step-1",
+      beatId: "beat-main-1",
     });
     expect(parsed?.agentId).toBe("main");
     expect(parsed?.teamId).toBeUndefined();
     expect(parsed?.state).toBe("executing");
     expect(parsed?.statusText).toBe("Running distribution");
     expect(parsed?.stepKey).toBe("main-step-1");
+    expect(parsed?.beatId).toBe("beat-main-1");
   });
 
   it("rejects status report payload with blank stepKey", () => {
