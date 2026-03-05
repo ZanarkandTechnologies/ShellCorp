@@ -150,6 +150,7 @@ export type ProjectStatus = "active" | "paused" | "archived";
 export type AgentLifecycleState = "active" | "idle" | "pending_spawn" | "retired";
 export type CapabilityCategory = "measure" | "execute" | "distribute";
 export type LedgerEntryType = "revenue" | "cost";
+export type AccountEventType = "credit" | "debit";
 export type ExperimentStatus = "running" | "completed" | "failed";
 export type ResourceType = "cash_budget" | "api_quota" | "distribution_slots" | "custom";
 export type ResourceHealth = "healthy" | "warning" | "depleted";
@@ -181,6 +182,26 @@ export interface LedgerEntryModel {
   source: string;
   description: string;
   experimentId?: string;
+}
+
+export interface ProjectAccountModel {
+  id: string;
+  projectId: string;
+  currency: string;
+  balanceCents: number;
+  updatedAt: string;
+}
+
+export interface ProjectAccountEventModel {
+  id: string;
+  projectId: string;
+  accountId: string;
+  timestamp: string;
+  type: AccountEventType;
+  amountCents: number;
+  source: string;
+  note?: string;
+  balanceAfterCents: number;
 }
 
 export interface ExperimentModel {
@@ -268,7 +289,10 @@ export interface ProjectModel {
   status: ProjectStatus;
   goal: string;
   kpis: string[];
+  trackingContext?: string;
   businessConfig?: BusinessConfigModel;
+  account?: ProjectAccountModel;
+  accountEvents: ProjectAccountEventModel[];
   ledger: LedgerEntryModel[];
   experiments: ExperimentModel[];
   metricEvents: MetricEventModel[];

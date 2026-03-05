@@ -177,6 +177,14 @@ async function ensureTeamClusterProject(opts: {
       status: "active",
       goal: requestedDescription || `Operate team ${projectName}`,
       kpis: [],
+      account: {
+        id: `${projectId}:account`,
+        projectId,
+        currency: "USD",
+        balanceCents: 0,
+        updatedAt: new Date().toISOString(),
+      },
+      accountEvents: [],
       ledger: [],
       experiments: [],
       metricEvents: [],
@@ -197,6 +205,7 @@ async function ensureTeamClusterProject(opts: {
     project = revived;
     await opts.store.writeCompanyModel(nextCompany);
   }
+  if (!project) fail("team_cluster_project_resolution_failed");
 
   return {
     ...opts.metadata,

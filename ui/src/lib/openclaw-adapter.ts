@@ -53,6 +53,8 @@ import type {
   OfficeSettingsModel,
   MeshAssetModel,
   LedgerEntryModel,
+  ProjectAccountModel,
+  ProjectAccountEventModel,
   ExperimentModel,
   MetricEventModel,
   ProjectResourceModel,
@@ -903,6 +905,43 @@ function toLedgerEntry(projectId: string, entry: unknown): LedgerEntryModel | nu
   };
 }
 
+function toProjectAccount(projectId: string, entry: unknown): ProjectAccountModel | undefined {
+  const row = asRecord(entry);
+  const id = String(row.id ?? "").trim();
+  const updatedAt = String(row.updatedAt ?? "").trim();
+  if (!id || !updatedAt) return undefined;
+  const balanceCents = Number(row.balanceCents ?? 0);
+  return {
+    id,
+    projectId: String(row.projectId ?? projectId),
+    currency: String(row.currency ?? "USD"),
+    balanceCents: Number.isFinite(balanceCents) ? Math.round(balanceCents) : 0,
+    updatedAt,
+  };
+}
+
+function toProjectAccountEvent(projectId: string, entry: unknown): ProjectAccountEventModel | null {
+  const row = asRecord(entry);
+  const id = String(row.id ?? "").trim();
+  const accountId = String(row.accountId ?? "").trim();
+  const timestamp = String(row.timestamp ?? "").trim();
+  const source = String(row.source ?? "").trim();
+  if (!id || !accountId || !timestamp || !source) return null;
+  const amountCents = Number(row.amountCents ?? 0);
+  const balanceAfterCents = Number(row.balanceAfterCents ?? 0);
+  return {
+    id,
+    projectId: String(row.projectId ?? projectId),
+    accountId,
+    timestamp,
+    type: row.type === "credit" ? "credit" : "debit",
+    amountCents: Number.isFinite(amountCents) ? Math.round(amountCents) : 0,
+    source,
+    note: typeof row.note === "string" ? row.note : undefined,
+    balanceAfterCents: Number.isFinite(balanceAfterCents) ? Math.round(balanceAfterCents) : 0,
+  };
+}
+
 function toExperiment(projectId: string, entry: unknown): ExperimentModel | null {
   const row = asRecord(entry);
   const id = String(row.id ?? "").trim();
@@ -1039,6 +1078,8 @@ function toProject(entry: unknown): ProjectModel | null {
   const name = String(row.name ?? "").trim();
   if (!id || !departmentId || !name) return null;
   const status = String(row.status ?? "active");
+  const ledger = normalizeArray(row.ledger, (item) => toLedgerEntry(id, item));
+  const accountEvents = normalizeArray(row.accountEvents, (item) => toProjectAccountEvent(id, item));
   return {
     id,
     departmentId,
@@ -1047,8 +1088,21 @@ function toProject(entry: unknown): ProjectModel | null {
     status: status === "paused" || status === "archived" ? status : "active",
     goal: String(row.goal ?? ""),
     kpis: Array.isArray(row.kpis) ? row.kpis.filter((item): item is string => typeof item === "string") : [],
+    trackingContext: typeof row.trackingContext === "string" ? row.trackingContext : undefined,
     businessConfig: toBusinessConfig(row.businessConfig),
-    ledger: normalizeArray(row.ledger, (item) => toLedgerEntry(id, item)),
+    account:
+      toProjectAccount(id, row.account) ??
+      (accountEvents.length > 0
+        ? {
+            id: `${id}:account`,
+            projectId: id,
+            currency: "USD",
+            balanceCents: accountEvents[accountEvents.length - 1]?.balanceAfterCents ?? 0,
+            updatedAt: accountEvents[accountEvents.length - 1]?.timestamp ?? new Date().toISOString(),
+          }
+        : undefined),
+    accountEvents,
+    ledger,
     experiments: normalizeArray(row.experiments, (item) => toExperiment(id, item)),
     metricEvents: normalizeArray(row.metricEvents, (item) => toMetricEvent(id, item)),
     resources: normalizeArray(row.resources, (item) => toProjectResource(id, item)),
@@ -1947,6 +2001,14 @@ export class OpenClawAdapter {
           status: "active",
           goal: input.goal.trim(),
           kpis: ["open_vs_closed_ticket_ratio"],
+          account: {
+            id: `${projectId}:account`,
+            projectId,
+            currency: "USD",
+            balanceCents: 0,
+            updatedAt: new Date().toISOString(),
+          },
+          accountEvents: [],
           ledger: [],
           experiments: [],
           metricEvents: [],
@@ -2038,6 +2100,7 @@ export class OpenClawAdapter {
       distribute: string;
     };
     resources: BusinessBuilderResourceDraft[];
+    trackingContext?: string;
     source?: string;
   }): Promise<{ ok: boolean; error?: string }> {
     const company = await this.getCompanyModel();
@@ -2070,6 +2133,7 @@ export class OpenClawAdapter {
         entry.id === input.projectId
           ? {
               ...entry,
+              trackingContext: input.trackingContext?.trim() || undefined,
               businessConfig: {
                 type: input.businessType,
                 slots: {
@@ -2092,6 +2156,70 @@ export class OpenClawAdapter {
               },
               resources: nextResources,
               resourceEvents: nextEvents,
+            }
+          : entry,
+      ),
+    };
+    const saved = await this.saveCompanyModel(nextCompany);
+    return { ok: saved.ok, error: saved.error };
+  }
+
+  async recordProjectAccountEvent(input: {
+    projectId: string;
+    type: "credit" | "debit";
+    amountCents: number;
+    source: string;
+    note?: string;
+    currency?: string;
+  }): Promise<{ ok: boolean; error?: string }> {
+    const company = await this.getCompanyModel();
+    const project = company.projects.find((entry) => entry.id === input.projectId);
+    if (!project) return { ok: false, error: "project_not_found" };
+    const amountCents = Math.max(0, Math.round(input.amountCents));
+    if (amountCents <= 0) return { ok: false, error: "invalid_amount_cents" };
+    const nowIso = new Date().toISOString();
+    const accountId = project.account?.id ?? `${project.id}:account`;
+    const currentBalance = project.account?.balanceCents ?? 0;
+    const nextBalance = input.type === "credit" ? currentBalance + amountCents : currentBalance - amountCents;
+    if (input.type === "debit" && nextBalance < 0) return { ok: false, error: "insufficient_balance" };
+
+    const accountEvent = {
+      id: `acct-event-${project.id}-${Date.now()}`,
+      projectId: project.id,
+      accountId,
+      timestamp: nowIso,
+      type: input.type,
+      amountCents,
+      source: input.source.trim() || "ui.ledger",
+      note: input.note?.trim() || undefined,
+      balanceAfterCents: nextBalance,
+    };
+    const ledgerEntry = {
+      id: `ledger-${input.type === "credit" ? "rev" : "cost"}-${project.id}-${Date.now()}`,
+      projectId: project.id,
+      timestamp: nowIso,
+      type: input.type === "credit" ? "revenue" : "cost",
+      amount: amountCents,
+      currency: input.currency?.trim() || project.account?.currency || "USD",
+      source: input.source.trim() || "ui.ledger",
+      description: input.note?.trim() || (input.type === "credit" ? "Account funding" : "Account spend"),
+    };
+
+    const nextCompany: CompanyModel = {
+      ...company,
+      projects: company.projects.map((entry) =>
+        entry.id === input.projectId
+          ? {
+              ...entry,
+              account: {
+                id: accountId,
+                projectId: entry.id,
+                currency: ledgerEntry.currency,
+                balanceCents: nextBalance,
+                updatedAt: nowIso,
+              },
+              accountEvents: [...(entry.accountEvents ?? []), accountEvent],
+              ledger: [...(entry.ledger ?? []), ledgerEntry],
             }
           : entry,
       ),

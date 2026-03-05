@@ -48,6 +48,14 @@
           }
         }
       },
+      "account": {
+        "id": "proj-shellcorp:account",
+        "projectId": "proj-shellcorp",
+        "currency": "USD",
+        "balanceCents": 0,
+        "updatedAt": "2026-03-06T00:00:00.000Z"
+      },
+      "accountEvents": [],
       "ledger": [],
       "experiments": [],
       "metricEvents": [],

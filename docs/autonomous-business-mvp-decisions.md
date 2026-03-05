@@ -92,6 +92,37 @@ Business kanban/task execution state now uses Convex as canonical storage for te
 
 CLI and UI surfaces read/write these Convex tables directly for realtime visibility. Sidecar `company.json.tasks` is no longer canonical for business team board execution flow.
 
+### 9) Business Flow Composer + Dedicated Ledger Tab
+
+Business operations and finance are now intentionally separated in Team Panel:
+
+- `Business` tab:
+  - flow composer (plan -> execute -> review/measure -> distribute)
+  - capability skill slot assignment (`measure`, `execute`, `distribute`)
+  - readiness checklist + heartbeat preview controls
+- `Ledger` tab:
+  - current account balance
+  - funding/spend actions
+  - append-only transaction timeline
+
+This keeps operating logic and money movement distinct while preserving one command center.
+
+### 10) First-Class Team Account Contract
+
+Each project now supports:
+
+- `account`:
+  - `id`
+  - `projectId`
+  - `currency`
+  - `balanceCents`
+  - `updatedAt`
+- `accountEvents[]`:
+  - append-only `credit | debit` entries
+  - source, note, amount, and post-event running balance
+
+`ledger[]` remains available for compatibility and historical P&L views.
+
 ## Implemented Commands
 
 ### Team create with business mode
@@ -130,13 +161,40 @@ npm run shell -- team resources set \
 npm run shell -- team business seed-demo --team-id team-proj-affiliate-team
 ```
 
+### Team funds CLI
+
+```bash
+# read current team account balance
+npm run shell -- team funds balance --team-id team-proj-affiliate-team
+
+# add money (amount in cents)
+npm run shell -- team funds deposit \
+  --team-id team-proj-affiliate-team \
+  --amount 50000 \
+  --source seed_capital \
+  --note "initial funding"
+
+# record spend (amount in cents)
+npm run shell -- team funds spend \
+  --team-id team-proj-affiliate-team \
+  --amount 1200 \
+  --source openai_api \
+  --note "content batch run"
+
+# view recent account events
+npm run shell -- team funds ledger --team-id team-proj-affiliate-team --limit 10
+```
+
 ## UI Surfaces Added
 
 - Team panel now includes a **Business** tab with:
-  - Revenue / Cost / Profit cards
-  - capability slot display
-  - experiments list
-  - recent metric events
+  - flow-based capability composer
+  - slot skill library
+  - readiness checklist + save/preview controls
+- Team panel now includes a dedicated **Ledger** tab with:
+  - account summary (balance + deltas)
+  - funding/spend action controls
+  - append-only account event timeline
 - Team creation form now supports:
   - business type
   - capability slot skill ids
@@ -148,6 +206,7 @@ npm run shell -- team business seed-demo --team-id team-proj-affiliate-team
 - `cli/team-commands.ts`
 - `ui/src/lib/openclaw-types.ts`
 - `ui/src/lib/openclaw-adapter.ts`
+- `ui/src/features/team-system/components/business-flow/*`
 - `ui/src/providers/office-data-provider.tsx`
 - `ui/src/features/team-system/components/team-panel.tsx`
 - `ui/src/components/hud/create-team-form.tsx`

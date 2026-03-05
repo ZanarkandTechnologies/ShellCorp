@@ -27,6 +27,7 @@ export type SpawnPolicy = "queue_pressure" | "manual";
 export type OfficeStylePreset = "default" | "pixel" | "brutalist" | "cozy";
 export type CapabilityCategory = "measure" | "execute" | "distribute";
 export type LedgerEntryType = "revenue" | "cost";
+export type AccountEventType = "credit" | "debit";
 export type ExperimentStatus = "running" | "completed" | "failed";
 export type ResourceType = "cash_budget" | "api_quota" | "distribution_slots" | "custom";
 export type ResourceEventKind = "refresh" | "consumption" | "adjustment";
@@ -57,6 +58,26 @@ export interface LedgerEntryModel {
   source: string;
   description: string;
   experimentId?: string;
+}
+
+export interface ProjectAccountModel {
+  id: string;
+  projectId: string;
+  currency: string;
+  balanceCents: number;
+  updatedAt: string;
+}
+
+export interface ProjectAccountEventModel {
+  id: string;
+  projectId: string;
+  accountId: string;
+  timestamp: string;
+  type: AccountEventType;
+  amountCents: number;
+  source: string;
+  note?: string;
+  balanceAfterCents: number;
 }
 
 export interface ExperimentModel {
@@ -128,7 +149,10 @@ export interface ProjectModel {
   status: ProjectStatus;
   goal: string;
   kpis: string[];
+  trackingContext?: string;
   businessConfig?: BusinessConfigModel;
+  account?: ProjectAccountModel;
+  accountEvents: ProjectAccountEventModel[];
   ledger: LedgerEntryModel[];
   experiments: ExperimentModel[];
   metricEvents: MetricEventModel[];
@@ -285,6 +309,10 @@ function normalizeLedgerType(value: unknown): LedgerEntryType {
   return value === "revenue" ? "revenue" : "cost";
 }
 
+function normalizeAccountEventType(value: unknown): AccountEventType {
+  return value === "credit" ? "credit" : "debit";
+}
+
 function normalizeExperimentStatus(value: unknown): ExperimentStatus {
   if (value === "completed" || value === "failed") return value;
   return "running";
@@ -348,7 +376,53 @@ function normalizeCompanyModel(input: unknown): CompanyModel {
             status: normalizeProjectStatus(obj.status),
             goal: asString(obj.goal),
             kpis: asStringArray(obj.kpis),
+            ...(asString(obj.trackingContext).trim() ? { trackingContext: asString(obj.trackingContext).trim() } : {}),
             ...(normalizeBusinessConfig(obj.businessConfig) ? { businessConfig: normalizeBusinessConfig(obj.businessConfig) } : {}),
+            ...(() => {
+              const accountObj = asObject(obj.account);
+              const accountId = asString(accountObj.id).trim();
+              const accountProjectId = asString(accountObj.projectId).trim() || id;
+              const updatedAt = asString(accountObj.updatedAt).trim();
+              const currency = asString(accountObj.currency).trim() || "USD";
+              const balanceCents = asNumber(accountObj.balanceCents, 0);
+              if (!accountId || !updatedAt) return {};
+              return {
+                account: {
+                  id: accountId,
+                  projectId: accountProjectId,
+                  currency,
+                  balanceCents: Number.isFinite(balanceCents) ? Math.round(balanceCents) : 0,
+                  updatedAt,
+                } satisfies ProjectAccountModel,
+              };
+            })(),
+            accountEvents: Array.isArray(obj.accountEvents)
+              ? obj.accountEvents
+                  .map((eventRow) => {
+                    const eventObj = asObject(eventRow);
+                    const eventId = asString(eventObj.id).trim();
+                    const eventProjectId = asString(eventObj.projectId).trim() || id;
+                    const accountId = asString(eventObj.accountId).trim();
+                    const timestamp = asString(eventObj.timestamp).trim();
+                    const source = asString(eventObj.source).trim();
+                    if (!eventId || !accountId || !timestamp || !source) return null;
+                    const amountCents = asNumber(eventObj.amountCents, 0);
+                    const balanceAfterCents = asNumber(eventObj.balanceAfterCents, 0);
+                    const note = asString(eventObj.note).trim();
+                    return {
+                      id: eventId,
+                      projectId: eventProjectId,
+                      accountId,
+                      timestamp,
+                      type: normalizeAccountEventType(eventObj.type),
+                      amountCents: Number.isFinite(amountCents) ? Math.round(amountCents) : 0,
+                      source,
+                      balanceAfterCents: Number.isFinite(balanceAfterCents) ? Math.round(balanceAfterCents) : 0,
+                      ...(note ? { note } : {}),
+                    } satisfies ProjectAccountEventModel;
+                  })
+                  .filter((entry): entry is ProjectAccountEventModel => entry !== null)
+              : [],
             ledger: Array.isArray(obj.ledger)
               ? obj.ledger
                   .map((ledgerRow) => {

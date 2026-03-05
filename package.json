@@ -48,6 +48,7 @@
     "@react-three/fiber": "^9.5.0",
     "@slack/bolt": "latest",
     "@whiskeysockets/baileys": "^6.17.16",
+    "@xyflow/react": "^12.10.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "commander": "latest",
