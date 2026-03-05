@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -632,6 +632,80 @@ describe("team CLI", () => {
     expect(afterApplyExecutor?.skills ?? []).toEqual(
       expect.arrayContaining(["custom-existing-skill", "amazon-affiliate-metrics", "video-generator", "tiktok-poster"]),
     );
+  });
+
+  it("syncs business skills into PM/executor workspace skills folders", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Buffalos AI",
+      "--description",
+      "Affiliate demo team",
+      "--goal",
+      "Run affiliate loop",
+      "--business-type",
+      "affiliate_marketing",
+    ]);
+    await runCommand([
+      "team",
+      "business",
+      "set-all",
+      "--team-id",
+      "team-proj-buffalos-ai",
+      "--business-type",
+      "affiliate_marketing",
+      "--measure-skill-id",
+      "amazon-affiliate-metrics",
+      "--execute-skill-id",
+      "video-generator",
+      "--distribute-skill-id",
+      "tiktok-poster",
+    ]);
+    await runCommand(["team", "business", "sync-workspace-skills", "--team-id", "team-proj-buffalos-ai", "--json"]);
+    await access(path.join(stateDir, "workspace-buffalos-ai-pm", "skills", "amazon-affiliate-metrics", "SKILL.md"));
+    await access(path.join(stateDir, "workspace-buffalos-ai-pm", "skills", "video-generator", "SKILL.md"));
+    await access(path.join(stateDir, "workspace-buffalos-ai-executor", "skills", "tiktok-poster", "SKILL.md"));
+    await access(path.join(process.cwd(), "skills", "execute", "video-generator", "SKILL.md"));
+  });
+
+  it("generates two lamp video artifacts in project-scoped workspace paths", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Buffalos AI",
+      "--description",
+      "Affiliate demo team",
+      "--goal",
+      "Run affiliate loop",
+      "--business-type",
+      "affiliate_marketing",
+    ]);
+    await runCommand([
+      "team",
+      "business",
+      "generate-lamp-videos",
+      "--team-id",
+      "team-proj-buffalos-ai",
+      "--count",
+      "2",
+      "--simulate",
+      "--json",
+    ]);
+    const artefactDir = path.join(stateDir, "workspace-buffalos-ai-executor", "projects", "proj-buffalos-ai", "affiliate", "videos");
+    const names = await readdir(artefactDir);
+    expect(names.filter((name) => name.endsWith(".mp4"))).toHaveLength(2);
+    const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const company = JSON.parse(companyRaw) as CompanySnapshot;
+    const project = company.projects.find((entry) => entry.id === "proj-buffalos-ai");
+    expect(project).toBeTruthy();
+    expect((project?.ledger ?? []).filter((entry) => (entry as { source?: string }).source === "inference_sh").length).toBeGreaterThanOrEqual(2);
+    expect((project?.accountEvents ?? []).some((entry) => entry.source === "inference_sh" && entry.type === "debit")).toBe(true);
   });
 
   it("does not duplicate existing openclaw agent entries when IDs already exist", async () => {

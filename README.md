@@ -15,7 +15,7 @@ Read in this order:
 
 Use this to prove every agent can heartbeat and write status via CLI.
 
-## SC11 Demo In 5 Commands
+## SC11 Demo In 7 Commands
 
 Use this flow to demo an affiliate team with equipped skills, seeded pipeline tasks, and visible activity:
 
@@ -48,14 +48,28 @@ npm run shell -- team business equip-skills \
   --mode replace_minimum \
   --json
 
-# 5) Seed demo board/timeline/ledger narrative
+# 5) Sync selected skills into each business agent workspace
+npm run shell -- team business sync-workspace-skills \
+  --team-id team-proj-buffalos-ai \
+  --json
+
+# 6) Generate two lamp promo videos with infsh
+npm run shell -- team business generate-lamp-videos \
+  --team-id team-proj-buffalos-ai \
+  --count 2 \
+  --model google/veo-3-1-fast \
+  --json
+
+# 7) Seed demo board/timeline/ledger narrative
 npm run shell -- team business seed-demo --team-id team-proj-buffalos-ai --json
 ```
 
 Then open Team Panel for Buffalos AI:
 
 - `Business` tab shows slot config + Agent Skill Equip Matrix.
+- PM/executor workspaces include synced `skills/` directories for selected business capabilities.
 - `Kanban` shows seeded affiliate pipeline tasks.
+- `Projects` tab can open project-scoped lamp video artefacts under `projects/proj-buffalos-ai/affiliate/videos`.
 - `Timeline`/`Communications` show seeded PM/executor activity breadcrumbs.
 - `Ledger` shows demo revenue/cost entries.
 

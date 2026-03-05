@@ -17,8 +17,10 @@
  */
 import { Command } from "commander";
 import path from "node:path";
+import { execFile } from "node:child_process";
 import { watch } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import {
   createSidecarStore,
   type AgentRole,
@@ -50,6 +52,7 @@ type BoardTaskPriority = "low" | "medium" | "high";
 type BoardActivityType = "planning" | "research" | "executing" | "distributing" | "blocked" | "handoff" | "summary" | "status";
 type StatusReportState = "running" | "ok" | "no_work" | "error" | "idle" | "planning" | "executing" | "blocked" | "done";
 type ConfigEntry = [string, string];
+const execFileAsync = promisify(execFile);
 
 interface TeamSummary {
   teamId: string;
@@ -562,6 +565,114 @@ function buildTeamBusinessSkillTargets(project: CompanyModel["projects"][number]
 function applyAgentSkillsByMode(currentSkills: string[], targetSkills: string[], mode: BusinessEquipMode): string[] {
   if (mode === "append_only") return uniqueSkills([...currentSkills, ...targetSkills]);
   return uniqueSkills(targetSkills);
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isDirectory(filePath: string): Promise<boolean> {
+  try {
+    const entries = await readdir(filePath);
+    return Array.isArray(entries);
+  } catch {
+    return false;
+  }
+}
+
+async function resolveSkillSourceDirectory(skillsRoot: string, skillId: string): Promise<string | null> {
+  const directPath = path.join(skillsRoot, skillId);
+  if ((await isDirectory(directPath)) && ((await pathExists(path.join(directPath, "SKILL.md"))) || (await pathExists(path.join(directPath, "skill.md"))))) {
+    return directPath;
+  }
+  let categories: string[] = [];
+  try {
+    categories = await readdir(skillsRoot);
+  } catch {
+    return null;
+  }
+  for (const category of categories) {
+    const nestedPath = path.join(skillsRoot, category, skillId);
+    if ((await isDirectory(nestedPath)) && ((await pathExists(path.join(nestedPath, "SKILL.md"))) || (await pathExists(path.join(nestedPath, "skill.md"))))) {
+      return nestedPath;
+    }
+  }
+  return null;
+}
+
+function tryResolveWorkspaceFromOpenclawConfig(openclawConfig: Record<string, unknown>, stateRoot: string, agentId: string): string {
+  const agentsNode = asRecord(openclawConfig.agents);
+  const list = Array.isArray(agentsNode.list) ? agentsNode.list : [];
+  const match = list.find((entry) => asRecord(entry).id === agentId);
+  const row = asRecord(match);
+  const workspace = typeof row.workspace === "string" ? row.workspace.trim() : "";
+  if (workspace) return workspace;
+  return resolveAgentWorkspacePath(stateRoot, agentId);
+}
+
+function collectVideoLikeStrings(value: unknown, out: Set<string>): void {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (/^https?:\/\/\S+/i.test(trimmed) || /\.(mp4|mov|webm|mkv)(\?.*)?$/i.test(trimmed)) {
+      out.add(trimmed);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) collectVideoLikeStrings(entry, out);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  for (const entry of Object.values(value as Record<string, unknown>)) {
+    collectVideoLikeStrings(entry, out);
+  }
+}
+
+function extractVideoRefsFromCommandOutput(stdout: string): string[] {
+  const refs = new Set<string>();
+  const regex = /(https?:\/\/[^\s"'`]+|\/[^\s"'`]+\.(?:mp4|mov|webm|mkv)|[^\s"'`]+\.(?:mp4|mov|webm|mkv))/gi;
+  let match: RegExpExecArray | null = regex.exec(stdout);
+  while (match) {
+    refs.add(match[1]);
+    match = regex.exec(stdout);
+  }
+  for (const line of stdout.split("\n").map((entry) => entry.trim()).filter(Boolean)) {
+    if (!line.startsWith("{") && !line.startsWith("[")) continue;
+    try {
+      const parsed = JSON.parse(line) as unknown;
+      collectVideoLikeStrings(parsed, refs);
+    } catch {
+      // Ignore non-JSON lines.
+    }
+  }
+  try {
+    const parsed = JSON.parse(stdout) as unknown;
+    collectVideoLikeStrings(parsed, refs);
+  } catch {
+    // Ignore non-JSON stdout blobs.
+  }
+  return [...refs];
+}
+
+async function runInfshVideoGeneration(model: string, prompt: string): Promise<{ refs: string[]; stdout: string; stderr: string }> {
+  const input = JSON.stringify({ prompt });
+  try {
+    const result = await execFileAsync("infsh", ["app", "run", model, "--input", input, "--json"], { maxBuffer: 10 * 1024 * 1024 });
+    const stdout = typeof result.stdout === "string" ? result.stdout : String(result.stdout ?? "");
+    const stderr = typeof result.stderr === "string" ? result.stderr : String(result.stderr ?? "");
+    return { refs: extractVideoRefsFromCommandOutput(stdout), stdout, stderr };
+  } catch {
+    const fallback = await execFileAsync("infsh", ["app", "run", model, "--input", input], { maxBuffer: 10 * 1024 * 1024 });
+    const stdout = typeof fallback.stdout === "string" ? fallback.stdout : String(fallback.stdout ?? "");
+    const stderr = typeof fallback.stderr === "string" ? fallback.stderr : String(fallback.stderr ?? "");
+    return { refs: extractVideoRefsFromCommandOutput(stdout), stdout, stderr };
+  }
 }
 
 function defaultProjectResources(projectId: string): ProjectResourceModel[] {
@@ -2046,6 +2157,86 @@ export function registerTeamCommands(program: Command): void {
         );
       },
     );
+  business
+    .command("sync-workspace-skills")
+    .requiredOption("--team-id <teamId>", "Team id (team-*)")
+    .option("--dry-run", "Preview workspace sync without writing files", false)
+    .option("--json", "Output JSON", false)
+    .action(async (opts: { teamId: string; dryRun?: boolean; json?: boolean }) => {
+      ensureCommandPermission("team.business.write");
+      const company = await store.readCompanyModel();
+      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+      const pmAgent = company.agents.find((entry) => entry.projectId === projectId && entry.role === "biz_pm");
+      const executorAgent = company.agents.find((entry) => entry.projectId === projectId && entry.role === "biz_executor");
+      if (!pmAgent || !executorAgent) fail(`business_agents_missing:${opts.teamId}`);
+      const targets = buildTeamBusinessSkillTargets(project);
+      const targetByAgentId = new Map<string, string[]>([
+        [pmAgent.agentId, targets.pmSkills],
+        [executorAgent.agentId, targets.executorSkills],
+      ]);
+      const stateRoot = resolveOpenclawStateRoot();
+      const openclawConfig = await store.readOpenclawConfig();
+      const skillsRoot = path.resolve(process.cwd(), "skills");
+      const rows: Array<{
+        agentId: string;
+        role: BusinessTeamRole;
+        workspacePath: string;
+        targetSkills: string[];
+        copiedSkills: string[];
+        unchangedSkills: string[];
+        missingSourceSkills: string[];
+        staleWorkspaceSkills: string[];
+      }> = [];
+      const missingAgents: string[] = [];
+      for (const [agentId, targetSkills] of targetByAgentId.entries()) {
+        const workspacePath = tryResolveWorkspaceFromOpenclawConfig(openclawConfig, stateRoot, agentId);
+        const hasWorkspace = await pathExists(workspacePath);
+        const existingSkillDirs = hasWorkspace ? await readdir(path.join(workspacePath, "skills")).catch(() => [] as string[]) : [];
+        if (!hasWorkspace) missingAgents.push(agentId);
+        const copiedSkills: string[] = [];
+        const unchangedSkills: string[] = [];
+        const missingSourceSkills: string[] = [];
+        for (const skillId of targetSkills) {
+          const sourcePath = await resolveSkillSourceDirectory(skillsRoot, skillId);
+          if (!sourcePath) {
+            missingSourceSkills.push(skillId);
+            continue;
+          }
+          const destinationPath = path.join(workspacePath, "skills", skillId);
+          const alreadyPresent = await pathExists(destinationPath);
+          if (alreadyPresent) unchangedSkills.push(skillId);
+          else copiedSkills.push(skillId);
+          if (!opts.dryRun) {
+            await mkdir(path.dirname(destinationPath), { recursive: true });
+            await cp(sourcePath, destinationPath, { recursive: true, force: true });
+          }
+        }
+        const staleWorkspaceSkills = existingSkillDirs.filter((skillId) => !targetSkills.includes(skillId));
+        rows.push({
+          agentId,
+          role: agentId === pmAgent.agentId ? "biz_pm" : "biz_executor",
+          workspacePath,
+          targetSkills,
+          copiedSkills,
+          unchangedSkills,
+          missingSourceSkills,
+          staleWorkspaceSkills,
+        });
+      }
+      const payload = {
+        ok: true,
+        teamId: opts.teamId,
+        projectId,
+        dryRun: Boolean(opts.dryRun),
+        missingAgents,
+        rows,
+      };
+      formatOutput(
+        opts.json ? "json" : "text",
+        payload,
+        `Synced workspace skills for ${opts.teamId}: copied=${rows.reduce((sum, row) => sum + row.copiedSkills.length, 0)} dryRun=${opts.dryRun ? "yes" : "no"}`,
+      );
+    });
 
   const resources = team.command("resources").description("Manage advisory resources for a team");
   resources
@@ -2709,6 +2900,197 @@ export function registerTeamCommands(program: Command): void {
         `Seeded demo business data for ${opts.teamId} (board=${boardSeeded ? "yes" : "no"})`,
       );
     });
+  business
+    .command("generate-lamp-videos")
+    .requiredOption("--team-id <teamId>", "Team id (team-*)")
+    .option("--count <count>", "Number of videos to generate", (value) => {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 10) fail(`invalid_count:${value}`);
+      return parsed;
+    }, 2)
+    .option("--model <model>", "infsh model id", "google/veo-3-1-fast")
+    .option("--spend-per-video-cents <amount>", "Ledger spend per video", (value) => {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isFinite(parsed) || parsed < 0) fail(`invalid_spend_per_video_cents:${value}`);
+      return parsed;
+    }, 120)
+    .option("--simulate", "Create deterministic local artifacts without running infsh", false)
+    .option("--json", "Output JSON", false)
+    .action(
+      async (opts: {
+        teamId: string;
+        count: number;
+        model: string;
+        spendPerVideoCents: number;
+        simulate?: boolean;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.business.write");
+        const company = await store.readCompanyModel();
+        const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+        const executorAgent =
+          company.agents.find((entry) => entry.projectId === projectId && entry.role === "biz_executor") ??
+          company.agents.find((entry) => entry.projectId === projectId);
+        if (!executorAgent) fail(`team_executor_missing:${opts.teamId}`);
+        const stateRoot = resolveOpenclawStateRoot();
+        const openclawConfig = await store.readOpenclawConfig();
+        const workspacePath = tryResolveWorkspaceFromOpenclawConfig(openclawConfig, stateRoot, executorAgent.agentId);
+        const videoDir = path.join(workspacePath, "projects", projectId, "affiliate", "videos");
+        await mkdir(videoDir, { recursive: true });
+        const createdArtifacts: Array<{
+          index: number;
+          videoPath: string;
+          captionPath: string;
+          metadataPath: string;
+          sourceRef?: string;
+          prompt: string;
+        }> = [];
+        for (let index = 0; index < opts.count; index += 1) {
+          const variant = index + 1;
+          const prompt = `Create a vertical UGC ad video for a modern desk lamp. Variant ${variant}. Include: hook in first 2 seconds, clear benefit, and CTA to buy via affiliate link.`;
+          const stamp = Date.now() + index;
+          const baseName = `lamp-sell-v${variant}-${stamp}`;
+          const videoPath = path.join(videoDir, `${baseName}.mp4`);
+          const captionPath = path.join(videoDir, `${baseName}.caption.txt`);
+          const metadataPath = path.join(videoDir, `${baseName}.json`);
+          let sourceRef = "";
+          if (opts.simulate) {
+            await writeFile(videoPath, "SIMULATED_MP4_BINARY_PLACEHOLDER\n", "utf-8");
+            sourceRef = "simulated://local-video";
+          } else {
+            const generation = await runInfshVideoGeneration(opts.model.trim(), prompt);
+            const preferredRef = generation.refs.find((ref) => /\.mp4(\?.*)?$/i.test(ref)) ?? generation.refs[0] ?? "";
+            if (!preferredRef) {
+              fail(`infsh_video_ref_missing:variant=${variant}:stdout=${generation.stdout.slice(0, 200)}`);
+            }
+            sourceRef = preferredRef;
+            if (/^https?:\/\//i.test(preferredRef)) {
+              const response = await fetch(preferredRef);
+              if (!response.ok) fail(`video_download_failed:${response.status}:${preferredRef}`);
+              const bytes = Buffer.from(await response.arrayBuffer());
+              await writeFile(videoPath, bytes);
+            } else {
+              const resolvedRef = preferredRef.startsWith("/") ? preferredRef : path.resolve(preferredRef);
+              if (!(await pathExists(resolvedRef))) fail(`video_path_not_found:${preferredRef}`);
+              await cp(resolvedRef, videoPath, { force: true });
+            }
+          }
+          const caption = [
+            "Brighten your desk setup with this minimalist LED lamp.",
+            "Tap the affiliate link for today's best deal.",
+            "#desksetup #homedecor #lighting #affiliate",
+          ].join("\n");
+          await writeFile(captionPath, `${caption}\n`, "utf-8");
+          await writeFile(
+            metadataPath,
+            `${JSON.stringify(
+              {
+                projectId,
+                teamId: opts.teamId,
+                agentId: executorAgent.agentId,
+                model: opts.model.trim(),
+                prompt,
+                sourceRef,
+                createdAt: new Date(stamp).toISOString(),
+              },
+              null,
+              2,
+            )}\n`,
+            "utf-8",
+          );
+          const relativeVideoPath = `workspace-${executorAgent.agentId}/projects/${projectId}/affiliate/videos/${path.basename(videoPath)}`;
+          const relativeCaptionPath = `workspace-${executorAgent.agentId}/projects/${projectId}/affiliate/videos/${path.basename(captionPath)}`;
+          const taskId = `lamp-${projectId}-${variant}`;
+          try {
+            await postBoardCommand({
+              projectId,
+              command: "task_add",
+              taskId,
+              title: `Create lamp promo video variant ${variant}`,
+              ownerAgentId: executorAgent.agentId,
+              priority: "high",
+              status: "done",
+              actorType: "operator",
+              actorAgentId: "video-generator",
+              detail: `Artifact path: ${relativeVideoPath}\nCaption path: ${relativeCaptionPath}`,
+            });
+          } catch {
+            // Optional board write for local demo mode.
+          }
+          await tryLogCliActivity({
+            projectId,
+            teamId: opts.teamId.trim(),
+            actorAgentId: executorAgent.agentId,
+            activityType: "executing",
+            label: "lamp_video_generated",
+            detail: `Generated lamp video variant ${variant} at ${relativeVideoPath}`,
+            source: "team.business.generate-lamp-videos",
+          });
+          createdArtifacts.push({
+            index: variant,
+            videoPath: relativeVideoPath,
+            captionPath: relativeCaptionPath,
+            metadataPath: `workspace-${executorAgent.agentId}/projects/${projectId}/affiliate/videos/${path.basename(metadataPath)}`,
+            sourceRef,
+            prompt,
+          });
+        }
+        const totalSpend = opts.count * opts.spendPerVideoCents;
+        const account = ensureProjectAccount(projectId, project);
+        const nowIso = new Date().toISOString();
+        const updatedBalance = Math.max(0, account.balanceCents - totalSpend);
+        const accountEvent: ProjectAccountEventModel = {
+          id: `acct-${projectId}-${Date.now()}`,
+          projectId,
+          accountId: account.id,
+          timestamp: nowIso,
+          type: "debit",
+          amountCents: totalSpend,
+          source: "inference_sh",
+          note: `Generated ${opts.count} lamp videos via ${opts.model.trim()}`,
+          balanceAfterCents: updatedBalance,
+        };
+        const ledgerEntries = createdArtifacts.map((artifact) => ({
+          id: `ledger-lamp-${projectId}-${artifact.index}-${Date.now() + artifact.index}`,
+          projectId,
+          timestamp: nowIso,
+          type: "cost" as const,
+          amount: opts.spendPerVideoCents,
+          currency: "USD",
+          source: "inference_sh",
+          description: `Lamp video variant ${artifact.index} generation`,
+        }));
+        const nextProject = {
+          ...project,
+          account: {
+            ...account,
+            balanceCents: updatedBalance,
+            updatedAt: nowIso,
+          },
+          accountEvents: [...(project.accountEvents ?? []), accountEvent],
+          ledger: [...(project.ledger ?? []), ...ledgerEntries],
+        };
+        await store.writeCompanyModel({
+          ...company,
+          projects: company.projects.map((entry) => (entry.id === projectId ? nextProject : entry)),
+        });
+        const payload = {
+          ok: true,
+          teamId: opts.teamId,
+          projectId,
+          model: opts.model.trim(),
+          count: opts.count,
+          simulated: Boolean(opts.simulate),
+          totalSpendCents: totalSpend,
+          artifacts: createdArtifacts,
+        };
+        formatOutput(
+          opts.json ? "json" : "text",
+          payload,
+          `Generated ${createdArtifacts.length} lamp videos for ${opts.teamId} (${opts.simulate ? "simulated" : "infsh"})`,
+        );
+      },
+    );
 
   const funds = team.command("funds").description("Manage team account funding and spend ledger");
   funds
