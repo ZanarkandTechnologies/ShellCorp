@@ -176,6 +176,160 @@ function fallbackData(): OfficeDataContextType {
   };
 }
 
+function areStringArraysEqual(current: string[], next: string[]): boolean {
+  if (current.length !== next.length) return false;
+  return current.every((value, index) => value === next[index]);
+}
+
+function buildPositionSignature(position: [number, number, number] | undefined): string {
+  if (!position) return "";
+  return position.join(",");
+}
+
+function buildCompanySignature(company: Company | null): string {
+  if (!company) return "";
+  return `${company._id}|${company.name}`;
+}
+
+function buildTeamSignature(teams: TeamData[]): string {
+  return teams
+    .map((team) =>
+      [
+        team._id,
+        team.name,
+        team.description,
+        team.deskCount ?? "",
+        buildPositionSignature(team.clusterPosition),
+        (team.services ?? []).join(","),
+        team.wanderLockUntil ?? "",
+        team.businessType ?? "",
+        team.employees.join(","),
+        team.capabilitySkills?.measure ?? "",
+        team.capabilitySkills?.execute ?? "",
+        team.capabilitySkills?.distribute ?? "",
+        team.finances?.revenueCents ?? "",
+        team.finances?.costCents ?? "",
+        team.finances?.profitCents ?? "",
+        (team.resources ?? [])
+          .map((resource) =>
+            [
+              resource.id,
+              resource.type,
+              resource.name,
+              resource.unit,
+              resource.remaining,
+              resource.limit,
+              resource.reserved ?? "",
+              resource.health,
+            ].join(":"),
+          )
+          .join(","),
+        team.businessReadiness?.ready ? "1" : "0",
+        (team.businessReadiness?.issues ?? []).join(","),
+      ].join("|"),
+    )
+    .join("||");
+}
+
+function buildDeskSignature(desks: DeskLayoutData[]): string {
+  return desks.map((desk) => `${desk.id}|${desk.deskIndex}|${desk.team}`).join("||");
+}
+
+function buildHeartbeatBubbleSignature(bubbles: Array<{ label: string; weight?: number }> | undefined): string {
+  return (bubbles ?? []).map((bubble) => `${bubble.label}:${bubble.weight ?? ""}`).join(",");
+}
+
+function buildEmployeeSignature(employees: EmployeeData[]): string {
+  return employees
+    .map((employee) =>
+      [
+        employee._id,
+        employee.companyId ?? "",
+        employee.name,
+        employee.teamId,
+        employee.builtInRole ?? "",
+        employee.jobTitle ?? "",
+        employee.team ?? "",
+        buildPositionSignature(employee.initialPosition),
+        employee.status ?? "",
+        employee.statusMessage ?? "",
+        employee.isBusy ? "1" : "0",
+        employee.isCEO ? "1" : "0",
+        employee.isSupervisor ? "1" : "0",
+        employee.gender ?? "",
+        employee.deskId ?? "",
+        employee.wantsToWander ? "1" : "0",
+        employee.notificationCount ?? 0,
+        employee.notificationPriority ?? 0,
+        employee.heartbeatState ?? "",
+        employee.profileImageUrl ?? "",
+        buildHeartbeatBubbleSignature(employee.heartbeatBubbles),
+      ].join("|"),
+    )
+    .join("||");
+}
+
+function buildOfficeObjectSignature(officeObjects: OfficeObject[]): string {
+  return officeObjects
+    .map((officeObject) =>
+      [
+        officeObject._id,
+        officeObject.meshType,
+        buildPositionSignature(officeObject.position),
+        buildPositionSignature(officeObject.rotation),
+        buildPositionSignature(officeObject.scale),
+        typeof officeObject.metadata?.displayName === "string" ? officeObject.metadata.displayName : "",
+        typeof officeObject.metadata?.teamId === "string" ? officeObject.metadata.teamId : "",
+        typeof officeObject.metadata?.meshPublicPath === "string" ? officeObject.metadata.meshPublicPath : "",
+        typeof officeObject.metadata?.uiBinding?.kind === "string" ? officeObject.metadata.uiBinding.kind : "",
+        typeof officeObject.metadata?.uiBinding?.title === "string" ? officeObject.metadata.uiBinding.title : "",
+        typeof officeObject.metadata?.uiBinding?.url === "string" ? officeObject.metadata.uiBinding.url : "",
+        typeof officeObject.metadata?.uiBinding?.aspectRatio === "string" ? officeObject.metadata.uiBinding.aspectRatio : "",
+        typeof officeObject.metadata?.uiBinding?.openMode === "string" ? officeObject.metadata.uiBinding.openMode : "",
+      ].join("|"),
+    )
+    .join("||");
+}
+
+function stabilizeOfficeData(current: OfficeDataContextType, next: OfficeDataContextType): OfficeDataContextType {
+  // These compact signatures are intentionally cheaper than JSON.stringify on every polling tick.
+  const stabilizedCompany =
+    buildCompanySignature(current.company) === buildCompanySignature(next.company) ? current.company : next.company;
+  const stabilizedTeams =
+    buildTeamSignature(current.teams) === buildTeamSignature(next.teams) ? current.teams : next.teams;
+  const stabilizedEmployees =
+    buildEmployeeSignature(current.employees) === buildEmployeeSignature(next.employees) ? current.employees : next.employees;
+  const stabilizedOfficeObjects =
+    buildOfficeObjectSignature(current.officeObjects) === buildOfficeObjectSignature(next.officeObjects)
+      ? current.officeObjects
+      : next.officeObjects;
+  const stabilizedDesks =
+    buildDeskSignature(current.desks) === buildDeskSignature(next.desks) ? current.desks : next.desks;
+
+  if (
+    current.isLoading === next.isLoading &&
+    current.company === stabilizedCompany &&
+    current.teams === stabilizedTeams &&
+    current.employees === stabilizedEmployees &&
+    current.officeObjects === stabilizedOfficeObjects &&
+    current.desks === stabilizedDesks &&
+    current.companyModel === next.companyModel &&
+    current.workload === next.workload &&
+    current.warnings === next.warnings
+  ) {
+    return current;
+  }
+
+  return {
+    ...next,
+    company: stabilizedCompany,
+    teams: stabilizedTeams,
+    employees: stabilizedEmployees,
+    officeObjects: stabilizedOfficeObjects,
+    desks: stabilizedDesks,
+  };
+}
+
 function toOfficeData(
   unified: UnifiedOfficeModel,
   pendingApprovals: PendingApprovalModel[] = [],
@@ -462,6 +616,7 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
   const cancelledRef = useRef(false);
   const latestUnifiedRef = useRef<UnifiedOfficeModel | null>(null);
   const latestApprovalsRef = useRef<PendingApprovalModel[]>([]);
+  const latestLiveStatusSignatureRef = useRef("");
   const liveStatusByConvex = useAgentLiveStatuses(agentIds);
 
   const load = async (): Promise<void> => {
@@ -473,7 +628,7 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
         adapter.getPendingApprovals(),
       ]);
       const nextAgentIds = [...new Set([...unified.runtimeAgents.map((item) => item.agentId), ...unified.configuredAgents.map((item) => item.agentId)])];
-      setAgentIds(nextAgentIds);
+      setAgentIds((current) => (areStringArraysEqual(current, nextAgentIds) ? current : nextAgentIds));
 
       let statusByAgent: Record<string, AgentLiveStatus> = {};
       if (liveStatusByConvex && Object.keys(liveStatusByConvex).length > 0) {
@@ -481,12 +636,15 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       } else {
         statusByAgent = await adapter.getAgentsLiveStatus(nextAgentIds);
       }
+      latestLiveStatusSignatureRef.current = JSON.stringify(statusByAgent);
 
       latestUnifiedRef.current = unified;
       latestApprovalsRef.current = pendingApprovals;
       if (cancelledRef.current) return;
       setValue((current) => {
-        const next = toOfficeData(unified, pendingApprovals, statusByAgent);
+        const next = stabilizeOfficeData(current, toOfficeData(unified, pendingApprovals, statusByAgent));
+        // Returning the same object lets React skip a provider broadcast for status refreshes that changed nothing material.
+        if (next === current) return current;
         return {
           ...next,
           refresh: current.refresh,
@@ -509,11 +667,16 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
 
   useEffect(() => {
     if (!liveStatusByConvex || Object.keys(liveStatusByConvex).length === 0) return;
+    const nextStatusSignature = JSON.stringify(liveStatusByConvex);
+    if (latestLiveStatusSignatureRef.current === nextStatusSignature) return;
     const unified = latestUnifiedRef.current;
     if (!unified) return;
     const pendingApprovals = latestApprovalsRef.current;
+    latestLiveStatusSignatureRef.current = nextStatusSignature;
     setValue((current) => {
-      const next = toOfficeData(unified, pendingApprovals, liveStatusByConvex);
+      const next = stabilizeOfficeData(current, toOfficeData(unified, pendingApprovals, liveStatusByConvex));
+      // Keep live-status polling from invalidating the whole office tree when derived data is unchanged.
+      if (next === current) return current;
       return {
         ...next,
         refresh: current.refresh,

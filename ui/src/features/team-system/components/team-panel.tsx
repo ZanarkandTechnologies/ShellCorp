@@ -102,6 +102,8 @@ export function TeamPanel({
   }, [companyModel, projectId]);
 
   const convexEnabled = isConvexEnabled();
+  // Closed panels should not keep the board/activity subscriptions hot.
+  const activeProjectId = isOpen ? project?.id : undefined;
   const teamScopeId = useMemo(() => {
     if (globalMode) return project?.id ? `team-${project.id}`.toLowerCase() : null;
     return teamId ? teamId.trim().toLowerCase() : null;
@@ -109,10 +111,13 @@ export function TeamPanel({
 
   const boardCommand = convexEnabled ? useMutation(api.board.boardCommand) : null;
   const convexBoard = convexEnabled
-    ? useQuery(api.board.getProjectBoard, project?.id ? { projectId: project.id } : "skip")
+    ? useQuery(api.board.getProjectBoard, activeProjectId ? { projectId: activeProjectId } : "skip")
     : undefined;
   const convexActivity = convexEnabled
-    ? useQuery(api.board.getProjectActivity, project?.id ? { projectId: project.id, teamId: teamScopeId ?? undefined, limit: 60 } : "skip")
+    ? useQuery(
+        api.board.getProjectActivity,
+        activeProjectId ? { projectId: activeProjectId, teamId: teamScopeId ?? undefined, limit: 60 } : "skip",
+      )
     : undefined;
 
   const projectTasks = useMemo((): PanelTask[] => {

@@ -18,7 +18,7 @@
  * - MEM-0109
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ExternalLink, Globe2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,9 +26,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppStore } from "@/lib/app-store";
 import { UI_Z } from "@/lib/z-index";
-import { useOfficeDataContext } from "@/providers/office-data-provider";
-
-import { parseOfficeObjectInteractionConfig } from "../office-object-ui";
 
 function getFrameClassName(aspectRatio: "wide" | "square" | "tall" | undefined): string {
   switch (aspectRatio) {
@@ -44,25 +41,9 @@ function getFrameClassName(aspectRatio: "wide" | "square" | "tall" | undefined):
 export function ObjectInteractionPanel() {
   const activeObjectPanel = useAppStore((state) => state.activeObjectPanel);
   const setActiveObjectPanel = useAppStore((state) => state.setActiveObjectPanel);
-  const { officeObjects } = useOfficeDataContext();
-
-  const officeObject = useMemo(
-    () => officeObjects.find((item) => item._id === activeObjectPanel?.objectId) ?? null,
-    [activeObjectPanel?.objectId, officeObjects],
-  );
-  const interactionConfig = useMemo(
-    () => parseOfficeObjectInteractionConfig(officeObject?.metadata),
-    [officeObject?.metadata],
-  );
-
-  const panelTitle =
-    interactionConfig.uiBinding.kind === "embed"
-      ? interactionConfig.uiBinding.title
-      : activeObjectPanel?.title ?? interactionConfig.displayName ?? "Object Panel";
-  const panelUrl =
-    interactionConfig.uiBinding.kind === "embed"
-      ? interactionConfig.uiBinding.url
-      : activeObjectPanel?.url ?? "";
+  const setSelectedObjectId = useAppStore((state) => state.setSelectedObjectId);
+  const panelTitle = activeObjectPanel?.title ?? activeObjectPanel?.displayName ?? "Object Panel";
+  const panelUrl = activeObjectPanel?.url ?? "";
 
   const [hasLoaded, setHasLoaded] = useState(false);
   const [showFallback, setShowFallback] = useState(false);
@@ -77,8 +58,24 @@ export function ObjectInteractionPanel() {
     return () => window.clearTimeout(timer);
   }, [activeObjectPanel, panelUrl]);
 
-  const aspectRatio =
-    interactionConfig.uiBinding.kind === "embed" ? interactionConfig.uiBinding.aspectRatio : undefined;
+  useEffect(() => {
+    if (!activeObjectPanel) return;
+    // Clear any stale radial menu only after the modal is live; doing it on click made the open path feel slower.
+    if (useAppStore.getState().selectedObjectId !== null) {
+      setSelectedObjectId(null);
+    }
+    const modalReadyLatencyMs = Math.round(
+      (typeof performance !== "undefined" ? performance.now() : Date.now()) - activeObjectPanel.openedAtMs,
+    );
+    if (import.meta.env.DEV) {
+      console.debug("[perf] office-object-modal-ready", {
+        objectId: String(activeObjectPanel.objectId),
+        modalReadyLatencyMs,
+      });
+    }
+  }, [activeObjectPanel, setSelectedObjectId]);
+
+  const aspectRatio = activeObjectPanel?.aspectRatio;
 
   return (
     <Dialog open={!!activeObjectPanel} onOpenChange={(open) => !open && setActiveObjectPanel(null)}>
@@ -138,7 +135,17 @@ export function ObjectInteractionPanel() {
                   title={panelTitle}
                   src={panelUrl}
                   className="h-full w-full"
-                  onLoad={() => setHasLoaded(true)}
+                  onLoad={() => {
+                    setHasLoaded(true);
+                    if (!activeObjectPanel || !import.meta.env.DEV) return;
+                    const iframeReadyLatencyMs = Math.round(
+                      (typeof performance !== "undefined" ? performance.now() : Date.now()) - activeObjectPanel.openedAtMs,
+                    );
+                    console.debug("[perf] office-object-iframe-load", {
+                      objectId: String(activeObjectPanel.objectId),
+                      iframeReadyLatencyMs,
+                    });
+                  }}
                 />
               </div>
             ) : (

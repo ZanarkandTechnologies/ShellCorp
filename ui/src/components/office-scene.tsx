@@ -259,7 +259,9 @@ const SceneContents = ({
     const officeObjectRefs = useRef<Map<string, React.RefObject<THREE.Group | null>>>(new Map());
 
     const handleEmployeeClick = useCallback(
-        async (employee: EmployeeData) => {
+        async (employeeId: EmployeeData["_id"]) => {
+            const employee = employees.find((entry) => entry._id === employeeId);
+            if (!employee) return;
             if (useAppStore.getState().placementMode.active) return;
             if (!employee.companyId) return;
 
@@ -272,7 +274,7 @@ const SceneContents = ({
             });
             await openEmployeeChat(employee._id, true);
         },
-        [setActiveChatParticipant, openEmployeeChat],
+        [employees, openEmployeeChat, setActiveChatParticipant],
     );
 
     const handleTeamClick = useCallback(
@@ -337,10 +339,28 @@ const SceneContents = ({
         };
     }, [desks, teams, ceoAnchorFromGlassWalls]);
 
-    const officeObjectIdsString = useMemo(() => {
-        if (!allOfficeObjects) return '';
-        return allOfficeObjects.map((obj) => obj._id).join(',');
-    }, [allOfficeObjects])
+    const teamById = useMemo(() => {
+        return new Map(teams.map((team) => [team._id, team]));
+    }, [teams]);
+
+    const desksByTeamId = useMemo(() => {
+        // Pre-index once so object rendering avoids repeated filter/find work for every cluster.
+        const map = new Map<string, DeskLayoutData[]>();
+        for (const desk of desks) {
+            const prefix = "desk-";
+            if (!desk.id.startsWith(prefix)) continue;
+            const lastDashIndex = desk.id.lastIndexOf("-");
+            if (lastDashIndex <= prefix.length) continue;
+            const teamId = desk.id.slice(prefix.length, lastDashIndex);
+            const current = map.get(teamId);
+            if (current) {
+                current.push(desk);
+            } else {
+                map.set(teamId, [desk]);
+            }
+        }
+        return map;
+    }, [desks]);
 
     // Render office objects with refs for obstacle collection
     // Only renders when new objects are added to the scene
@@ -425,8 +445,9 @@ const SceneContents = ({
 
                 case 'team-cluster':
                     // Team clusters need special handling with teams/desks data
-                    const team = teams.find(t => t._id === obj.metadata?.teamId);
-                    const teamDesks = desks.filter(d => team ? d.id.startsWith(`desk-${team._id}-`) : false);
+                    const metadataTeamId = typeof obj.metadata?.teamId === "string" ? obj.metadata.teamId : "";
+                    const team = teamById.get(metadataTeamId);
+                    const teamDesks = team ? desksByTeamId.get(team._id) ?? [] : [];
 
                     if (!team) return null;
 
@@ -446,7 +467,6 @@ const SceneContents = ({
                     );
 
                 case 'glass-wall':
-                    console.log("Rendering glass wall Kenji", obj.position)
                     return (
                         <group key={obj._id} ref={setRef} name={`obstacle-glass-wall-${obj._id}`}>
                             <GlassWall
@@ -481,7 +501,7 @@ const SceneContents = ({
                     return null;
             }
         });
-    }, [allOfficeObjects, officeObjectIdsString, teams, desks, handleTeamClick, companyId, registerObject, unregisterObject]);
+    }, [allOfficeObjects, companyId, desksByTeamId, handleTeamClick, registerObject, teamById, unregisterObject]);
 
     // Register CEO desk
     useEffect(() => {
@@ -500,7 +520,6 @@ const SceneContents = ({
 
             // Only initialize if we have objects (if expected)
             if (expectedCount > 0 && objects.length > 0) {
-                console.log('Initializing grid with registered objects:', objects.length);
                 initializeGrid(FLOOR_SIZE, objects, 2, 3);
             } else if (expectedCount === 0) {
                 // Initialize empty grid if no obstacles expected
@@ -729,7 +748,7 @@ const SceneContents = ({
                     isCEO={emp.isCEO}
                     isSupervisor={emp.isSupervisor}
                     gender={emp.gender}
-                    onClick={() => handleEmployeeClick(emp)}
+                    onClick={handleEmployeeClick}
                     debugMode={debugMode}
                     status={(emp.status || 'none') as StatusType}
                     statusMessage={emp.statusMessage}

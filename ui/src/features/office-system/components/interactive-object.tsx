@@ -81,6 +81,7 @@ export function InteractiveObject({
     const controllerRef = useRef<DraggableController | null>(null);
     const { camera, gl } = useThree();
     const adapter = useOpenClawAdapter();
+    const objectIdString = `object-${objectId}`;
 
     // Local state for optimistic updates
     const [localPosition, setLocalPosition] = useState<[number, number, number]>(initialPosition);
@@ -96,14 +97,11 @@ export function InteractiveObject({
     const isBuilderMode = useAppStore(state => state.isBuilderMode);
     const isDragEnabled = isBuilderMode && !!companyId;
     const setGlobalDragging = useAppStore(state => state.setIsDragging);
-    const selectedObjectId = useAppStore(state => state.selectedObjectId);
+    const isSelected = useAppStore(state => state.selectedObjectId === objectIdString);
     const setSelectedObjectId = useAppStore(state => state.setSelectedObjectId);
     const setActiveObjectConfigId = useAppStore(state => state.setActiveObjectConfigId);
     const setActiveObjectPanel = useAppStore(state => state.setActiveObjectPanel);
 
-    // Derive selection state from global store
-    const objectIdString = `object-${objectId}`;
-    const isSelected = selectedObjectId === objectIdString;
     const interactionConfig = parseOfficeObjectInteractionConfig(metadata);
 
     const updateOfficeObjectPosition = useCallback(async (input: {
@@ -222,12 +220,23 @@ export function InteractiveObject({
         if (isLocallyDragging) return;
         e.stopPropagation();
         if (!isBuilderMode) {
-            setSelectedObjectId(null);
             if (interactionConfig.uiBinding.kind === "embed") {
+                const openedAtMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+                if (import.meta.env.DEV) {
+                    console.debug("[perf] office-object-modal-click", {
+                        objectId: String(objectId),
+                        title: interactionConfig.uiBinding.title,
+                        openedAtMs,
+                    });
+                }
+                // Runtime opens avoid touching selection state so the scene does not re-render before the modal paints.
                 setActiveObjectPanel({
                     objectId,
                     title: interactionConfig.uiBinding.title,
                     url: interactionConfig.uiBinding.url,
+                    displayName: interactionConfig.displayName,
+                    aspectRatio: interactionConfig.uiBinding.aspectRatio,
+                    openedAtMs,
                 });
             }
             return;

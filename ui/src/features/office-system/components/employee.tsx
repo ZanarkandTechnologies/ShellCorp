@@ -30,7 +30,7 @@ interface EmployeeProps {
     isCEO?: boolean;
     isSupervisor?: boolean;
     gender?: string;
-    onClick: () => void;
+    onClick: (employeeId: Id<"employees">) => void;
     debugMode?: boolean;
     status?: StatusType;
     statusMessage?: string;
@@ -110,11 +110,7 @@ const ProfileHead = memo(function ProfileHead({
                     <img
                         src={imageUrl}
                         alt="Profile"
-                        onLoad={() => {
-                            console.log('[ProfileHead] Image loaded successfully:', imageUrl);
-                        }}
-                        onError={(e) => {
-                            console.error('[ProfileHead] Image failed to load:', imageUrl, e);
+                        onError={() => {
                             setImageError(true);
                         }}
                         style={{
@@ -332,15 +328,9 @@ const Employee = memo(function Employee({
     const groupRef = useRef<Group>(null);
     const initialPositionRef = useRef<THREE.Vector3>(new THREE.Vector3(position[0], TOTAL_HEIGHT / 2, position[2]));
 
-    // Debug: Log profileImageUrl if present
-    useEffect(() => {
-        if (profileImageUrl) {
-            console.log(`[Employee ${id}] profileImageUrl:`, profileImageUrl);
-        }
-    }, [id, profileImageUrl]);
-
     // Selection state - use global store to ensure only one menu is open
-    const selectedObjectId = useAppStore(state => state.selectedObjectId);
+    const employeeIdString = `employee-${id}`;
+    const isSelected = useAppStore(state => state.selectedObjectId === employeeIdString);
     const setSelectedObjectId = useAppStore(state => state.setSelectedObjectId);
     const setManageAgentEmployeeId = useAppStore(state => state.setManageAgentEmployeeId);
     const setViewComputerEmployeeId = useAppStore(state => state.setViewComputerEmployeeId);
@@ -362,10 +352,6 @@ const Employee = memo(function Employee({
     const setIsViewComputerOpen = (open: boolean) => {
         setViewComputerEmployeeId(open ? id : null);
     };
-
-    // Derive selection state from global store
-    const employeeIdString = `employee-${id}`;
-    const isSelected = selectedObjectId === employeeIdString;
 
     // Access chat functionality from App Store, not just Chat Store
     const setIsChatModalOpen = useAppStore(state => state.setIsChatModalOpen);
@@ -512,6 +498,16 @@ const Employee = memo(function Employee({
         if (debugMode) {
             const nextDecision = `${heartbeatState ?? "none"} -> ${shouldBeAtDesk ? "desk" : "wander"}`;
             setDebugDeskDecision((prev) => (prev === nextDecision ? prev : nextDecision));
+        }
+
+        if (
+            shouldBeAtDesk &&
+            !path &&
+            !isGoingToDesk &&
+            currentDestination === null &&
+            currentPos.distanceTo(initialPositionRef.current) <= arrivalThreshold
+        ) {
+            return;
         }
 
         if (shouldBeAtDesk) {
@@ -695,7 +691,7 @@ const Employee = memo(function Employee({
             position: 'top' as const,
             onClick: () => {
                 setSelectedObjectId(null);
-                onClick();
+                onClick(id);
             }
         },
         {
@@ -800,6 +796,15 @@ const Employee = memo(function Employee({
     const hoverScale = isHovered && !isSelected ? 1.05 : 1.0;
     useFrame(() => {
         if (groupRef.current) {
+            if (
+                hoverScale === 1 &&
+                Math.abs(groupRef.current.scale.x - 1) < 0.001 &&
+                Math.abs(groupRef.current.scale.y - 1) < 0.001 &&
+                Math.abs(groupRef.current.scale.z - 1) < 0.001
+            ) {
+                // Most agents spend most frames idle; skip lerp math once scale is already at rest.
+                return;
+            }
             const targetScale = new THREE.Vector3(hoverScale, hoverScale, hoverScale);
             groupRef.current.scale.lerp(targetScale, 0.1);
         }

@@ -109,6 +109,7 @@ export default function OfficeSimulation() {
                 }}
                 employeeName={employees.find((employee) => employee._id === trainingEmployeeId)?.name ?? "Agent"}
             />
+            {/* Keep mounted so close/reopen preserves in-panel draft state; TeamPanel gates its expensive queries when closed. */}
             <TeamPanel
                 teamId={activeTeamId}
                 isOpen={isTeamPanelOpen}

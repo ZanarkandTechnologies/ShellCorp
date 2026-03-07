@@ -12,6 +12,33 @@ type PlacementMode = {
   data: Record<string, unknown> | null;
 };
 
+type ObjectPanelAspectRatio = "wide" | "square" | "tall";
+
+export type ActiveObjectPanelState = {
+  objectId: OfficeId<"officeObjects">;
+  title: string;
+  url: string;
+  displayName?: string;
+  aspectRatio?: ObjectPanelAspectRatio;
+  openedAtMs: number;
+};
+
+function areActiveObjectPanelsEqual(
+  current: ActiveObjectPanelState | null,
+  next: ActiveObjectPanelState | null,
+): boolean {
+  if (current === next) return true;
+  if (!current || !next) return false;
+  return (
+    current.objectId === next.objectId &&
+    current.title === next.title &&
+    current.url === next.url &&
+    current.displayName === next.displayName &&
+    current.aspectRatio === next.aspectRatio &&
+    current.openedAtMs === next.openedAtMs
+  );
+}
+
 interface AppState {
   isChatModalOpen: boolean;
   setIsChatModalOpen: (isOpen: boolean) => void;
@@ -37,22 +64,8 @@ interface AppState {
   setSelectedObjectId: (id: string | null) => void;
   activeObjectConfigId: OfficeId<"officeObjects"> | null;
   setActiveObjectConfigId: (id: OfficeId<"officeObjects"> | null) => void;
-  activeObjectPanel:
-    | {
-        objectId: OfficeId<"officeObjects">;
-        title: string;
-        url: string;
-      }
-    | null;
-  setActiveObjectPanel: (
-    panel:
-      | {
-          objectId: OfficeId<"officeObjects">;
-          title: string;
-          url: string;
-        }
-      | null,
-  ) => void;
+  activeObjectPanel: ActiveObjectPanelState | null;
+  setActiveObjectPanel: (panel: ActiveObjectPanelState | null) => void;
   manageAgentEmployeeId: OfficeId<"employees"> | null;
   setManageAgentEmployeeId: (id: OfficeId<"employees"> | null) => void;
   viewComputerEmployeeId: OfficeId<"employees"> | null;
@@ -115,11 +128,16 @@ export const useAppStore = create<AppState>()(
     placementMode: { active: false, type: null, data: null },
     setPlacementMode: (mode) => set({ placementMode: mode }),
     selectedObjectId: null,
-    setSelectedObjectId: (id) => set({ selectedObjectId: id }),
+    // Keep no-op writes from fanning out through the whole scene tree.
+    setSelectedObjectId: (id) =>
+      set((state) => (state.selectedObjectId === id ? state : { selectedObjectId: id })),
     activeObjectConfigId: null,
-    setActiveObjectConfigId: (id) => set({ activeObjectConfigId: id }),
+    setActiveObjectConfigId: (id) =>
+      set((state) => (state.activeObjectConfigId === id ? state : { activeObjectConfigId: id })),
     activeObjectPanel: null,
-    setActiveObjectPanel: (panel) => set({ activeObjectPanel: panel }),
+    // Modal payload is compared structurally so repeated opens of the same state do not trigger extra work.
+    setActiveObjectPanel: (panel) =>
+      set((state) => (areActiveObjectPanelsEqual(state.activeObjectPanel, panel) ? state : { activeObjectPanel: panel })),
     manageAgentEmployeeId: null,
     setManageAgentEmployeeId: (id) => set({ manageAgentEmployeeId: id }),
     viewComputerEmployeeId: null,
@@ -162,3 +180,8 @@ export const useAppStore = create<AppState>()(
     setIsSettingsModalOpen: (isOpen) => set({ isSettingsModalOpen: isOpen }),
   })),
 );
+
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  // Exposed only in dev so QA scripts can poke the live store instance without importing a second module copy.
+  (window as typeof window & { __SHELLCORP_APP_STORE?: typeof useAppStore }).__SHELLCORP_APP_STORE = useAppStore;
+}
