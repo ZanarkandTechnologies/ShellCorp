@@ -6,7 +6,9 @@ interface BookshelfProps {
     objectId: Id<"officeObjects">;
     position?: [number, number, number];
     rotation?: [number, number, number];
+    scale?: [number, number, number];
     companyId?: Id<"companies">;
+    metadata?: Record<string, unknown>;
 }
 
 // Dimensions
@@ -23,7 +25,9 @@ export default function Bookshelf({
     objectId,
     position,
     rotation = [0, 0, 0],
+    scale,
     companyId,
+    metadata,
 }: BookshelfProps) {
     const numShelves = 4;
     const shelfSpacing = (SHELF_HEIGHT - PLANK_THICKNESS) / numShelves;
@@ -35,6 +39,8 @@ export default function Bookshelf({
             companyId={companyId}
             initialPosition={position}
             initialRotation={rotation}
+            initialScale={scale}
+            metadata={metadata}
         >
             <group>
                 {/* Sides */}

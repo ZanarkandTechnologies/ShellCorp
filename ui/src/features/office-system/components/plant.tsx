@@ -6,14 +6,18 @@ interface PlantProps {
     objectId: Id<"officeObjects">;
     position?: [number, number, number];
     rotation?: [number, number, number];
+    scale?: [number, number, number];
     companyId?: Id<"companies">;
+    metadata?: Record<string, unknown>;
 }
 
 export default function Plant({
     objectId,
     position,
     rotation,
+    scale,
     companyId,
+    metadata,
 }: PlantProps) {
     return (
         <InteractiveObject
@@ -22,6 +26,8 @@ export default function Plant({
             companyId={companyId}
             initialPosition={position}
             initialRotation={rotation}
+            initialScale={scale}
+            metadata={metadata}
         >
             {/* Pot */}
             <Cylinder args={[0.3, 0.35, 0.5, 16]} position={[0, 0.25, 0]} castShadow>

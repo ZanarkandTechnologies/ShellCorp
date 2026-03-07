@@ -374,7 +374,9 @@ const SceneContents = ({
                                 objectId={obj._id}
                                 position={obj.position as [number, number, number]}
                                 rotation={obj.rotation as [number, number, number]}
+                                scale={obj.scale as [number, number, number] | undefined}
                                 companyId={companyId}
+                                metadata={obj.metadata}
                             />
                         </group>
                     );
@@ -386,7 +388,9 @@ const SceneContents = ({
                                 objectId={obj._id}
                                 position={obj.position as [number, number, number]}
                                 rotation={obj.rotation as [number, number, number]}
+                                scale={obj.scale as [number, number, number] | undefined}
                                 companyId={companyId}
+                                metadata={obj.metadata}
                             />
                         </group>
                     );
@@ -398,7 +402,9 @@ const SceneContents = ({
                                 objectId={obj._id}
                                 position={obj.position as [number, number, number]}
                                 rotation={obj.rotation as [number, number, number]}
+                                scale={obj.scale as [number, number, number] | undefined}
                                 companyId={companyId}
+                                metadata={obj.metadata}
                             />
                         </group>
                     );
@@ -410,7 +416,9 @@ const SceneContents = ({
                                 objectId={obj._id}
                                 position={obj.position as [number, number, number]}
                                 rotation={obj.rotation as [number, number, number]}
+                                scale={obj.scale as [number, number, number] | undefined}
                                 companyId={companyId}
+                                metadata={obj.metadata}
                             />
                         </group>
                     );
@@ -432,6 +440,7 @@ const SceneContents = ({
                                 objectId={obj._id}
                                 position={obj.position as [number, number, number]}
                                 rotation={obj.rotation as [number, number, number]}
+                                metadata={obj.metadata}
                             />
                         </group>
                     );
@@ -444,7 +453,9 @@ const SceneContents = ({
                                 objectId={obj._id}
                                 position={obj.position as [number, number, number]}
                                 rotation={obj.rotation as [number, number, number]}
+                                scale={obj.scale as [number, number, number] | undefined}
                                 companyId={companyId}
+                                metadata={obj.metadata}
                             />
                         </group>
                     )
@@ -460,6 +471,7 @@ const SceneContents = ({
                                 companyId={companyId}
                                 meshUrl={typeof obj.metadata?.meshPublicPath === "string" ? obj.metadata.meshPublicPath : ""}
                                 label={typeof obj.metadata?.displayName === "string" ? obj.metadata.displayName : undefined}
+                                metadata={obj.metadata}
                             />
                         </group>
                     );

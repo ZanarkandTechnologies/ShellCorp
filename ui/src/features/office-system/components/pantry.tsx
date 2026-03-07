@@ -6,7 +6,9 @@ interface PantryProps {
     objectId: Id<"officeObjects">;
     position?: [number, number, number];
     rotation?: [number, number, number];
+    scale?: [number, number, number];
     companyId?: Id<"companies">;
+    metadata?: Record<string, unknown>;
 }
 
 // Dimensions
@@ -32,7 +34,9 @@ export default function Pantry({
     objectId,
     position,
     rotation,
+    scale,
     companyId,
+    metadata,
 }: PantryProps) {
     const fridgePositionX = COUNTER_LENGTH / 2 + FRIDGE_WIDTH / 2; // Place fridge at the positive X end
     const counterTopY = COUNTER_HEIGHT;
@@ -45,6 +49,8 @@ export default function Pantry({
             companyId={companyId}
             initialPosition={position}
             initialRotation={rotation}
+            initialScale={scale}
+            metadata={metadata}
         >
             <group>
                 {/* Main Counter - White */}

@@ -35,6 +35,24 @@ interface AppState {
   setPlacementMode: (mode: PlacementMode) => void;
   selectedObjectId: string | null;
   setSelectedObjectId: (id: string | null) => void;
+  activeObjectConfigId: OfficeId<"officeObjects"> | null;
+  setActiveObjectConfigId: (id: OfficeId<"officeObjects"> | null) => void;
+  activeObjectPanel:
+    | {
+        objectId: OfficeId<"officeObjects">;
+        title: string;
+        url: string;
+      }
+    | null;
+  setActiveObjectPanel: (
+    panel:
+      | {
+          objectId: OfficeId<"officeObjects">;
+          title: string;
+          url: string;
+        }
+      | null,
+  ) => void;
   manageAgentEmployeeId: OfficeId<"employees"> | null;
   setManageAgentEmployeeId: (id: OfficeId<"employees"> | null) => void;
   viewComputerEmployeeId: OfficeId<"employees"> | null;
@@ -98,6 +116,10 @@ export const useAppStore = create<AppState>()(
     setPlacementMode: (mode) => set({ placementMode: mode }),
     selectedObjectId: null,
     setSelectedObjectId: (id) => set({ selectedObjectId: id }),
+    activeObjectConfigId: null,
+    setActiveObjectConfigId: (id) => set({ activeObjectConfigId: id }),
+    activeObjectPanel: null,
+    setActiveObjectPanel: (panel) => set({ activeObjectPanel: panel }),
     manageAgentEmployeeId: null,
     setManageAgentEmployeeId: (id) => set({ manageAgentEmployeeId: id }),
     viewComputerEmployeeId: null,

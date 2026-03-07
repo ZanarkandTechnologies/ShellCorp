@@ -28,9 +28,17 @@ import { OfficeId } from "@/lib/types";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 
 import { getGameObjectDefinition } from "../components/object-registry";
+import {
+    buildOfficeObjectMetadata,
+    parseOfficeObjectInteractionConfig,
+} from "../office-object-ui";
 
 // Use string to support infinite item types (e.g. "desk", "plant-01", "team-cluster")
 export type PlacementType = string | null;
+
+function clampScaleValue(value: number): number {
+    return Math.min(3, Math.max(0.4, value));
+}
 
 export function usePlacementSystem() {
     const placementMode = useAppStore(state => state.placementMode);
@@ -96,11 +104,17 @@ export function usePlacementSystem() {
         const scale: [number, number, number] | undefined =
             scaleInput &&
             scaleInput.length === 3 &&
-            scaleInput.every((value) => typeof value === "number")
-                ? [scaleInput[0], scaleInput[1], scaleInput[2]]
+            scaleInput.every((value) => typeof value === "number" && Number.isFinite(value) && value > 0)
+                ? [
+                    clampScaleValue(scaleInput[0]),
+                    clampScaleValue(scaleInput[1]),
+                    clampScaleValue(scaleInput[2]),
+                ]
                 : undefined;
 
-        const metadata = input.data && typeof input.data === "object" ? { ...input.data } : {};
+        const metadataBase = input.data && typeof input.data === "object" ? { ...input.data } : {};
+        const interactionConfig = parseOfficeObjectInteractionConfig(metadataBase);
+        const metadata = buildOfficeObjectMetadata(metadataBase, interactionConfig);
         const result = await adapter.upsertOfficeObject({
             id: objectId,
             identifier: objectId,

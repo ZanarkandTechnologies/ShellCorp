@@ -13,6 +13,7 @@ interface GenericMeshObjectProps {
     companyId?: Id<"companies">;
     isDraggable?: boolean;
     isGhost?: boolean; // If true, renders without wrapper and with transparency
+    metadata?: Record<string, unknown>;
 }
 
 /**
@@ -42,7 +43,8 @@ export function GenericMeshObject({
     scale = [1, 1, 1],
     companyId,
     isDraggable = true,
-    isGhost = false
+    isGhost = false,
+    metadata,
 }: GenericMeshObjectProps) {
     const { scene } = useGLTF(url);
 
@@ -81,12 +83,13 @@ export function GenericMeshObject({
         return clone;
     }, [scene, isGhost]);
 
-    const Model = <primitive object={clonedScene} scale={scale} />;
+    const interactiveModel = <primitive object={clonedScene} />;
+    const ghostModel = <primitive object={clonedScene} scale={scale} />;
 
     if (isGhost) {
         return (
             <group position={position} rotation={rotation}>
-                {Model}
+                {ghostModel}
             </group>
         );
     }
@@ -98,8 +101,10 @@ export function GenericMeshObject({
             companyId={companyId}
             initialPosition={position}
             initialRotation={rotation}
+            initialScale={scale}
+            metadata={metadata}
         >
-            {Model}
+            {interactiveModel}
         </InteractiveObject>
     );
 }

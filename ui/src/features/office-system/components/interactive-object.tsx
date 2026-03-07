@@ -5,11 +5,12 @@ import * as THREE from 'three';
 import { useAppStore } from '@/lib/app-store';
 import type { OfficeId } from '@/lib/types';
 import { ContextMenu, MenuAction } from './context-menu';
-import { Move, RotateCw, RotateCcw, Trash2, Settings } from 'lucide-react';
+import { Move, RotateCw, RotateCcw, Trash2, Settings, ZoomIn, ZoomOut } from 'lucide-react';
 import { DraggableController } from '../controllers/draggable-controller';
 import { resolvePersistedOfficeObjectId } from './office-object-id';
 import { OFFICE_INTERACTION_COLORS } from '@/config/office-theme';
 import { useOpenClawAdapter } from '@/providers/openclaw-adapter-provider';
+import { parseOfficeObjectInteractionConfig } from '../office-object-ui';
 
 interface InteractiveObjectProps {
     children: React.ReactNode;
@@ -22,11 +23,14 @@ interface InteractiveObjectProps {
     // Transform
     initialPosition?: [number, number, number];
     initialRotation?: [number, number, number];
+    initialScale?: [number, number, number];
 
     // Optional customization
     showHoverEffect?: boolean;
     customActions?: MenuAction[];
     onSettings?: () => void;
+    metadata?: Record<string, unknown>;
+    supportsScaling?: boolean;
 }
 
 /**
@@ -66,9 +70,12 @@ export function InteractiveObject({
     companyId,
     initialPosition = [0, 0, 0],
     initialRotation = [0, 0, 0],
+    initialScale = [1, 1, 1],
     showHoverEffect = true,
     customActions,
     onSettings,
+    metadata,
+    supportsScaling = true,
 }: InteractiveObjectProps) {
     const groupRef = useRef<THREE.Group>(null);
     const controllerRef = useRef<DraggableController | null>(null);
@@ -78,10 +85,12 @@ export function InteractiveObject({
     // Local state for optimistic updates
     const [localPosition, setLocalPosition] = useState<[number, number, number]>(initialPosition);
     const [localRotation, setLocalRotation] = useState<[number, number, number]>(initialRotation);
+    const [localScale, setLocalScale] = useState<[number, number, number]>(initialScale);
     const [isHovered, setIsHovered] = useState(false);
     const [isLocallyDragging, setIsLocallyDragging] = useState(false);
     const lastConfirmedPositionRef = useRef<[number, number, number]>(initialPosition);
     const lastConfirmedRotationRef = useRef<[number, number, number]>(initialRotation);
+    const lastConfirmedScaleRef = useRef<[number, number, number]>(initialScale);
 
     // Global state
     const isBuilderMode = useAppStore(state => state.isBuilderMode);
@@ -89,15 +98,20 @@ export function InteractiveObject({
     const setGlobalDragging = useAppStore(state => state.setIsDragging);
     const selectedObjectId = useAppStore(state => state.selectedObjectId);
     const setSelectedObjectId = useAppStore(state => state.setSelectedObjectId);
+    const setActiveObjectConfigId = useAppStore(state => state.setActiveObjectConfigId);
+    const setActiveObjectPanel = useAppStore(state => state.setActiveObjectPanel);
 
     // Derive selection state from global store
     const objectIdString = `object-${objectId}`;
     const isSelected = selectedObjectId === objectIdString;
+    const interactionConfig = parseOfficeObjectInteractionConfig(metadata);
 
     const updateOfficeObjectPosition = useCallback(async (input: {
         id: string;
         position: [number, number, number];
         rotation?: [number, number, number];
+        scale?: [number, number, number];
+        metadata?: Record<string, unknown>;
     }): Promise<void> => {
         const current = await adapter.getOfficeObjects();
         const knownIds = new Set(current.map((item) => item.id));
@@ -110,8 +124,8 @@ export function InteractiveObject({
             meshType: (existing?.meshType ?? objectType) as "team-cluster" | "plant" | "couch" | "bookshelf" | "pantry" | "glass-wall" | "custom-mesh",
             position: input.position,
             rotation: input.rotation ?? existing?.rotation ?? initialRotation,
-            scale: existing?.scale,
-            metadata: existing?.metadata ?? {},
+            scale: input.scale ?? existing?.scale ?? initialScale,
+            metadata: input.metadata ?? existing?.metadata ?? metadata ?? {},
         };
         const result = await adapter.upsertOfficeObject(payload);
         if (!result.ok) {
@@ -119,7 +133,8 @@ export function InteractiveObject({
         }
         lastConfirmedPositionRef.current = input.position;
         lastConfirmedRotationRef.current = payload.rotation;
-    }, [adapter, objectType, initialRotation]);
+        lastConfirmedScaleRef.current = payload.scale ?? initialScale;
+    }, [adapter, objectType, initialRotation, initialScale, metadata]);
 
     const deleteOfficeObject = useCallback(async (input: { id: string }): Promise<void> => {
         const current = await adapter.getOfficeObjects();
@@ -191,17 +206,48 @@ export function InteractiveObject({
         lastConfirmedRotationRef.current = initialRotation;
     }, [initialRotation]);
 
+    useEffect(() => {
+        setLocalScale(initialScale);
+        lastConfirmedScaleRef.current = initialScale;
+    }, [initialScale]);
+
+    useEffect(() => {
+        if (!isBuilderMode && isSelected) {
+            setSelectedObjectId(null);
+        }
+    }, [isBuilderMode, isSelected, setSelectedObjectId]);
+
     // Handle selection - close other menus and toggle this one
     const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
         if (isLocallyDragging) return;
         e.stopPropagation();
+        if (!isBuilderMode) {
+            setSelectedObjectId(null);
+            if (interactionConfig.uiBinding.kind === "embed") {
+                setActiveObjectPanel({
+                    objectId,
+                    title: interactionConfig.uiBinding.title,
+                    url: interactionConfig.uiBinding.url,
+                });
+            }
+            return;
+        }
         // If already selected, deselect. Otherwise, select this one (closing any other)
         if (isSelected) {
             setSelectedObjectId(null);
         } else {
             setSelectedObjectId(objectIdString);
         }
-    }, [isLocallyDragging, isSelected, setSelectedObjectId, objectIdString]);
+    }, [
+        interactionConfig.uiBinding,
+        isBuilderMode,
+        isLocallyDragging,
+        isSelected,
+        objectId,
+        objectIdString,
+        setActiveObjectPanel,
+        setSelectedObjectId,
+    ]);
 
     // Handle rotation
     const handleRotate90 = useCallback(async (direction: 'left' | 'right') => {
@@ -227,10 +273,11 @@ export function InteractiveObject({
     const handleDelete = useCallback(async () => {
         try {
             await deleteOfficeObject({ id: objectId });
+            setSelectedObjectId(null);
         } catch (error) {
             console.error(`Failed to delete object ${objectId}:`, error);
         }
-    }, [objectId, deleteOfficeObject]);
+    }, [objectId, deleteOfficeObject, setSelectedObjectId]);
 
     // Handle move button
     const handleMoveMouseDown = useCallback((e: React.MouseEvent) => {
@@ -241,6 +288,32 @@ export function InteractiveObject({
             controllerRef.current.startDrag(e.nativeEvent);
         }
     }, [isDragEnabled]);
+
+    const handleScale = useCallback(async (delta: number) => {
+        const currentScalar = Number.isFinite(localScale[0]) ? localScale[0] : 1;
+        const nextScalar = Math.min(3, Math.max(0.4, Number((currentScalar + delta).toFixed(2))));
+        const nextScale: [number, number, number] = [nextScalar, nextScalar, nextScalar];
+        setLocalScale(nextScale);
+        try {
+            await updateOfficeObjectPosition({
+                id: String(objectId),
+                position: localPosition,
+                rotation: localRotation,
+                scale: nextScale,
+            });
+        } catch (error) {
+            console.error(`Failed to update ${objectId} scale:`, error);
+            setLocalScale(lastConfirmedScaleRef.current);
+        }
+    }, [localPosition, localRotation, localScale, objectId, updateOfficeObjectPosition]);
+
+    const handleSettings = useCallback(() => {
+        if (onSettings) {
+            onSettings();
+            return;
+        }
+        setActiveObjectConfigId(objectId);
+    }, [objectId, onSettings, setActiveObjectConfigId]);
 
     // Build actions for context menu
     const actions: MenuAction[] = customActions || [
@@ -269,21 +342,37 @@ export function InteractiveObject({
             position: 'bottom',
             onClick: handleDelete
         },
-        onSettings ? {
+        {
             id: 'settings',
             label: 'Settings',
             icon: Settings,
             color: 'gray',
             position: 'left',
-            onClick: onSettings
-        } : {
+            onClick: handleSettings
+        },
+        {
             id: 'rotate-left',
             label: 'Rotate -90°',
             icon: RotateCcw,
             color: 'green',
-            position: 'left',
             onClick: () => handleRotate90('left')
-        }
+        },
+        ...(supportsScaling ? [
+            {
+                id: 'scale-up',
+                label: 'Scale +',
+                icon: ZoomIn,
+                color: 'purple',
+                onClick: () => handleScale(0.2)
+            },
+            {
+                id: 'scale-down',
+                label: 'Scale -',
+                icon: ZoomOut,
+                color: 'amber',
+                onClick: () => handleScale(-0.2)
+            }
+        ] satisfies MenuAction[] : [])
     ];
 
     // Visual feedback
@@ -291,7 +380,11 @@ export function InteractiveObject({
 
     useFrame(() => {
         if (groupRef.current) {
-            const targetScale = new THREE.Vector3(hoverScale, hoverScale, hoverScale);
+            const targetScale = new THREE.Vector3(
+                localScale[0] * hoverScale,
+                localScale[1] * hoverScale,
+                localScale[2] * hoverScale,
+            );
             groupRef.current.scale.lerp(targetScale, 0.1);
         }
     });
@@ -300,6 +393,7 @@ export function InteractiveObject({
     const formattedName = objectType.split('-').map(word =>
         word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
+    const objectTitle = interactionConfig.displayName ?? formattedName;
 
     return (
         <group
@@ -336,10 +430,10 @@ export function InteractiveObject({
 
             {/* Context Menu */}
             <ContextMenu
-                isOpen={isSelected}
+                isOpen={isBuilderMode && isSelected}
                 onClose={() => setSelectedObjectId(null)}
                 actions={actions}
-                title={formattedName}
+                title={objectTitle}
             />
         </group>
     );

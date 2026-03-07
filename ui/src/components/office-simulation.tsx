@@ -13,6 +13,8 @@ import ChatDialog from '@/features/chat-system/components/chat-dialog';
 import { AgentMemoryPanel } from '@/features/office-system/components/agent-memory-panel';
 import { AgentSessionPanel } from '@/features/office-system/components/agent-session-panel';
 import { ManageAgentModal } from '@/features/office-system/components/manage-agent-modal';
+import { ObjectConfigPanel } from '@/features/office-system/components/object-config-panel';
+import { ObjectInteractionPanel } from '@/features/office-system/components/object-interaction-panel';
 import { SkillsPanel } from '@/features/office-system/components/skills-panel';
 import { TrainingModal } from '@/features/self-improvement-system/components/training-modal';
 import { TeamPanel } from '@/features/team-system/components/team-panel';
@@ -125,6 +127,8 @@ export default function OfficeSimulation() {
             />
             <AgentSessionPanel />
             <SkillsPanel />
+            <ObjectConfigPanel />
+            <ObjectInteractionPanel />
             <SettingsDialog open={isSettingsModalOpen} onOpenChange={setIsSettingsModalOpen} />
 
             <div className="pointer-events-none absolute top-4 left-4 z-[70]">

@@ -18,6 +18,7 @@ interface CustomMeshObjectProps {
   companyId?: Id<"companies">;
   meshUrl: string;
   label?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export default function CustomMeshObject({
@@ -28,6 +29,7 @@ export default function CustomMeshObject({
   companyId,
   meshUrl,
   label,
+  metadata,
 }: CustomMeshObjectProps) {
   const [cachedMesh, setCachedMesh] = useState<CachedMesh | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -69,11 +71,6 @@ export default function CustomMeshObject({
     return cloneCachedScene(cachedMesh);
   }, [cachedMesh]);
 
-  const meshScale = useMemo<[number, number, number]>(() => {
-    if (!scale || scale.length !== 3) return [1, 1, 1];
-    return scale;
-  }, [scale]);
-
   const groundOffset = cachedMesh?.groundOffset ?? 0;
 
   return (
@@ -83,12 +80,14 @@ export default function CustomMeshObject({
       companyId={companyId}
       initialPosition={position}
       initialRotation={rotation}
+      initialScale={scale}
+      metadata={metadata}
     >
       {clonedScene ? (
-        <primitive object={clonedScene} scale={meshScale} position={[0, groundOffset, 0]} />
+        <primitive object={clonedScene} position={[0, groundOffset, 0]} />
       ) : (
         <group>
-          <Box args={[1.5, 1.5, 1.5]} position={[0, 0.75, 0]} castShadow receiveShadow scale={meshScale}>
+          <Box args={[1.5, 1.5, 1.5]} position={[0, 0.75, 0]} castShadow receiveShadow>
             <meshStandardMaterial color={loadError ? "#ef4444" : "#94a3b8"} transparent opacity={0.85} />
           </Box>
           <mesh position={[0, 1.8, 0]}>

@@ -60,6 +60,7 @@ interface TeamClusterProps {
     position?: [number, number, number];
     rotation?: [number, number, number];
     companyId?: Id<"companies">;
+    metadata?: Record<string, unknown>;
 }
 
 export default function TeamCluster({
@@ -70,6 +71,7 @@ export default function TeamCluster({
     position,
     rotation,
     companyId,
+    metadata,
 }: TeamClusterProps) {
     const [isHovered, setIsHovered] = useState(false);
 
@@ -184,6 +186,8 @@ export default function TeamCluster({
             initialPosition={position}
             initialRotation={rotation}
             onSettings={handleOpenSettings}
+            metadata={metadata}
+            supportsScaling={false}
         >
             <group
                 onPointerEnter={shouldEnableLocalHover ? () => setIsHovered(true) : undefined}

@@ -6,14 +6,18 @@ interface CouchProps {
     objectId: Id<"officeObjects">;
     position?: [number, number, number];
     rotation?: [number, number, number];
+    scale?: [number, number, number];
     companyId?: Id<"companies">;
+    metadata?: Record<string, unknown>;
 }
 
 export default function Couch({
     objectId,
     position,
     rotation,
+    scale,
     companyId,
+    metadata,
 }: CouchProps) {
     const couchColor = "#4682B4";
 
@@ -24,6 +28,8 @@ export default function Couch({
             companyId={companyId}
             initialPosition={position}
             initialRotation={rotation}
+            initialScale={scale}
+            metadata={metadata}
         >
             {/* Base */}
             <Box args={[2.5, 0.4, 1]} position={[0, 0.2, 0]} castShadow>
