@@ -1236,16 +1236,22 @@ export class OpenClawAdapter {
     return { ok, objects: cleaned, error };
   }
 
-  async upsertOfficeObject(object: OfficeObjectSidecarModel): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
-    const current = await this.getOfficeObjects();
+  async upsertOfficeObject(
+    object: OfficeObjectSidecarModel,
+    options?: { currentObjects?: OfficeObjectSidecarModel[] },
+  ): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
+    const current = options?.currentObjects ?? await this.getOfficeObjects();
     const canonicalId = toCanonicalOfficeObjectId(object.id);
     const next = current.filter((item) => toCanonicalOfficeObjectId(item.id) !== canonicalId);
     next.push(object);
     return this.saveOfficeObjects(next);
   }
 
-  async deleteOfficeObject(objectId: string): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
-    const current = await this.getOfficeObjects();
+  async deleteOfficeObject(
+    objectId: string,
+    options?: { currentObjects?: OfficeObjectSidecarModel[] },
+  ): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
+    const current = options?.currentObjects ?? await this.getOfficeObjects();
     const canonicalId = toCanonicalOfficeObjectId(objectId);
     const next = current.filter((item) => toCanonicalOfficeObjectId(item.id) !== canonicalId);
     return this.saveOfficeObjects(next);

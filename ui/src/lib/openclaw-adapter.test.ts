@@ -279,6 +279,77 @@ describe("team business skill sync adapter", () => {
   });
 });
 
+describe("office object mutations", () => {
+  it("uses a provided office object snapshot for upserts", async () => {
+    const adapter = new OpenClawAdapter("http://127.0.0.1:8787", "http://127.0.0.1:8787");
+    const getOfficeObjectsSpy = vi.spyOn(adapter, "getOfficeObjects");
+    const saveOfficeObjectsSpy = vi.spyOn(adapter, "saveOfficeObjects").mockResolvedValue({
+      ok: true,
+      objects: [],
+    });
+
+    await adapter.upsertOfficeObject(
+      {
+        id: "office-chair-1",
+        identifier: "office-chair-1",
+        meshType: "custom-mesh",
+        position: [4, 0, 2],
+        rotation: [0, 0, 0],
+        metadata: {},
+      },
+      {
+        currentObjects: [
+          {
+            id: "office-chair-1",
+            identifier: "office-chair-1",
+            meshType: "custom-mesh",
+            position: [0, 0, 0],
+            rotation: [0, 0, 0],
+            metadata: {},
+          },
+        ],
+      },
+    );
+
+    expect(getOfficeObjectsSpy).not.toHaveBeenCalled();
+    expect(saveOfficeObjectsSpy).toHaveBeenCalledWith([
+      {
+        id: "office-chair-1",
+        identifier: "office-chair-1",
+        meshType: "custom-mesh",
+        position: [4, 0, 2],
+        rotation: [0, 0, 0],
+        metadata: {},
+      },
+    ]);
+  });
+
+  it("uses a provided office object snapshot for deletes", async () => {
+    const adapter = new OpenClawAdapter("http://127.0.0.1:8787", "http://127.0.0.1:8787");
+    const getOfficeObjectsSpy = vi.spyOn(adapter, "getOfficeObjects");
+    const saveOfficeObjectsSpy = vi.spyOn(adapter, "saveOfficeObjects").mockResolvedValue({
+      ok: true,
+      objects: [],
+    });
+
+    await adapter.deleteOfficeObject("office-chair-1", {
+      currentObjects: [
+        {
+          id: "office-chair-1",
+          identifier: "office-chair-1",
+          meshType: "custom-mesh",
+          position: [0, 0, 0],
+          rotation: [0, 0, 0],
+          metadata: {},
+        },
+      ],
+    });
+
+    expect(getOfficeObjectsSpy).not.toHaveBeenCalled();
+    expect(saveOfficeObjectsSpy).toHaveBeenCalledWith([]);
+  });
+});
+
 describe("agent files fallback", () => {
   it("falls back to state bridge when gateway file list is shallow", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({

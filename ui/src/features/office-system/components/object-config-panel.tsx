@@ -40,6 +40,7 @@ import {
   type OfficeObjectUiBinding,
 } from "../office-object-ui";
 import { resolvePersistedOfficeObjectId } from "./office-object-id";
+import { endObjectInteractionTrace } from "../utils/object-interaction-perf";
 
 const WORLD_MONITOR_PRESET = {
   title: "World Monitor",
@@ -83,6 +84,9 @@ export function ObjectConfigPanel() {
         : "wide",
     );
     setStatusText("");
+    endObjectInteractionTrace("builder-panel", String(activeObjectConfigId), "ready", {
+      meshType: officeObject.meshType,
+    });
   }, [activeObjectConfigId, officeObject, parsedConfig]);
 
   useEffect(() => {
@@ -139,7 +143,7 @@ export function ObjectConfigPanel() {
         rotation: existing?.rotation ?? officeObject.rotation,
         scale: existing?.scale ?? officeObject.scale,
         metadata,
-      });
+      }, { currentObjects: current });
       if (!result.ok) {
         setStatusText(result.error ?? "Failed to save object config.");
         return;

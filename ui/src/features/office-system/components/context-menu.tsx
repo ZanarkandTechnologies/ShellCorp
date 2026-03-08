@@ -1,11 +1,12 @@
 import { Html } from '@react-three/drei';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { LucideIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { UI_Z } from '@/lib/z-index';
+import { endObjectInteractionTrace } from '../utils/object-interaction-perf';
 
 export interface MenuAction {
     id: string;
@@ -23,13 +24,15 @@ interface ContextMenuProps {
     onClose: () => void;
     actions: MenuAction[];
     title?: string; // Optional title/object name
+    perfObjectId?: string;
 }
 
 export function ContextMenu({
     isOpen,
     onClose,
     actions,
-    title = "Menu"
+    title = "Menu",
+    perfObjectId,
 }: ContextMenuProps) {
     const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
     const [deleteAction, setDeleteAction] = useState<MenuAction | null>(null);
@@ -131,6 +134,11 @@ export function ContextMenu({
     const getColorClasses = (color: string = 'default') => {
         return colorMap[color] || colorMap.default;
     };
+
+    useEffect(() => {
+        if (!isOpen || !perfObjectId) return;
+        endObjectInteractionTrace("builder-menu", perfObjectId, "ready", { actionCount: actions.length });
+    }, [actions.length, isOpen, perfObjectId]);
 
     if (!isOpen) return null;
 

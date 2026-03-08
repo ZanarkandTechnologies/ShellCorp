@@ -16,8 +16,8 @@
  */
 "use client";
 
-import { useState, useEffect } from "react";
-import { useThree, useFrame } from "@react-three/fiber";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useThree, useFrame, type ThreeEvent } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { Button } from "@/components/ui/button";
@@ -25,9 +25,11 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { usePlacementSystem } from "@/features/office-system/systems/placement-system";
 import { getGameObjectDefinition } from "@/features/office-system/components/object-registry";
 import { AlertCircle } from "lucide-react";
+import { FLOOR_SIZE } from "@/constants";
+
+type PlacementCoordinates = [number, number, number] | null;
 
 export function PlacementHandler() {
-    // Use the Game System hook instead of raw store/mutations
     const {
         isActive,
         currentType: type,
@@ -38,77 +40,73 @@ export function PlacementHandler() {
     } = usePlacementSystem();
 
     const { raycaster, pointer, camera } = useThree();
-    const [hoverPosition, setHoverPosition] = useState<THREE.Vector3 | null>(null);
-    const [pendingPosition, setPendingPosition] = useState<THREE.Vector3 | null>(null);
+    const ghostRef = useRef<THREE.Group>(null);
+    const floorPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+    const hoverTargetRef = useRef(new THREE.Vector3());
+    const hoverPositionRef = useRef<PlacementCoordinates>(null);
+    const [pendingPosition, setPendingPosition] = useState<PlacementCoordinates>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-    // Get the full Prefab definition (Visuals + Config)
     const prefab = getGameObjectDefinition(type);
     const GhostComponent = prefab?.Ghost;
-
-    // Check if we're waiting for team assignment confirmation (hybrid placement)
     const hasPendingTeamAssignment = Boolean(data && typeof data.pendingTeamId === "string" && data.pendingTeamId);
+    const isCoordinatePlacement = isActive && !hasPendingTeamAssignment;
 
-    // Reset pending position when placement mode changes or becomes inactive
     useEffect(() => {
         if (!isActive) {
             setPendingPosition(null);
-            setHoverPosition(null);
+            hoverPositionRef.current = null;
             setErrorMessage(null);
+            if (ghostRef.current) {
+                ghostRef.current.visible = false;
+            }
         }
     }, [isActive]);
 
-    // Raycast to floor (only for coordinate placement, not team assignment)
     useFrame(() => {
-        if (!isActive || pendingPosition || hasPendingTeamAssignment) return;
+        if (!isCoordinatePlacement || pendingPosition) return;
 
         raycaster.setFromCamera(pointer, camera);
-        // Find floor - assuming floor is at y=0 or we can intersect with a plane
-        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-        const target = new THREE.Vector3();
+        const target = hoverTargetRef.current;
+        if (!raycaster.ray.intersectPlane(floorPlaneRef.current, target)) {
+            hoverPositionRef.current = null;
+            if (ghostRef.current) {
+                ghostRef.current.visible = false;
+            }
+            return;
+        }
 
-        raycaster.ray.intersectPlane(plane, target);
+        const snap = 1;
+        target.x = Math.round(target.x / snap) * snap;
+        target.z = Math.round(target.z / snap) * snap;
+        target.y = 0;
+        hoverPositionRef.current = [target.x, target.y, target.z];
 
-        if (target) {
-            // Snap to grid? Assuming grid size 1 or 2
-            const snap = 1;
-            target.x = Math.round(target.x / snap) * snap;
-            target.z = Math.round(target.z / snap) * snap;
-            target.y = 0;
-
-            setHoverPosition(target);
+        if (ghostRef.current) {
+            ghostRef.current.visible = true;
+            ghostRef.current.position.copy(target);
         }
     });
 
-    // Handle click (only for coordinate placement, not team assignment)
-    useEffect(() => {
-        if (!isActive || !hoverPosition || pendingPosition || hasPendingTeamAssignment) return;
-
-        const handleClick = () => {
-            setPendingPosition(hoverPosition.clone());
-        };
-
-        window.addEventListener("click", handleClick);
-        return () => window.removeEventListener("click", handleClick);
-    }, [isActive, hoverPosition, pendingPosition, hasPendingTeamAssignment]);
+    const handlePlacementSurfaceClick = useCallback((event: ThreeEvent<MouseEvent>) => {
+        if (!isCoordinatePlacement || pendingPosition || !hoverPositionRef.current) return;
+        event.stopPropagation();
+        setPendingPosition([...hoverPositionRef.current] as [number, number, number]);
+    }, [isCoordinatePlacement, pendingPosition]);
 
     const handleConfirm = async () => {
-        // Clear any previous errors
         setErrorMessage(null);
 
         try {
-            // If we have a pending team assignment, confirm that
             if (hasPendingTeamAssignment && data && typeof data.pendingTeamId === "string") {
                 await confirmTeamAssignment(data.pendingTeamId);
                 return;
             }
 
-            // Otherwise, confirm coordinate placement
             if (!pendingPosition) return;
-            await confirmCoordinatePlacement(pendingPosition);
+            await confirmCoordinatePlacement(new THREE.Vector3(...pendingPosition));
             setPendingPosition(null);
         } catch (error: unknown) {
-            // Show error message to user
             const errorMsg = error instanceof Error ? error.message : "Failed to place object. Please try again.";
             setErrorMessage(errorMsg);
         }
@@ -122,23 +120,37 @@ export function PlacementHandler() {
 
     if (!isActive || !prefab) return null;
 
-    // Resolve messages dynamically from the prefab definition
     const confirmMsg: string = typeof prefab.placement.confirmMessage === 'function'
         ? (prefab.placement.confirmMessage(data) as string)
         : (prefab.placement.confirmMessage as string);
 
     return (
         <group>
-            {/* Ghost Object (only show for coordinate placement, not team assignment) */}
-            {!hasPendingTeamAssignment && (hoverPosition || pendingPosition) && GhostComponent && (
-                <group position={pendingPosition || hoverPosition || undefined}>
+            {isCoordinatePlacement && !pendingPosition ? (
+                <mesh
+                    position={[0, 0.01, 0]}
+                    rotation={[-Math.PI / 2, 0, 0]}
+                    onClick={handlePlacementSurfaceClick}
+                >
+                    <planeGeometry args={[FLOOR_SIZE, FLOOR_SIZE]} />
+                    <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+                </mesh>
+            ) : null}
+
+            {!hasPendingTeamAssignment && GhostComponent && pendingPosition && (
+                <group position={pendingPosition}>
                     <GhostComponent />
                 </group>
             )}
 
-            {/* Confirmation Panel for Coordinate Placement */}
+            {!hasPendingTeamAssignment && GhostComponent && !pendingPosition && (
+                <group ref={ghostRef} visible={false}>
+                    <GhostComponent />
+                </group>
+            )}
+
             {!hasPendingTeamAssignment && pendingPosition && (
-                <Html position={[pendingPosition.x, pendingPosition.y + 2, pendingPosition.z]} center>
+                <Html position={[pendingPosition[0], pendingPosition[1] + 2, pendingPosition[2]]} center>
                     <div className="pointer-events-auto w-64">
                         <Card>
                             <CardHeader>
@@ -147,7 +159,7 @@ export function PlacementHandler() {
                             <CardContent>
                                 <p>{confirmMsg}</p>
                                 <p className="text-xs text-muted-foreground">
-                                    {pendingPosition.x.toFixed(1)}, {pendingPosition.z.toFixed(1)}
+                                    {pendingPosition[0].toFixed(1)}, {pendingPosition[2].toFixed(1)}
                                 </p>
                                 {prefab.placement.hint && (
                                     <p className="text-xs text-yellow-600 mt-2">
@@ -168,7 +180,6 @@ export function PlacementHandler() {
                 </Html>
             )}
 
-            {/* Confirmation Panel for Team Assignment (Hybrid Placement) */}
             {hasPendingTeamAssignment && (
                 <Html position={[0, 3, 0]} center>
                     <div className="pointer-events-auto w-64">

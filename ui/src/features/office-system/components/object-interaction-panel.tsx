@@ -26,6 +26,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppStore } from "@/lib/app-store";
 import { UI_Z } from "@/lib/z-index";
+import { endObjectInteractionTrace } from "../utils/object-interaction-perf";
 
 function getFrameClassName(aspectRatio: "wide" | "square" | "tall" | undefined): string {
   switch (aspectRatio) {
@@ -73,6 +74,9 @@ export function ObjectInteractionPanel() {
         modalReadyLatencyMs,
       });
     }
+    endObjectInteractionTrace("runtime-panel", String(activeObjectPanel.objectId), "ready", {
+      modalReadyLatencyMs,
+    });
   }, [activeObjectPanel, setSelectedObjectId]);
 
   const aspectRatio = activeObjectPanel?.aspectRatio;

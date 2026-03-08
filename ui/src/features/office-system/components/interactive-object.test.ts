@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  DEFAULT_INTERACTIVE_OBJECT_SCALE,
+  syncTuple3,
+} from "./interactive-object-vectors";
 import { normalizeOfficeObjectId, resolvePersistedOfficeObjectId } from "./office-object-id";
 
 describe("interactive object id resolution", () => {
@@ -22,5 +26,19 @@ describe("interactive object id resolution", () => {
   it("falls back to normalized id when unknown", () => {
     const knownIds = new Set<string>();
     expect(resolvePersistedOfficeObjectId("office-bookshelf-2", knownIds)).toBe("bookshelf-2");
+  });
+});
+
+describe("interactive object vector sync", () => {
+  it("reuses the current tuple when values are unchanged", () => {
+    const current: [number, number, number] = [1, 1, 1];
+    const next: [number, number, number] = [1, 1, 1];
+
+    expect(syncTuple3(current, next)).toBe(current);
+  });
+
+  it("provides a stable default scale reference", () => {
+    expect(DEFAULT_INTERACTIVE_OBJECT_SCALE).toBe(DEFAULT_INTERACTIVE_OBJECT_SCALE);
+    expect(syncTuple3(DEFAULT_INTERACTIVE_OBJECT_SCALE, [1, 1, 1])).toBe(DEFAULT_INTERACTIVE_OBJECT_SCALE);
   });
 });
