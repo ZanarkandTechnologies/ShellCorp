@@ -19,8 +19,8 @@
  */
 import { Command } from "commander";
 import { registerOfficeCommands } from "./office-commands.js";
-import { registerDoctorCommands } from "./team-commands.js";
-import { registerTeamCommands } from "./team-commands.js";
+import { registerDoctorCommands } from "./team-commands/index.js";
+import { registerTeamCommands } from "./team-commands/index.js";
 
 async function main(): Promise<void> {
   // Avoid throwing on broken pipe when output is being piped to a consumer that exits early.

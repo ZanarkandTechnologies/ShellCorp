@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
-import { registerDoctorCommands, registerTeamCommands } from "./team-commands.js";
+import { registerDoctorCommands, registerTeamCommands } from "./team-commands/index.js";
 
 const baseCompany = {
   version: 1,
