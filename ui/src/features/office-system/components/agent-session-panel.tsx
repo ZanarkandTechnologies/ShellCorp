@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { usePollWithInterval } from "@/hooks/use-poll-with-interval";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -9,11 +10,7 @@ import { useAppStore } from "@/lib/app-store";
 import type { AgentCardModel, HeartbeatWindow, SessionRowModel, SessionTimelineModel } from "@/lib/openclaw-types";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { UI_Z } from "@/lib/z-index";
-
-function fmtTs(ts?: number): string {
-  if (!ts) return "n/a";
-  return new Date(ts).toLocaleString();
-}
+import { formatTimestamp as fmtTs } from "@/lib/format-utils";
 
 export function AgentSessionPanel() {
   const isOpen = useAppStore((state) => state.isAgentSessionPanelOpen);
@@ -37,28 +34,23 @@ export function AgentSessionPanel() {
     return adapter.parseHeartbeatWindows(timeline);
   }, [adapter, timeline]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    async function loadUnified(): Promise<void> {
+  usePollWithInterval(
+    async (signal) => {
+      if (!isOpen) return;
       try {
         const unified = await adapter.getUnifiedOfficeModel();
-        if (cancelled) return;
+        if (signal.cancelled) return;
         setRuntimeAgents(unified.runtimeAgents);
         if (!selectedAgentId && unified.runtimeAgents.length > 0) {
           setSelectedAgentId(unified.runtimeAgents[0].agentId);
         }
       } catch (error) {
-        if (!cancelled) setErrorText(error instanceof Error ? error.message : "openclaw_unavailable");
+        if (!signal.cancelled) setErrorText(error instanceof Error ? error.message : "openclaw_unavailable");
       }
-    }
-    void loadUnified();
-    const timer = setInterval(() => void loadUnified(), 10000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [adapter, isOpen, selectedAgentId, setSelectedAgentId]);
+    },
+    10000,
+    [adapter, isOpen, selectedAgentId, setSelectedAgentId],
+  );
 
   useEffect(() => {
     if (!isOpen || !selectedAgentId) {

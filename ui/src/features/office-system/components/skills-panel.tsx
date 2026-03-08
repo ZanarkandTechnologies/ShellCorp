@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { usePollWithInterval } from "@/hooks/use-poll-with-interval";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -8,11 +9,7 @@ import { useAppStore } from "@/lib/app-store";
 import type { SkillItemModel } from "@/lib/openclaw-types";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { UI_Z } from "@/lib/z-index";
-
-function fmtTs(ts?: number): string {
-  if (!ts) return "n/a";
-  return new Date(ts).toLocaleString();
-}
+import { formatTimestamp as fmtTs } from "@/lib/format-utils";
 
 export function SkillsPanel() {
   const isOpen = useAppStore((state) => state.isSkillsPanelOpen);
@@ -22,25 +19,20 @@ export function SkillsPanel() {
   const [skills, setSkills] = useState<SkillItemModel[]>([]);
   const [errorText, setErrorText] = useState("");
 
-  useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    async function load(): Promise<void> {
+  usePollWithInterval(
+    async (signal) => {
+      if (!isOpen) return;
       try {
         const unified = await adapter.getUnifiedOfficeModel();
-        if (cancelled) return;
+        if (signal.cancelled) return;
         setSkills(unified.skills);
       } catch (error) {
-        if (!cancelled) setErrorText(error instanceof Error ? error.message : "skills_load_failed");
+        if (!signal.cancelled) setErrorText(error instanceof Error ? error.message : "skills_load_failed");
       }
-    }
-    void load();
-    const timer = setInterval(() => void load(), 10000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [adapter, isOpen]);
+    },
+    10000,
+    [adapter, isOpen],
+  );
 
   const sharedCount = skills.filter((skill) => skill.scope === "shared").length;
   const agentCount = skills.filter((skill) => skill.scope === "agent").length;
