@@ -32,6 +32,8 @@ import { getAbsoluteDeskPosition, getDeskRotation } from "@/features/office-syst
 
 import { PlacementHandler } from './placement-handler';
 import { ViewComputerDialog } from '@/features/remote-cua-system/components/view-computer-dialog';
+import { getCSSColor } from '@/lib/color-utils';
+import { SAMPLE_MESSAGES } from '@/constants/idle-messages';
 
 /**
  * @file components/office-scene.tsx
@@ -40,51 +42,6 @@ import { ViewComputerDialog } from '@/features/remote-cua-system/components/view
  * Handles rendering of the office environment, employees, and interactive objects.
  * Uses @react-three/fiber for the 3D canvas and Zustand stores for state management.
  */
-
-// Helper to convert CSS color variable to THREE.Color
-function getCSSColor(variable: string): THREE.Color {
-    if (typeof window === 'undefined') return new THREE.Color('#cccccc');
-
-    const root = document.documentElement;
-    const value = getComputedStyle(root).getPropertyValue(variable).trim();
-
-    // Parse oklch format: oklch(L C H)
-    if (value.startsWith('oklch')) {
-        const match = value.match(/oklch\(([\d.]+)\s+([\d.]+)\s+([\d.]+)\)/);
-        if (match) {
-            const [, l, c, h] = match;
-            // Convert OKLCH to RGB (approximate conversion)
-            // For simplicity, we'll use a basic conversion
-            // In production, you'd want a proper color space conversion library
-            const lightness = parseFloat(l);
-            const chroma = parseFloat(c);
-            const hue = parseFloat(h);
-
-            // Simple approximation: convert to HSL-like values
-            const s = chroma * 100;
-            const hslH = hue;
-            const hslL = lightness * 100;
-
-            return new THREE.Color().setHSL(hslH / 360, s / 100, hslL / 100);
-        }
-    }
-
-    // Fallback to direct color value if not oklch
-    return new THREE.Color(value || '#cccccc');
-}
-
-// Sample idle thought messages (for simulation flavor while idle)
-const SAMPLE_MESSAGES = [
-    "Pondering if bugs dream of electric stack traces.",
-    "Rehearsing a TED talk for zero attendees.",
-    "Negotiating with a rubber duck about architecture.",
-    "Wondering if this sprint is actually a treadmill.",
-    "Staring into the backlog until it blinks first.",
-    "Inventing a new KPI: vibes per minute.",
-    "Mentally renaming variables for fun and profit.",
-    "Questioning whether semicolons feel lonely.",
-    "Trying to remember why Monday exists.",
-];
 
 // Simple hash function to generate deterministic "random" values from employee ID
 // This ensures the same employee always gets the same wander/status preference
