@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { normalizeTeamId } from "./_utils";
 
 export const getAgentStatus = query({
   args: {
@@ -265,11 +266,6 @@ type ActivityFeedEvent = {
   taskId?: string;
   projectId?: string;
 };
-
-function normalizeTeamId(teamId: string | undefined): string | undefined {
-  const trimmed = teamId?.trim().toLowerCase();
-  return trimmed && trimmed.length > 0 ? trimmed : undefined;
-}
 
 function uniqueStrings(values: Array<string | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => typeof value === "string" && value.trim().length > 0))];

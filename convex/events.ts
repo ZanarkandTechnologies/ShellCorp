@@ -7,6 +7,7 @@ import {
   type AgentEventType,
   type AgentState,
 } from "./status_contract";
+import { normalizeTeamId } from "./_utils";
 
 function initialSnapshot(): {
   state: AgentState;
@@ -21,11 +22,6 @@ function initialSnapshot(): {
   };
 }
 
-function normalizeTeamId(value?: string): string | undefined {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  return trimmed ? trimmed.toLowerCase() : undefined;
-}
 
 async function applyEvent(params: {
   ctx: MutationCtx;

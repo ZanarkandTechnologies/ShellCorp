@@ -15,9 +15,7 @@
  * - MEM-0120
  */
 import type { CompanyAgentModel, OfficeObjectModel } from "./sidecar-store.js";
-
-const FLOOR_SIZE = 35;
-const HALF_FLOOR = FLOOR_SIZE / 2;
+import { FLOOR_SIZE, HALF_FLOOR } from "./constants.js";
 const DEFAULT_WIDTH = 71;
 const DEFAULT_HEIGHT = 36;
 

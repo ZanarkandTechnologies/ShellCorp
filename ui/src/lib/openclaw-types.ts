@@ -4,6 +4,9 @@
  * Shared contracts for mapping OpenClaw state and gateway surfaces into UI models.
  */
 
+/** Full agent lifecycle state union — MEM-0144 */
+export type AgentState = "running" | "ok" | "no_work" | "error" | "idle" | "planning" | "executing" | "blocked" | "done";
+
 export interface AgentCardModel {
   agentId: string;
   displayName: string;
@@ -71,7 +74,7 @@ export interface HeartbeatWindow {
 export interface AgentLiveStatus {
   agentId: string;
   sessionKey?: string;
-  state: "running" | "ok" | "no_work" | "error" | "idle" | "planning" | "executing" | "blocked" | "done";
+  state: AgentState;
   statusText: string;
   updatedAt?: number;
   bubbles: HeartbeatSkillBubble[];

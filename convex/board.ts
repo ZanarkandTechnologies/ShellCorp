@@ -7,6 +7,7 @@ import {
   coerceBoardTaskPriority,
   coerceBoardTaskStatus,
 } from "./board_contract";
+import { trimOrUndefined, normalizeTeamId, nowMs } from "./_utils";
 
 type TaskRow = {
   projectId: string;
@@ -52,20 +53,6 @@ const ROLE_PERMISSIONS: Record<string, BoardPermission[]> = {
   readonly: ["team.read"],
 };
 
-function nowMs(value?: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : Date.now();
-}
-
-function trimOrUndefined(value?: string): string | undefined {
-  if (!value) return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function normalizeTeamId(value?: string): string | undefined {
-  const trimmed = trimOrUndefined(value);
-  return trimmed ? trimmed.toLowerCase() : undefined;
-}
 
 function ensureTaskId(input?: string): string {
   const cleaned = trimOrUndefined(input);

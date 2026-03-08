@@ -28,9 +28,7 @@ import {
 } from "./sidecar-store.js";
 import { renderOfficeAscii } from "./office-renderer.js";
 import { findFirstOpenPlacement, isPlacementAreaFree } from "./office-placement.js";
-
-const FLOOR_SIZE = 35;
-const HALF_FLOOR = FLOOR_SIZE / 2;
+import { FLOOR_SIZE, HALF_FLOOR } from "./constants.js";
 const MESH_TYPES = new Set(["team-cluster", "plant", "couch", "bookshelf", "pantry", "glass-wall", "custom-mesh"]);
 const THEME_PRESETS: Array<{ id: OfficeStylePreset; description: string }> = [
   { id: "default", description: "Balanced default office palette" },

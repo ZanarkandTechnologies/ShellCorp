@@ -17,6 +17,8 @@ import { UI_Z } from "@/lib/z-index";
 import { isConvexEnabled } from "@/providers/convex-provider";
 import { api } from "../../../../../convex/_generated/api";
 import { buildAgentTimelineRows, type AgentEventRow } from "./agent-memory-timeline";
+import { formatTimestamp } from "@/lib/format-utils";
+import { extractAgentId } from "@/lib/entity-utils";
 
 /**
  * AGENT MEMORY PANEL
@@ -37,16 +39,6 @@ import { buildAgentTimelineRows, type AgentEventRow } from "./agent-memory-timel
  */
 
 type MemoryPanelTab = "list" | "search" | "timeline" | "graph";
-
-function formatTimestamp(ts?: number): string {
-  if (!ts) return "no timestamp";
-  return new Date(ts).toLocaleString();
-}
-
-function extractAgentId(employeeId: string | null): string | null {
-  if (!employeeId) return null;
-  return employeeId.startsWith("employee-") ? employeeId.replace(/^employee-/, "") : employeeId;
-}
 
 function matchesQuery(entry: AgentMemoryEntry, query: string): boolean {
   if (!query) return true;

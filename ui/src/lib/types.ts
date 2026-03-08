@@ -1,4 +1,5 @@
 import type { StatusType } from "@/features/nav-system/components/status-indicator";
+import type { AgentState } from "@/lib/openclaw-types";
 
 export type OfficeId<T extends string = string> = string & { __type?: T };
 
@@ -88,7 +89,7 @@ export interface EmployeeData extends Employee {
   hasActiveComputerSession?: boolean;
   notificationCount?: number;
   notificationPriority?: number;
-  heartbeatState?: "running" | "ok" | "no_work" | "error" | "idle" | "planning" | "executing" | "blocked" | "done";
+  heartbeatState?: AgentState;
   heartbeatBubbles?: Array<{ label: string; weight: number }>;
 }
 
