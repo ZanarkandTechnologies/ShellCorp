@@ -1,5 +1,5 @@
 ---
-name: competitor-feature-scout
+name: shellcorp-competitor-feature-scout
 description: Daily competitor feature scout that reviews last-day commits, identifies useful features, posts findings to the main agent bot via ShellCorp CLI, and updates MEMORY with the latest processed SHA.
 ---
 
