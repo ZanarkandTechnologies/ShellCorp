@@ -69,8 +69,10 @@ const ACTIVITY_WEIGHT = 90;
 const MAX_BUBBLES = 3;
 
 function statusBubble(state: AgentState): AgentBubble | null {
-  if (state === "running" || state === "executing") return { id: "status-running", label: "Heartbeat", weight: STATUS_WEIGHT };
-  if (state === "error" || state === "blocked") return { id: "status-error", label: "Error", weight: STATUS_WEIGHT };
+  if (state === "running" || state === "executing")
+    return { id: "status-running", label: "Heartbeat", weight: STATUS_WEIGHT };
+  if (state === "error" || state === "blocked")
+    return { id: "status-error", label: "Error", weight: STATUS_WEIGHT };
   return null;
 }
 
@@ -95,7 +97,10 @@ function trimBubbles(state: AgentState, bubbles: AgentBubble[]): AgentBubble[] {
   return merged.slice(0, MAX_BUBBLES);
 }
 
-export function reduceStatus(previous: AgentStatusSnapshot, event: StatusEventInput): AgentStatusSnapshot {
+export function reduceStatus(
+  previous: AgentStatusSnapshot,
+  event: StatusEventInput,
+): AgentStatusSnapshot {
   let state = previous.state;
   let statusText = previous.statusText;
   let bubbles = [...previous.bubbles];
@@ -207,4 +212,3 @@ export function coerceAgentEventType(value: string | undefined): AgentEventType 
   }
   return undefined;
 }
-

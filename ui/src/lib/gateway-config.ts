@@ -31,7 +31,8 @@ function readStoredGatewayUiConfig(): Partial<GatewayUiConfig> {
       gatewayBase: typeof parsed.gatewayBase === "string" ? parsed.gatewayBase : undefined,
       gatewayToken: typeof parsed.gatewayToken === "string" ? parsed.gatewayToken : undefined,
       stateBase: typeof parsed.stateBase === "string" ? parsed.stateBase : undefined,
-      defaultSessionKey: typeof parsed.defaultSessionKey === "string" ? parsed.defaultSessionKey : undefined,
+      defaultSessionKey:
+        typeof parsed.defaultSessionKey === "string" ? parsed.defaultSessionKey : undefined,
       language: typeof parsed.language === "string" ? parsed.language : undefined,
     };
   } catch {

@@ -54,7 +54,9 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
         console.log("No teams found.");
         return;
       }
-      const lines = summaries.map((entry) => `${entry.teamId} | ${entry.name} | ${entry.status} | KPIs=${entry.kpis.length}`);
+      const lines = summaries.map(
+        (entry) => `${entry.teamId} | ${entry.name} | ${entry.status} | KPIs=${entry.kpis.length}`,
+      );
       console.log(lines.join("\n"));
     });
 
@@ -90,7 +92,11 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
     .option("--team-id <teamId>", "Override team id (team-*)")
     .option("--auto-roles <roles>", "Comma-separated role list (builder,pm,growth_marketer)")
     .option("--business-type <type>", "affiliate_marketing|content_creator|saas|custom")
-    .option("--with-cluster", "Create/update team-cluster metadata in office-objects sidecar", false)
+    .option(
+      "--with-cluster",
+      "Create/update team-cluster metadata in office-objects sidecar",
+      false,
+    )
     .option("--json", "Output JSON", false)
     .action(
       async (opts: {
@@ -105,7 +111,9 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
         json?: boolean;
       }) => {
         ensureCommandPermission("team.meta.write");
-        const businessType = opts.businessType?.trim() ? parseBusinessType(opts.businessType.trim()) : undefined;
+        const businessType = opts.businessType?.trim()
+          ? parseBusinessType(opts.businessType.trim())
+          : undefined;
         let company = await store.readCompanyModel();
         if (businessType) {
           company = ensureBusinessHeartbeatProfiles(company);
@@ -154,7 +162,10 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
             agents: [...nextCompany.agents, ...businessAgents],
           };
           await copyBusinessHeartbeatTemplates(businessAgents.map((agent) => agent.agentId));
-          await upsertBusinessCronJobs(projectId, businessAgents.map((agent) => agent.agentId));
+          await upsertBusinessCronJobs(
+            projectId,
+            businessAgents.map((agent) => agent.agentId),
+          );
         } else if (opts.autoRoles?.trim()) {
           const roles = parseRoles(opts.autoRoles);
           createdAgents = buildAutoAgents(projectId, toSlug(project.name) || slug, roles);
@@ -175,7 +186,11 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
           });
           await store.writeOfficeObjects(nextObjects);
         }
-        formatOutput(opts.json ? "json" : "text", { ok: true, teamId, projectId }, `Created ${teamId} -> ${projectId}`);
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId, projectId },
+          `Created ${teamId} -> ${projectId}`,
+        );
       },
     );
 
@@ -183,7 +198,10 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
     .command("update")
     .requiredOption("--team-id <teamId>", "Team id (team-*)")
     .option("--name <name>", "New name")
-    .option("--description <description>", "New description (stored in team cluster metadata if present)")
+    .option(
+      "--description <description>",
+      "New description (stored in team cluster metadata if present)",
+    )
     .option("--goal <goal>", "New team goal")
     .option("--kpi-add <kpi>", "Add KPI (repeatable)", collectValue, [] as string[])
     .option("--kpi-remove <kpi>", "Remove KPI (repeatable)", collectValue, [] as string[])
@@ -202,8 +220,14 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
         clearKpis?: boolean;
         json?: boolean;
       }) => {
-        const touchesMeta = Boolean(opts.name?.trim() || opts.description?.trim() || opts.goal?.trim());
-        const touchesKpi = opts.kpiAdd.length > 0 || opts.kpiRemove.length > 0 || opts.kpiSet.length > 0 || opts.clearKpis === true;
+        const touchesMeta = Boolean(
+          opts.name?.trim() || opts.description?.trim() || opts.goal?.trim(),
+        );
+        const touchesKpi =
+          opts.kpiAdd.length > 0 ||
+          opts.kpiRemove.length > 0 ||
+          opts.kpiSet.length > 0 ||
+          opts.clearKpis === true;
         if (touchesMeta) ensureCommandPermission("team.meta.write");
         if (touchesKpi) ensureCommandPermission("team.kpi.write");
         const company = await store.readCompanyModel();
@@ -212,7 +236,10 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
         const addKpis = normalizeKpis(opts.kpiAdd);
         const setKpis = normalizeKpis(opts.kpiSet);
         const baseKpis = setKpis.length > 0 ? setKpis : opts.clearKpis ? [] : project.kpis;
-        const nextKpis = normalizeKpis([...baseKpis.filter((item) => !removeSet.has(item)), ...addKpis]);
+        const nextKpis = normalizeKpis([
+          ...baseKpis.filter((item) => !removeSet.has(item)),
+          ...addKpis,
+        ]);
         const nextProject = {
           ...project,
           name: opts.name?.trim() ? opts.name.trim() : project.name,
@@ -244,13 +271,19 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
   team
     .command("archive")
     .requiredOption("--team-id <teamId>", "Team id (team-*)")
-    .option("--deregister-openclaw", "Remove archived team agents from openclaw.json agents.list", false)
+    .option(
+      "--deregister-openclaw",
+      "Remove archived team agents from openclaw.json agents.list",
+      false,
+    )
     .option("--json", "Output JSON", false)
     .action(async (opts: { teamId: string; deregisterOpenclaw?: boolean; json?: boolean }) => {
       ensureCommandPermission("team.archive");
       const company = await store.readCompanyModel();
       const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
-      const archivedAgentIds = company.agents.filter((agent) => agent.projectId === projectId).map((agent) => agent.agentId);
+      const archivedAgentIds = company.agents
+        .filter((agent) => agent.projectId === projectId)
+        .map((agent) => agent.agentId);
       const nextCompany: CompanyModel = {
         ...company,
         projects: company.projects.map((entry) =>
@@ -267,7 +300,11 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
       if (opts.deregisterOpenclaw) {
         await deregisterOpenclawAgents({ store, agentIds: archivedAgentIds });
       }
-      formatOutput(opts.json ? "json" : "text", { ok: true, teamId: opts.teamId }, `Archived ${opts.teamId}`);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, teamId: opts.teamId },
+        `Archived ${opts.teamId}`,
+      );
     });
 
   // ─── KPI sub-commands ──────────────────────────────────────────────────────
@@ -285,7 +322,9 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
       const nextKpis = normalizeKpis(opts.kpi);
       const nextCompany: CompanyModel = {
         ...company,
-        projects: company.projects.map((entry) => (entry.id === projectId ? { ...project, kpis: nextKpis } : entry)),
+        projects: company.projects.map((entry) =>
+          entry.id === projectId ? { ...project, kpis: nextKpis } : entry,
+        ),
       };
       await store.writeCompanyModel(nextCompany);
       formatOutput(
@@ -305,10 +344,16 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
       const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
       const nextCompany: CompanyModel = {
         ...company,
-        projects: company.projects.map((entry) => (entry.id === projectId ? { ...project, kpis: [] } : entry)),
+        projects: company.projects.map((entry) =>
+          entry.id === projectId ? { ...project, kpis: [] } : entry,
+        ),
       };
       await store.writeCompanyModel(nextCompany);
-      formatOutput(opts.json ? "json" : "text", { ok: true, teamId: opts.teamId, projectId, kpis: [] }, `Cleared KPIs for ${opts.teamId}`);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, teamId: opts.teamId, projectId, kpis: [] },
+        `Cleared KPIs for ${opts.teamId}`,
+      );
     });
 
   // ─── Role-slot sub-commands ────────────────────────────────────────────────
@@ -326,14 +371,23 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
     .option("--spawn-policy <policy>", "queue_pressure|manual", "queue_pressure")
     .option("--json", "Output JSON", false)
     .action(
-      async (opts: { teamId: string; role: string; desiredCount: number; spawnPolicy: string; json?: boolean }) => {
+      async (opts: {
+        teamId: string;
+        role: string;
+        desiredCount: number;
+        spawnPolicy: string;
+        json?: boolean;
+      }) => {
         ensureCommandPermission("team.meta.write");
         const company = await store.readCompanyModel();
         const projectId = projectIdFromTeamId(opts.teamId);
-        if (!company.projects.some((entry) => entry.id === projectId)) fail(`team_not_found:${opts.teamId}`);
+        if (!company.projects.some((entry) => entry.id === projectId))
+          fail(`team_not_found:${opts.teamId}`);
         const role = parseRoleSlotRole(opts.role);
         const spawnPolicy = parseSpawnPolicy(opts.spawnPolicy);
-        const nextRoleSlots = company.roleSlots.filter((slot) => !(slot.projectId === projectId && slot.role === role));
+        const nextRoleSlots = company.roleSlots.filter(
+          (slot) => !(slot.projectId === projectId && slot.role === role),
+        );
         nextRoleSlots.push({ projectId, role, desiredCount: opts.desiredCount, spawnPolicy });
         await store.writeCompanyModel({ ...company, roleSlots: nextRoleSlots });
         formatOutput(

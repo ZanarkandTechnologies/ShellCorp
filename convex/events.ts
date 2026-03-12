@@ -22,7 +22,6 @@ function initialSnapshot(): {
   };
 }
 
-
 async function applyEvent(params: {
   ctx: MutationCtx;
   teamId?: string;
@@ -49,7 +48,9 @@ async function applyEvent(params: {
   if (params.stepKey && params.stepKey.trim().length > 0) {
     const existingStep = await params.ctx.db
       .query("agentEvents")
-      .withIndex("by_agent_step_key", (q) => q.eq("agentId", params.agentId).eq("stepKey", params.stepKey))
+      .withIndex("by_agent_step_key", (q) =>
+        q.eq("agentId", params.agentId).eq("stepKey", params.stepKey),
+      )
       .first();
     if (existingStep) {
       return { duplicate: true };
@@ -65,7 +66,9 @@ async function applyEvent(params: {
   if (projectId && params.stepKey && params.stepKey.trim().length > 0) {
     const existingProjectStep = await params.ctx.db
       .query("agentEvents")
-      .withIndex("by_project_step_key", (q) => q.eq("projectId", projectId).eq("stepKey", params.stepKey))
+      .withIndex("by_project_step_key", (q) =>
+        q.eq("projectId", projectId).eq("stepKey", params.stepKey),
+      )
       .first();
     if (existingProjectStep) {
       return { duplicate: true };

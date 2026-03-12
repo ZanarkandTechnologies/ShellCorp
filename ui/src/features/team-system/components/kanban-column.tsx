@@ -18,12 +18,7 @@
 import { useRef, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { KanbanTaskCard } from "./kanban-task-card";
-import {
-  STATUS_COLORS,
-  STATUS_LABELS,
-  type PanelTask,
-  type TaskStatus,
-} from "./team-panel-types";
+import { STATUS_COLORS, STATUS_LABELS, type PanelTask, type TaskStatus } from "./team-panel-types";
 
 interface KanbanColumnProps {
   status: TaskStatus;
@@ -79,14 +74,10 @@ export function KanbanColumn({
   }
 
   return (
-    <div
-      className={`flex flex-col rounded-xl border ${COLUMN_BG[status]} min-h-0`}
-    >
+    <div className={`flex flex-col rounded-xl border ${COLUMN_BG[status]} min-h-0`}>
       {/* Column header */}
       <div className="flex items-center gap-2 px-3 py-3">
-        <span
-          className={`inline-block h-2.5 w-2.5 rounded-full ${STATUS_COLORS[status]}`}
-        />
+        <span className={`inline-block h-2.5 w-2.5 rounded-full ${STATUS_COLORS[status]}`} />
         <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           {STATUS_LABELS[status]}
         </span>

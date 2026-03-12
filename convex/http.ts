@@ -7,8 +7,10 @@ import { parseBoardCommandPayload, parseBoardQueryPayload } from "./board_http_c
 const http = httpRouter();
 
 function readAuthHeaders(request: Request): { actorRole: string; allowedPermissions?: string } {
-  const actorRole = request.headers.get("x-shellcorp-actor-role")?.trim().toLowerCase() || "operator";
-  const allowedPermissions = request.headers.get("x-shellcorp-allowed-permissions")?.trim() || undefined;
+  const actorRole =
+    request.headers.get("x-shellcorp-actor-role")?.trim().toLowerCase() || "operator";
+  const allowedPermissions =
+    request.headers.get("x-shellcorp-allowed-permissions")?.trim() || undefined;
   return { actorRole, allowedPermissions };
 }
 
@@ -57,7 +59,8 @@ http.route({
       return new Response(JSON.stringify({ ok: false, error: "invalid_json" }), { status: 400 });
     }
     const parsed = parseStatusReportPayload(body);
-    if (!parsed) return new Response(JSON.stringify({ ok: false, error: "invalid_payload" }), { status: 400 });
+    if (!parsed)
+      return new Response(JSON.stringify({ ok: false, error: "invalid_payload" }), { status: 400 });
     try {
       const result = await ctx.runMutation(internal.events.reportStatus, parsed);
       return new Response(JSON.stringify({ ok: true, duplicate: result.duplicate }), {
@@ -88,13 +91,16 @@ http.route({
       return new Response(JSON.stringify({ ok: false, error: "invalid_json" }), { status: 400 });
     }
     const parsed = parseBoardCommandPayload(body);
-    if (!parsed) return new Response(JSON.stringify({ ok: false, error: "invalid_payload" }), { status: 400 });
+    if (!parsed)
+      return new Response(JSON.stringify({ ok: false, error: "invalid_payload" }), { status: 400 });
     try {
       const auth = readAuthHeaders(request);
       const result = await ctx.runMutation(api.board.boardCommand, {
         ...parsed,
         actorType: parsed.command === "activity_log" ? "agent" : "operator",
-        actorAgentId: parsed.actorAgentId ?? (parsed.command === "activity_log" ? "agent-unknown" : "operator-http"),
+        actorAgentId:
+          parsed.actorAgentId ??
+          (parsed.command === "activity_log" ? "agent-unknown" : "operator-http"),
         actorRole: auth.actorRole,
         allowedPermissions: auth.allowedPermissions,
       });
@@ -126,7 +132,8 @@ http.route({
       return new Response(JSON.stringify({ ok: false, error: "invalid_json" }), { status: 400 });
     }
     const parsed = parseBoardQueryPayload(body);
-    if (!parsed) return new Response(JSON.stringify({ ok: false, error: "invalid_payload" }), { status: 400 });
+    if (!parsed)
+      return new Response(JSON.stringify({ ok: false, error: "invalid_payload" }), { status: 400 });
     try {
       if (parsed.query === "tasks") {
         const data = await ctx.runQuery(api.board.getProjectBoard, {

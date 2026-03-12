@@ -16,10 +16,20 @@ import {
   Loader2,
 } from "lucide-react";
 
-import type { PendingApprovalModel, ApprovalActionType, ApprovalRiskLevel } from "@/lib/openclaw-types";
+import type {
+  PendingApprovalModel,
+  ApprovalActionType,
+  ApprovalRiskLevel,
+} from "@/lib/openclaw-types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { UI_Z } from "@/lib/z-index";
@@ -82,7 +92,10 @@ function ApprovalCard({
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${RISK_COLORS[approval.riskLevel]}`}>
+          <Badge
+            variant="outline"
+            className={`text-[10px] px-1.5 py-0 ${RISK_COLORS[approval.riskLevel]}`}
+          >
             {approval.riskLevel}
           </Badge>
           <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
@@ -106,7 +119,9 @@ function ApprovalCard({
       {approval.toolName && (
         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <Terminal className="h-3 w-3" />
-          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">{approval.toolName}</code>
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+            {approval.toolName}
+          </code>
         </div>
       )}
 
@@ -119,7 +134,11 @@ function ApprovalCard({
           onClick={() => onResolve(approval.id, "approved")}
           disabled={isResolving}
         >
-          {isResolving ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Check className="mr-1.5 h-3 w-3" />}
+          {isResolving ? (
+            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+          ) : (
+            <Check className="mr-1.5 h-3 w-3" />
+          )}
           Approve
         </Button>
         <Button
@@ -129,7 +148,11 @@ function ApprovalCard({
           onClick={() => onResolve(approval.id, "rejected")}
           disabled={isResolving}
         >
-          {isResolving ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <X className="mr-1.5 h-3 w-3" />}
+          {isResolving ? (
+            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+          ) : (
+            <X className="mr-1.5 h-3 w-3" />
+          )}
           Reject
         </Button>
       </div>
@@ -190,11 +213,17 @@ export function ApprovalQueue({ isOpen, onOpenChange }: ApprovalQueueProps) {
     return map;
   }, [approvals]);
 
-  const criticalCount = approvals.filter((a) => a.riskLevel === "critical" || a.riskLevel === "high").length;
+  const criticalCount = approvals.filter(
+    (a) => a.riskLevel === "critical" || a.riskLevel === "high",
+  ).length;
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[460px] max-w-[95vw] flex flex-col" style={{ zIndex: UI_Z.panelElevated }}>
+      <SheetContent
+        side="right"
+        className="w-[460px] max-w-[95vw] flex flex-col"
+        style={{ zIndex: UI_Z.panelElevated }}
+      >
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             {criticalCount > 0 ? (
@@ -210,7 +239,8 @@ export function ApprovalQueue({ isOpen, onOpenChange }: ApprovalQueueProps) {
             )}
           </SheetTitle>
           <SheetDescription>
-            Review and approve agent actions before execution. High-risk actions require operator sign-off.
+            Review and approve agent actions before execution. High-risk actions require operator
+            sign-off.
           </SheetDescription>
         </SheetHeader>
 
@@ -219,7 +249,9 @@ export function ApprovalQueue({ isOpen, onOpenChange }: ApprovalQueueProps) {
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <ShieldCheck className="h-12 w-12 text-green-400/40 mb-3" />
               <p className="text-sm font-medium text-muted-foreground">All clear</p>
-              <p className="text-xs text-muted-foreground mt-1">No pending actions require your approval.</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                No pending actions require your approval.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">

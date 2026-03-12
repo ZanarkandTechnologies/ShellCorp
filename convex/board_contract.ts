@@ -47,7 +47,8 @@ export type BoardActorType = "agent" | "operator" | "system";
 
 export function coerceBoardTaskStatus(value: string | undefined): BoardTaskStatus | undefined {
   if (!value) return undefined;
-  if (value === "todo" || value === "in_progress" || value === "blocked" || value === "done") return value;
+  if (value === "todo" || value === "in_progress" || value === "blocked" || value === "done")
+    return value;
   return undefined;
 }
 
@@ -97,4 +98,3 @@ export function coerceBoardActorType(value: string | undefined): BoardActorType 
   if (value === "agent" || value === "operator" || value === "system") return value;
   return undefined;
 }
-

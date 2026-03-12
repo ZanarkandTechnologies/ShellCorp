@@ -46,10 +46,7 @@ export function TimelineTab({
       </CardHeader>
       <CardContent className="h-[calc(100%-3rem)] overflow-hidden">
         {convexEnabled && teamScopeId ? (
-          <AgentActivityFeed
-            teamId={teamScopeId}
-            candidates={activityFeedCandidates}
-          />
+          <AgentActivityFeed teamId={teamScopeId} candidates={activityFeedCandidates} />
         ) : (
           <ScrollArea className="h-full rounded-md border p-3">
             <div className="space-y-2">
@@ -61,10 +58,7 @@ export function TimelineTab({
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{row.agentId}</span>
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] uppercase"
-                      >
+                      <Badge variant="secondary" className="text-[10px] uppercase">
                         {row.activityType}
                       </Badge>
                     </div>
@@ -77,16 +71,13 @@ export function TimelineTab({
                     <p className="text-xs text-muted-foreground">{row.detail}</p>
                   ) : null}
                   {row.taskId ? (
-                    <p className="text-[11px] text-muted-foreground">
-                      task: {row.taskId}
-                    </p>
+                    <p className="text-[11px] text-muted-foreground">task: {row.taskId}</p>
                   ) : null}
                 </div>
               ))}
               {communicationRows.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Enable Convex and team logging to view beat drill-down
-                  timeline.
+                  Enable Convex and team logging to view beat drill-down timeline.
                 </p>
               ) : null}
             </div>

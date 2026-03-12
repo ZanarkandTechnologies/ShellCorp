@@ -171,13 +171,20 @@ export function ProjectArtefactPanel({
   );
   const files = useMemo(() => {
     const raw = index?.files ?? [];
-    const projectScoped = raw.filter((file) => isProjectScopedArtefact(file, projectId, scopeRoots));
-    return hideHeartbeatFiles ? projectScoped.filter((file) => !isHeartbeatArtefact(file)) : projectScoped;
+    const projectScoped = raw.filter((file) =>
+      isProjectScopedArtefact(file, projectId, scopeRoots),
+    );
+    return hideHeartbeatFiles
+      ? projectScoped.filter((file) => !isHeartbeatArtefact(file))
+      : projectScoped;
   }, [hideHeartbeatFiles, index?.files, projectId, scopeRoots]);
   const filteredFiles = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return files;
-    return files.filter((file) => file.path.toLowerCase().includes(needle) || file.name.toLowerCase().includes(needle));
+    return files.filter(
+      (file) =>
+        file.path.toLowerCase().includes(needle) || file.name.toLowerCase().includes(needle),
+    );
   }, [files, query]);
   const explorerRoots = useMemo(() => buildExplorerTree(filteredFiles), [filteredFiles]);
   const flattenedTree = useMemo(() => flattenTree(explorerRoots), [explorerRoots]);
@@ -200,7 +207,7 @@ export function ProjectArtefactPanel({
       }),
     [expandedFolderKeys, flattenedTree, folderByKey],
   );
-  const selectedFolder = selectedFolderKey ? folderByKey.get(selectedFolderKey) ?? null : null;
+  const selectedFolder = selectedFolderKey ? (folderByKey.get(selectedFolderKey) ?? null) : null;
   const selectedFolderFiles = selectedFolder?.files ?? [];
 
   useEffect(() => {
@@ -227,7 +234,10 @@ export function ProjectArtefactPanel({
   }, [activeFile, activeFileKind]);
 
   const hintRows = useMemo(
-    () => taskHints.filter((entry) => typeof entry.artefactPath === "string" && entry.artefactPath.trim()),
+    () =>
+      taskHints.filter(
+        (entry) => typeof entry.artefactPath === "string" && entry.artefactPath.trim(),
+      ),
     [taskHints],
   );
 
@@ -334,7 +344,13 @@ export function ProjectArtefactPanel({
           >
             {hideHeartbeatFiles ? "Artefacts Only" : "Show All"}
           </Button>
-          <Button size="sm" variant="outline" className="h-8" onClick={() => setQuery("")} disabled={!query}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8"
+            onClick={() => setQuery("")}
+            disabled={!query}
+          >
             Clear
           </Button>
         </div>
@@ -356,7 +372,9 @@ export function ProjectArtefactPanel({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        {loading ? <p className="px-4 py-3 text-sm text-muted-foreground">Loading artefacts...</p> : null}
+        {loading ? (
+          <p className="px-4 py-3 text-sm text-muted-foreground">Loading artefacts...</p>
+        ) : null}
         {errorText ? <p className="px-4 py-3 text-sm text-destructive">{errorText}</p> : null}
 
         {!loading && !errorText ? (
@@ -374,7 +392,9 @@ export function ProjectArtefactPanel({
                           key={folder.key}
                           type="button"
                           className={`mb-0.5 flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-left text-xs ${
-                            selected ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60"
+                            selected
+                              ? "bg-muted text-foreground"
+                              : "text-muted-foreground hover:bg-muted/60"
                           }`}
                           style={{ paddingLeft: `${6 + folder.depth * 12}px` }}
                           onClick={() => setSelectedFolderKey(folder.key)}
@@ -387,7 +407,9 @@ export function ProjectArtefactPanel({
                             }}
                           >
                             {hasChildren ? (
-                              <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                              <ChevronRight
+                                className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                              />
                             ) : (
                               <span className="h-3.5 w-3.5" />
                             )}
@@ -403,7 +425,8 @@ export function ProjectArtefactPanel({
                     })}
                     {visibleFolderRows.length === 0 ? (
                       <p className="px-2 py-6 text-xs text-muted-foreground">
-                        No project folders found. Save artefacts under a scoped path like `projects/{projectId}/...`.
+                        No project folders found. Save artefacts under a scoped path like `projects/
+                        {projectId}/...`.
                       </p>
                     ) : null}
                   </div>
@@ -434,13 +457,17 @@ export function ProjectArtefactPanel({
                             {iconForFile(file.name)}
                             <span className="truncate">{file.name}</span>
                           </span>
-                            <span className="text-muted-foreground">{formatFileSize(file.size)}</span>
-                          <span className="truncate text-muted-foreground">{formatFileTimestamp(file.updatedAtMs)}</span>
+                          <span className="text-muted-foreground">{formatFileSize(file.size)}</span>
+                          <span className="truncate text-muted-foreground">
+                            {formatFileTimestamp(file.updatedAtMs)}
+                          </span>
                         </button>
                       );
                     })}
                     {selectedFolderFiles.length === 0 ? (
-                      <p className="px-3 py-8 text-sm text-muted-foreground">No files in this folder.</p>
+                      <p className="px-3 py-8 text-sm text-muted-foreground">
+                        No files in this folder.
+                      </p>
                     ) : null}
                   </div>
                 </ScrollArea>
@@ -457,21 +484,37 @@ export function ProjectArtefactPanel({
                     <span className="mx-1">·</span>
                     <span>{formatFileTimestamp(activeFile.updatedAtMs)}</span>
                   </div>
-                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={closePreview}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs"
+                    onClick={closePreview}
+                  >
                     <X className="mr-1 h-3.5 w-3.5" />
                     Close
                   </Button>
                 </div>
                 <ScrollArea className="h-[calc(100%-33px)] px-3 py-2">
-                  {previewLoading ? <p className="text-sm text-muted-foreground">Loading file preview...</p> : null}
-                  {!previewLoading && previewError ? <p className="text-sm text-destructive">{previewError}</p> : null}
+                  {previewLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading file preview...</p>
+                  ) : null}
+                  {!previewLoading && previewError ? (
+                    <p className="text-sm text-destructive">{previewError}</p>
+                  ) : null}
                   {!previewLoading && !previewError && activeFileKind === "video" ? (
-                    <video className="max-h-44 w-full rounded border border-border/50 bg-black" controls preload="metadata" src={activeVideoUrl}>
+                    <video
+                      className="max-h-44 w-full rounded border border-border/50 bg-black"
+                      controls
+                      preload="metadata"
+                      src={activeVideoUrl}
+                    >
                       Your browser does not support video playback.
                     </video>
                   ) : null}
                   {!previewLoading && !previewError && activeFileKind !== "video" ? (
-                    <pre className="whitespace-pre-wrap break-words text-xs">{activeFileContent || "(empty file)"}</pre>
+                    <pre className="whitespace-pre-wrap break-words text-xs">
+                      {activeFileContent || "(empty file)"}
+                    </pre>
                   ) : null}
                 </ScrollArea>
               </div>

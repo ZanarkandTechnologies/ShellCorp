@@ -31,7 +31,9 @@ export function TeamSkillEquipMatrix({ rows }: { rows: TeamSkillEquipRow[] }): R
       </CardHeader>
       <CardContent className="space-y-3">
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No business PM/executor members found for this team.</p>
+          <p className="text-sm text-muted-foreground">
+            No business PM/executor members found for this team.
+          </p>
         ) : null}
         {rows.map((row) => (
           <div key={row.agentId} className="rounded-md border p-3">
@@ -49,7 +51,9 @@ export function TeamSkillEquipMatrix({ rows }: { rows: TeamSkillEquipRow[] }): R
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {row.equippedSkills.length === 0 ? (
-                <span className="text-xs text-muted-foreground">No explicit skill allowlist set.</span>
+                <span className="text-xs text-muted-foreground">
+                  No explicit skill allowlist set.
+                </span>
               ) : (
                 row.equippedSkills.map((skillId) => (
                   <Badge key={`${row.agentId}-${skillId}`} variant="secondary">

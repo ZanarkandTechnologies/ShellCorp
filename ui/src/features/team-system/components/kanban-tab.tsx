@@ -55,9 +55,7 @@ export function KanbanTab({
 
   const visibleTasks = useMemo(
     () =>
-      focusAgentId
-        ? projectTasks.filter((t) => t.ownerAgentId === focusAgentId)
-        : projectTasks,
+      focusAgentId ? projectTasks.filter((t) => t.ownerAgentId === focusAgentId) : projectTasks,
     [focusAgentId, projectTasks],
   );
 
@@ -79,18 +77,15 @@ export function KanbanTab({
   }
 
   async function handleAddTask(title: string, status: TaskStatus): Promise<void> {
-    await onBoardCommand(
-      "task_add",
-      { title, status, priority: "medium" },
-      "Task added.",
-    );
+    await onBoardCommand("task_add", { title, status, priority: "medium" }, "Task added.");
   }
 
   return (
     <div className="flex h-full flex-col gap-3">
       {focusAgentId ? (
         <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Showing tasks owned by <span className="font-mono">{focusAgentId}</span> in this panel scope.
+          Showing tasks owned by <span className="font-mono">{focusAgentId}</span> in this panel
+          scope.
         </div>
       ) : null}
 

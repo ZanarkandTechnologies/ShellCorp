@@ -13,6 +13,10 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
+    "lint": "biome lint --diagnostic-level=error --files-ignore-unknown=true --skip=style --skip=complexity --skip=a11y --skip=correctness/noUnusedImports --skip=correctness/useExhaustiveDependencies --skip=correctness/useHookAtTopLevel --skip=suspicious/noArrayIndexKey biome.json package.json cli/team-commands convex extensions/notion skills ui/src/components/hud ui/src/features/team-system ui/src/lib",
+    "lint:fix": "biome lint --write --diagnostic-level=error --files-ignore-unknown=true --skip=style --skip=complexity --skip=a11y --skip=correctness/noUnusedImports --skip=correctness/useExhaustiveDependencies --skip=correctness/useHookAtTopLevel --skip=suspicious/noArrayIndexKey biome.json package.json cli/team-commands convex extensions/notion skills ui/src/components/hud ui/src/features/team-system ui/src/lib",
+    "format": "biome format --write --files-ignore-unknown=true biome.json package.json cli/team-commands convex extensions/notion skills ui/src/components/hud ui/src/features/team-system ui/src/lib",
+    "format:check": "biome check --files-ignore-unknown=true --linter-enabled=false --assist-enabled=false biome.json package.json cli/team-commands convex extensions/notion skills ui/src/components/hud ui/src/features/team-system ui/src/lib",
     "shell": "tsx cli/shellcorp-cli.ts",
     "cli:bundle": "esbuild cli/shellcorp-cli.ts --bundle --platform=node --format=cjs --target=node20 --outfile=dist/bundle/shellcorp-cli.cjs",
     "prepare": "npm run cli:bundle",
@@ -21,6 +25,7 @@
     "mesh:previews": "tsx scripts/mesh-preview-scan.ts",
     "test": "vitest",
     "test:once": "vitest run",
+    "test:skills": "vitest run skills/skill-contract.test.ts",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:coverage": "vitest run --coverage --coverage.reporter=text"
   },
@@ -78,6 +83,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.6",
     "@edge-runtime/vm": "^5.0.0",
     "@tailwindcss/vite": "^4.2.1",
     "@types/node": "latest",

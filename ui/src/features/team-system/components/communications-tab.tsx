@@ -72,17 +72,11 @@ export function CommunicationsTab({
           <ScrollArea className="min-h-0 flex-1 rounded-md border p-3">
             <div className="space-y-2">
               {filteredRows.map((row) => (
-                <div
-                  key={row.id}
-                  className="rounded-md border bg-muted/20 p-2 text-sm"
-                >
+                <div key={row.id} className="rounded-md border bg-muted/20 p-2 text-sm">
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{row.agentId}</span>
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] uppercase"
-                      >
+                      <Badge variant="secondary" className="text-[10px] uppercase">
                         {row.activityType}
                       </Badge>
                     </div>
@@ -95,15 +89,14 @@ export function CommunicationsTab({
                     <p className="text-xs text-muted-foreground">{row.detail}</p>
                   ) : null}
                   {row.taskId ? (
-                    <p className="text-[11px] text-muted-foreground">
-                      task: {row.taskId}
-                    </p>
+                    <p className="text-[11px] text-muted-foreground">task: {row.taskId}</p>
                   ) : null}
                 </div>
               ))}
               {filteredRows.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No activity yet. Agents should publish updates with `shellcorp status` during each heartbeat turn.
+                  No activity yet. Agents should publish updates with `shellcorp status` during each
+                  heartbeat turn.
                 </p>
               ) : null}
             </div>

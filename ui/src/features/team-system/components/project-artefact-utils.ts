@@ -4,7 +4,10 @@ export function createFileKey(file: Pick<ProjectArtefactEntry, "agentId" | "name
   return `${file.agentId}::${file.name}`;
 }
 
-export function findFileByPath(files: ProjectArtefactEntry[], targetPath: string): ProjectArtefactEntry | null {
+export function findFileByPath(
+  files: ProjectArtefactEntry[],
+  targetPath: string,
+): ProjectArtefactEntry | null {
   const normalizedPath = targetPath.trim();
   if (!normalizedPath) return null;
   const exact = files.find((file) => file.path === normalizedPath);
@@ -13,7 +16,14 @@ export function findFileByPath(files: ProjectArtefactEntry[], targetPath: string
   return suffix ?? null;
 }
 
-export type ArtefactFileKind = "markdown" | "image" | "video" | "code" | "json" | "text" | "unknown";
+export type ArtefactFileKind =
+  | "markdown"
+  | "image"
+  | "video"
+  | "code"
+  | "json"
+  | "text"
+  | "unknown";
 
 export interface ExplorerFolderNode {
   key: string;
@@ -68,7 +78,11 @@ function ensureTrailingSlash(path: string): string {
 }
 
 function normalizeRootCandidate(path: string): string {
-  return ensureTrailingSlash(normalizePath(path).replace(/\/+/g, "/").replace(/^\/+|\/+$/g, ""));
+  return ensureTrailingSlash(
+    normalizePath(path)
+      .replace(/\/+/g, "/")
+      .replace(/^\/+|\/+$/g, ""),
+  );
 }
 
 function toParentDir(path: string): string {
@@ -113,17 +127,39 @@ export function isProjectScopedArtefact(
     if (normalizedPath.includes(normalizedRoot)) return true;
   }
   // Fallback: allow explicit project id segment when scope roots are incomplete.
-  return normalizedPath.includes(`/${normalizedProjectId}/`) || normalizedPath.startsWith(`${normalizedProjectId}/`);
+  return (
+    normalizedPath.includes(`/${normalizedProjectId}/`) ||
+    normalizedPath.startsWith(`${normalizedProjectId}/`)
+  );
 }
 
 export function inferArtefactFileKind(fileName: string): ArtefactFileKind {
   const lower = fileName.trim().toLowerCase();
   if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "markdown";
-  if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp") || lower.endsWith(".gif")) {
+  if (
+    lower.endsWith(".png") ||
+    lower.endsWith(".jpg") ||
+    lower.endsWith(".jpeg") ||
+    lower.endsWith(".webp") ||
+    lower.endsWith(".gif")
+  ) {
     return "image";
   }
-  if (lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".webm") || lower.endsWith(".mkv")) return "video";
-  if (lower.endsWith(".ts") || lower.endsWith(".tsx") || lower.endsWith(".js") || lower.endsWith(".jsx") || lower.endsWith(".py")) return "code";
+  if (
+    lower.endsWith(".mp4") ||
+    lower.endsWith(".mov") ||
+    lower.endsWith(".webm") ||
+    lower.endsWith(".mkv")
+  )
+    return "video";
+  if (
+    lower.endsWith(".ts") ||
+    lower.endsWith(".tsx") ||
+    lower.endsWith(".js") ||
+    lower.endsWith(".jsx") ||
+    lower.endsWith(".py")
+  )
+    return "code";
   if (lower.endsWith(".json")) return "json";
   if (lower.endsWith(".txt") || lower.endsWith(".log")) return "text";
   return "unknown";
@@ -132,7 +168,12 @@ export function inferArtefactFileKind(fileName: string): ArtefactFileKind {
 export function buildExplorerTree(files: ProjectArtefactEntry[]): ExplorerFolderNode[] {
   const nodeByKey = new Map<string, ExplorerFolderNode>();
 
-  function ensureNode(key: string, name: string, parentKey: string | null, depth: number): ExplorerFolderNode {
+  function ensureNode(
+    key: string,
+    name: string,
+    parentKey: string | null,
+    depth: number,
+  ): ExplorerFolderNode {
     const existing = nodeByKey.get(key);
     if (existing) return existing;
     const created: ExplorerFolderNode = {
@@ -149,7 +190,9 @@ export function buildExplorerTree(files: ProjectArtefactEntry[]): ExplorerFolder
 
   for (const file of files) {
     const rootKey = `${file.agentId}::${file.workspace || "workspace"}`;
-    const rootName = file.workspace ? `${file.agentId} · ${file.workspace}` : `${file.agentId} · workspace`;
+    const rootName = file.workspace
+      ? `${file.agentId} · ${file.workspace}`
+      : `${file.agentId} · workspace`;
     let parent = ensureNode(rootKey, rootName, null, 0);
 
     const relativePath = toRelativePath(file);

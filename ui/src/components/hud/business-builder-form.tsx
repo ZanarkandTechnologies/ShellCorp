@@ -3,7 +3,11 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { BusinessBuilderDraft, BusinessBuilderResourceDraft, BusinessTypeOption } from "@/lib/business-builder";
+import type {
+  BusinessBuilderDraft,
+  BusinessBuilderResourceDraft,
+  BusinessTypeOption,
+} from "@/lib/business-builder";
 import { createBusinessBuilderDraft } from "@/lib/business-builder";
 
 interface BusinessBuilderFormProps {
@@ -33,10 +37,16 @@ function patchResource(
   index: number,
   patch: Partial<BusinessBuilderResourceDraft>,
 ): BusinessBuilderResourceDraft[] {
-  return resources.map((resource, resourceIndex) => (resourceIndex === index ? { ...resource, ...patch } : resource));
+  return resources.map((resource, resourceIndex) =>
+    resourceIndex === index ? { ...resource, ...patch } : resource,
+  );
 }
 
-export function BusinessBuilderForm({ value, onChange, disabled = false }: BusinessBuilderFormProps): React.JSX.Element {
+export function BusinessBuilderForm({
+  value,
+  onChange,
+  disabled = false,
+}: BusinessBuilderFormProps): React.JSX.Element {
   const handleBusinessTypeChange = (nextType: BusinessTypeOption): void => {
     if (nextType === "none") {
       onChange(createBusinessBuilderDraft("none"));
@@ -45,8 +55,12 @@ export function BusinessBuilderForm({ value, onChange, disabled = false }: Busin
     const nextDraft = createBusinessBuilderDraft(nextType);
     onChange({
       ...nextDraft,
-      capabilitySkills: value.businessType === nextType ? value.capabilitySkills : nextDraft.capabilitySkills,
-      resources: value.businessType === nextType && value.resources.length > 0 ? value.resources : nextDraft.resources,
+      capabilitySkills:
+        value.businessType === nextType ? value.capabilitySkills : nextDraft.capabilitySkills,
+      resources:
+        value.businessType === nextType && value.resources.length > 0
+          ? value.resources
+          : nextDraft.resources,
     });
   };
 
@@ -120,7 +134,10 @@ export function BusinessBuilderForm({ value, onChange, disabled = false }: Busin
                   onChange={(event) =>
                     onChange({
                       ...value,
-                      capabilitySkills: { ...value.capabilitySkills, distribute: event.target.value },
+                      capabilitySkills: {
+                        ...value.capabilitySkills,
+                        distribute: event.target.value,
+                      },
                     })
                   }
                   disabled={disabled}
@@ -166,7 +183,12 @@ export function BusinessBuilderForm({ value, onChange, disabled = false }: Busin
                       <Input
                         value={resource.name}
                         onChange={(event) =>
-                          onChange({ ...value, resources: patchResource(value.resources, index, { name: event.target.value }) })
+                          onChange({
+                            ...value,
+                            resources: patchResource(value.resources, index, {
+                              name: event.target.value,
+                            }),
+                          })
                         }
                         disabled={disabled}
                       />
@@ -218,7 +240,9 @@ export function BusinessBuilderForm({ value, onChange, disabled = false }: Busin
                         onChange={(event) =>
                           onChange({
                             ...value,
-                            resources: patchResource(value.resources, index, { limit: Number(event.target.value || "0") }),
+                            resources: patchResource(value.resources, index, {
+                              limit: Number(event.target.value || "0"),
+                            }),
                           })
                         }
                         disabled={disabled}
@@ -229,7 +253,12 @@ export function BusinessBuilderForm({ value, onChange, disabled = false }: Busin
                       <Input
                         value={resource.unit}
                         onChange={(event) =>
-                          onChange({ ...value, resources: patchResource(value.resources, index, { unit: event.target.value }) })
+                          onChange({
+                            ...value,
+                            resources: patchResource(value.resources, index, {
+                              unit: event.target.value,
+                            }),
+                          })
                         }
                         disabled={disabled}
                       />
@@ -242,7 +271,9 @@ export function BusinessBuilderForm({ value, onChange, disabled = false }: Busin
                         onChange={(event) =>
                           onChange({
                             ...value,
-                            resources: patchResource(value.resources, index, { trackerSkillId: event.target.value }),
+                            resources: patchResource(value.resources, index, {
+                              trackerSkillId: event.target.value,
+                            }),
                           })
                         }
                         disabled={disabled}

@@ -87,4 +87,3 @@ describe("status-contract", () => {
     expect(finished.statusText).toBe("Turn complete");
   });
 });
-

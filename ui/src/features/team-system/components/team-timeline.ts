@@ -33,7 +33,8 @@ export function buildTeamTimelineRows(params: {
   communicationRows: CommunicationRow[];
   projectId: string | undefined;
 }): TeamTimelineRow[] {
-  if (Array.isArray(params.convexTimeline) && params.convexTimeline.length > 0) return params.convexTimeline;
+  if (Array.isArray(params.convexTimeline) && params.convexTimeline.length > 0)
+    return params.convexTimeline;
   return params.communicationRows.map((row) => ({
     _id: row.id,
     sourceType: "agent_event",

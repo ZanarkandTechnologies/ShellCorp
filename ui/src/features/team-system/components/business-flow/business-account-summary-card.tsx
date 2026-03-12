@@ -33,12 +33,21 @@ export function BusinessAccountSummaryCard({
 
   const delta24h = events
     .filter((event) => Date.parse(event.timestamp) >= dayAgo)
-    .reduce((sum, event) => sum + (event.type === "credit" ? event.amountCents : -event.amountCents), 0);
+    .reduce(
+      (sum, event) => sum + (event.type === "credit" ? event.amountCents : -event.amountCents),
+      0,
+    );
   const delta7d = events
     .filter((event) => Date.parse(event.timestamp) >= weekAgo)
-    .reduce((sum, event) => sum + (event.type === "credit" ? event.amountCents : -event.amountCents), 0);
+    .reduce(
+      (sum, event) => sum + (event.type === "credit" ? event.amountCents : -event.amountCents),
+      0,
+    );
 
-  const formatter = new Intl.NumberFormat("en-US", { style: "currency", currency: account.currency });
+  const formatter = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: account.currency,
+  });
   const fmt = (value: number): string => formatter.format(value / 100);
 
   return (
@@ -53,14 +62,22 @@ export function BusinessAccountSummaryCard({
         </div>
         <div className="rounded-md border bg-muted/20 p-3">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">24h Delta</p>
-          <p className={delta24h >= 0 ? "font-semibold text-emerald-500" : "font-semibold text-red-500"}>
+          <p
+            className={
+              delta24h >= 0 ? "font-semibold text-emerald-500" : "font-semibold text-red-500"
+            }
+          >
             {delta24h >= 0 ? "+" : ""}
             {fmt(delta24h)}
           </p>
         </div>
         <div className="rounded-md border bg-muted/20 p-3">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">7d Delta</p>
-          <p className={delta7d >= 0 ? "font-semibold text-emerald-500" : "font-semibold text-red-500"}>
+          <p
+            className={
+              delta7d >= 0 ? "font-semibold text-emerald-500" : "font-semibold text-red-500"
+            }
+          >
             {delta7d >= 0 ? "+" : ""}
             {fmt(delta7d)}
           </p>

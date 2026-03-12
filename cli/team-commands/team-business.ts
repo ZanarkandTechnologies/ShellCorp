@@ -71,7 +71,9 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
 
   // ─── Business context sub-commands ────────────────────────────────────────
 
-  const businessContext = business.command("context").description("Manage freeform business tracking context");
+  const businessContext = business
+    .command("context")
+    .description("Manage freeform business tracking context");
   businessContext
     .command("get")
     .requiredOption("--team-id <teamId>", "Team id (team-*)")
@@ -124,7 +126,12 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
     .requiredOption("--skill-id <skillId>", "Skill identifier for selected slot")
     .option("--business-type <type>", "affiliate_marketing|content_creator|saas|custom")
     .option("--config-json <json>", "JSON object for slot config")
-    .option("--config <entry>", "Config key=value (repeatable)", collectConfigEntry, [] as ConfigEntry[])
+    .option(
+      "--config <entry>",
+      "Config key=value (repeatable)",
+      collectConfigEntry,
+      [] as ConfigEntry[],
+    )
     .option("--json", "Output JSON", false)
     .action(
       async (opts: {
@@ -142,7 +149,11 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
         const slot = parseCapabilityCategory(opts.slot);
         const skillId = opts.skillId.trim();
         if (!skillId) fail("invalid_skill_id");
-        const baseConfig = opts.configJson?.trim() ? normalizeConfigEntries(parseSkillList(opts.configJson.trim()).reduce((acc, _) => acc, [] as ConfigEntry[])) : {};
+        const baseConfig = opts.configJson?.trim()
+          ? normalizeConfigEntries(
+              parseSkillList(opts.configJson.trim()).reduce((acc, _) => acc, [] as ConfigEntry[]),
+            )
+          : {};
         const parsedConfigJson = opts.configJson?.trim()
           ? (() => {
               try {
@@ -164,8 +175,12 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
         const mergedConfig = { ...parsedConfigJson, ...extraConfig };
         const currentBusinessConfig =
           project.businessConfig ??
-          defaultBusinessConfig(opts.businessType?.trim() ? parseBusinessType(opts.businessType.trim()) : "custom");
-        const nextType = opts.businessType?.trim() ? parseBusinessType(opts.businessType.trim()) : currentBusinessConfig.type;
+          defaultBusinessConfig(
+            opts.businessType?.trim() ? parseBusinessType(opts.businessType.trim()) : "custom",
+          );
+        const nextType = opts.businessType?.trim()
+          ? parseBusinessType(opts.businessType.trim())
+          : currentBusinessConfig.type;
         const nextBusinessConfig: BusinessConfigModel = {
           type: nextType,
           slots: {
@@ -235,9 +250,21 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
         const nextBusinessConfig: BusinessConfigModel = {
           type: nextType,
           slots: {
-            measure: { category: "measure", skillId: opts.measureSkillId.trim(), config: project.businessConfig?.slots.measure.config ?? {} },
-            execute: { category: "execute", skillId: opts.executeSkillId.trim(), config: project.businessConfig?.slots.execute.config ?? {} },
-            distribute: { category: "distribute", skillId: opts.distributeSkillId.trim(), config: project.businessConfig?.slots.distribute.config ?? {} },
+            measure: {
+              category: "measure",
+              skillId: opts.measureSkillId.trim(),
+              config: project.businessConfig?.slots.measure.config ?? {},
+            },
+            execute: {
+              category: "execute",
+              skillId: opts.executeSkillId.trim(),
+              config: project.businessConfig?.slots.execute.config ?? {},
+            },
+            distribute: {
+              category: "distribute",
+              skillId: opts.distributeSkillId.trim(),
+              config: project.businessConfig?.slots.distribute.config ?? {},
+            },
           },
         };
         const nextProject = {
@@ -271,73 +298,84 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
     .option("--mode <mode>", "replace_minimum|append_only", "replace_minimum")
     .option("--dry-run", "Preview without writing openclaw.json", false)
     .option("--json", "Output JSON", false)
-    .action(
-      async (opts: { teamId: string; mode: string; dryRun?: boolean; json?: boolean }) => {
-        ensureCommandPermission("team.business.write");
-        const mode = opts.mode.trim() as BusinessEquipMode;
-        if (mode !== "replace_minimum" && mode !== "append_only") {
-          fail(`invalid_mode:${opts.mode}`);
-        }
-        const company = await store.readCompanyModel();
-        const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
-        const pmAgent = company.agents.find((entry) => entry.projectId === projectId && entry.role === "biz_pm");
-        const executorAgent = company.agents.find((entry) => entry.projectId === projectId && entry.role === "biz_executor");
-        if (!pmAgent || !executorAgent) {
-          fail(`business_agents_missing:${opts.teamId}`);
-        }
-        const targets = buildTeamBusinessSkillTargets(project);
-        const targetByAgentId = new Map<string, string[]>([
-          [pmAgent.agentId, targets.pmSkills],
-          [executorAgent.agentId, targets.executorSkills],
-        ]);
-        const openclawConfig = await store.readOpenclawConfig();
-        const agentsNode = asRecord(openclawConfig.agents);
-        const currentList = Array.isArray(agentsNode.list) ? [...agentsNode.list] : [];
-        const touchedAgents: string[] = [];
-        const missingAgents: string[] = [];
-        const preview: Array<{
-          agentId: string;
-          role: BusinessTeamRole;
-          mode: BusinessEquipMode;
-          beforeSkills: string[];
-          afterSkills: string[];
-        }> = [];
-        const nextList = currentList.map((entry) => {
-          const row = asRecord(entry);
-          const id = typeof row.id === "string" ? row.id.trim() : "";
-          if (!id || !targetByAgentId.has(id)) return row;
-          const targetSkills = targetByAgentId.get(id) ?? [];
-          const existingSkills = Array.isArray(row.skills)
-            ? row.skills.filter((item): item is string => typeof item === "string")
-            : [];
-          const nextSkills = applyAgentSkillsByMode(existingSkills, targetSkills, mode);
-          touchedAgents.push(id);
-          preview.push({
-            agentId: id,
-            role: id === pmAgent.agentId ? "biz_pm" : "biz_executor",
-            mode,
-            beforeSkills: existingSkills,
-            afterSkills: nextSkills,
-          });
-          return { ...row, skills: nextSkills };
+    .action(async (opts: { teamId: string; mode: string; dryRun?: boolean; json?: boolean }) => {
+      ensureCommandPermission("team.business.write");
+      const mode = opts.mode.trim() as BusinessEquipMode;
+      if (mode !== "replace_minimum" && mode !== "append_only") {
+        fail(`invalid_mode:${opts.mode}`);
+      }
+      const company = await store.readCompanyModel();
+      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+      const pmAgent = company.agents.find(
+        (entry) => entry.projectId === projectId && entry.role === "biz_pm",
+      );
+      const executorAgent = company.agents.find(
+        (entry) => entry.projectId === projectId && entry.role === "biz_executor",
+      );
+      if (!pmAgent || !executorAgent) {
+        fail(`business_agents_missing:${opts.teamId}`);
+      }
+      const targets = buildTeamBusinessSkillTargets(project);
+      const targetByAgentId = new Map<string, string[]>([
+        [pmAgent.agentId, targets.pmSkills],
+        [executorAgent.agentId, targets.executorSkills],
+      ]);
+      const openclawConfig = await store.readOpenclawConfig();
+      const agentsNode = asRecord(openclawConfig.agents);
+      const currentList = Array.isArray(agentsNode.list) ? [...agentsNode.list] : [];
+      const touchedAgents: string[] = [];
+      const missingAgents: string[] = [];
+      const preview: Array<{
+        agentId: string;
+        role: BusinessTeamRole;
+        mode: BusinessEquipMode;
+        beforeSkills: string[];
+        afterSkills: string[];
+      }> = [];
+      const nextList = currentList.map((entry) => {
+        const row = asRecord(entry);
+        const id = typeof row.id === "string" ? row.id.trim() : "";
+        if (!id || !targetByAgentId.has(id)) return row;
+        const targetSkills = targetByAgentId.get(id) ?? [];
+        const existingSkills = Array.isArray(row.skills)
+          ? row.skills.filter((item): item is string => typeof item === "string")
+          : [];
+        const nextSkills = applyAgentSkillsByMode(existingSkills, targetSkills, mode);
+        touchedAgents.push(id);
+        preview.push({
+          agentId: id,
+          role: id === pmAgent.agentId ? "biz_pm" : "biz_executor",
+          mode,
+          beforeSkills: existingSkills,
+          afterSkills: nextSkills,
         });
-        for (const agentId of [pmAgent.agentId, executorAgent.agentId]) {
-          if (!touchedAgents.includes(agentId)) missingAgents.push(agentId);
-        }
-        if (!opts.dryRun) {
-          const nextConfig = {
-            ...openclawConfig,
-            agents: { ...agentsNode, list: nextList },
-          } as Record<string, unknown>;
-          await store.writeOpenclawConfig(nextConfig);
-        }
-        formatOutput(
-          opts.json ? "json" : "text",
-          { ok: true, teamId: opts.teamId, projectId, mode, dryRun: Boolean(opts.dryRun), touchedAgents, missingAgents, preview },
-          `Equipped skills for ${opts.teamId}: touched=${touchedAgents.length} missing=${missingAgents.length} dryRun=${opts.dryRun ? "yes" : "no"}`,
-        );
-      },
-    );
+        return { ...row, skills: nextSkills };
+      });
+      for (const agentId of [pmAgent.agentId, executorAgent.agentId]) {
+        if (!touchedAgents.includes(agentId)) missingAgents.push(agentId);
+      }
+      if (!opts.dryRun) {
+        const nextConfig = {
+          ...openclawConfig,
+          agents: { ...agentsNode, list: nextList },
+        } as Record<string, unknown>;
+        await store.writeOpenclawConfig(nextConfig);
+      }
+      formatOutput(
+        opts.json ? "json" : "text",
+        {
+          ok: true,
+          teamId: opts.teamId,
+          projectId,
+          mode,
+          dryRun: Boolean(opts.dryRun),
+          touchedAgents,
+          missingAgents,
+          preview,
+        },
+        `Equipped skills for ${opts.teamId}: touched=${touchedAgents.length} missing=${missingAgents.length} dryRun=${opts.dryRun ? "yes" : "no"}`,
+      );
+    });
 
   business
     .command("sync-workspace-skills")
@@ -348,8 +386,12 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
       ensureCommandPermission("team.business.write");
       const company = await store.readCompanyModel();
       const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
-      const pmAgent = company.agents.find((entry) => entry.projectId === projectId && entry.role === "biz_pm");
-      const executorAgent = company.agents.find((entry) => entry.projectId === projectId && entry.role === "biz_executor");
+      const pmAgent = company.agents.find(
+        (entry) => entry.projectId === projectId && entry.role === "biz_pm",
+      );
+      const executorAgent = company.agents.find(
+        (entry) => entry.projectId === projectId && entry.role === "biz_executor",
+      );
       if (!pmAgent || !executorAgent) fail(`business_agents_missing:${opts.teamId}`);
       const targets = buildTeamBusinessSkillTargets(project);
       const targetByAgentId = new Map<string, string[]>([
@@ -371,7 +413,11 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
       }> = [];
       const missingAgents: string[] = [];
       for (const [agentId, targetSkills] of targetByAgentId.entries()) {
-        const workspacePath = tryResolveWorkspaceFromOpenclawConfig(openclawConfig, stateRoot, agentId);
+        const workspacePath = tryResolveWorkspaceFromOpenclawConfig(
+          openclawConfig,
+          stateRoot,
+          agentId,
+        );
         const hasWorkspace = await pathExists(workspacePath);
         const existingSkillDirs = hasWorkspace
           ? await readdir(path.join(workspacePath, "skills")).catch(() => [] as string[])
@@ -395,7 +441,9 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
             await cp(sourcePath, destinationPath, { recursive: true, force: true });
           }
         }
-        const staleWorkspaceSkills = existingSkillDirs.filter((skillId) => !targetSkills.includes(skillId));
+        const staleWorkspaceSkills = existingSkillDirs.filter(
+          (skillId) => !targetSkills.includes(skillId),
+        );
         rows.push({
           agentId,
           role: agentId === pmAgent.agentId ? "biz_pm" : "biz_executor",
@@ -409,7 +457,14 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
       }
       formatOutput(
         opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, projectId, dryRun: Boolean(opts.dryRun), missingAgents, rows },
+        {
+          ok: true,
+          teamId: opts.teamId,
+          projectId,
+          dryRun: Boolean(opts.dryRun),
+          missingAgents,
+          rows,
+        },
         `Synced workspace skills for ${opts.teamId}: copied=${rows.reduce((sum, row) => sum + row.copiedSkills.length, 0)} dryRun=${opts.dryRun ? "yes" : "no"}`,
       );
     });
@@ -428,9 +483,11 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
       const iso = (value: number): string => new Date(value).toISOString();
       const teamAgents = company.agents.filter((entry) => entry.projectId === projectId);
       const pmAgentId =
-        teamAgents.find((entry) => entry.role === "biz_pm")?.agentId ?? `${toSlug(project.name) || "team"}-pm`;
+        teamAgents.find((entry) => entry.role === "biz_pm")?.agentId ??
+        `${toSlug(project.name) || "team"}-pm`;
       const executorAgentId =
-        teamAgents.find((entry) => entry.role === "biz_executor")?.agentId ?? `${toSlug(project.name) || "team"}-executor`;
+        teamAgents.find((entry) => entry.role === "biz_executor")?.agentId ??
+        `${toSlug(project.name) || "team"}-executor`;
       const artefactVideoPath = `workspace-${executorAgentId}/artifacts/affiliate/veo-demo-v1.mp4`;
       const artefactCaptionPath = `workspace-${executorAgentId}/artifacts/affiliate/caption-demo-v1.txt`;
       const nextProject = {
@@ -525,7 +582,8 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
           status: "todo" as BoardTaskStatus,
           priority: "medium" as BoardTaskPriority,
           ownerAgentId: pmAgentId,
-          detail: "Record clicks, ordered_items, shipped_items, conversion_rate, revenue_cents, commission_cents.",
+          detail:
+            "Record clicks, ordered_items, shipped_items, conversion_rate, revenue_cents, commission_cents.",
         },
       ];
       let boardSeeded = false;
@@ -548,10 +606,42 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
           // Optional in seed path
         }
       }
-      await tryLogCliActivity({ projectId, teamId: opts.teamId.trim(), actorAgentId: pmAgentId, activityType: "planning", label: "seed_demo_planning", detail: "PM seeded affiliate marketing demo narrative.", source: "team.business.seed-demo" });
-      await tryLogCliActivity({ projectId, teamId: opts.teamId.trim(), actorAgentId: executorAgentId, activityType: "research", label: "seed_demo_research", detail: "Research task seeded with affiliate shortlist.", source: "team.business.seed-demo" });
-      await tryLogCliActivity({ projectId, teamId: opts.teamId.trim(), actorAgentId: executorAgentId, activityType: "executing", label: "seed_demo_video_generated", detail: `Generated demo artifact at ${artefactVideoPath} via infsh CLI simulation.`, source: "team.business.seed-demo" });
-      await tryLogCliActivity({ projectId, teamId: opts.teamId.trim(), actorAgentId: executorAgentId, activityType: "distributing", label: "seed_demo_distribution_ready", detail: `Distribution task prepared with caption artifact ${artefactCaptionPath}.`, source: "team.business.seed-demo" });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        actorAgentId: pmAgentId,
+        activityType: "planning",
+        label: "seed_demo_planning",
+        detail: "PM seeded affiliate marketing demo narrative.",
+        source: "team.business.seed-demo",
+      });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        actorAgentId: executorAgentId,
+        activityType: "research",
+        label: "seed_demo_research",
+        detail: "Research task seeded with affiliate shortlist.",
+        source: "team.business.seed-demo",
+      });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        actorAgentId: executorAgentId,
+        activityType: "executing",
+        label: "seed_demo_video_generated",
+        detail: `Generated demo artifact at ${artefactVideoPath} via infsh CLI simulation.`,
+        source: "team.business.seed-demo",
+      });
+      await tryLogCliActivity({
+        projectId,
+        teamId: opts.teamId.trim(),
+        actorAgentId: executorAgentId,
+        activityType: "distributing",
+        label: "seed_demo_distribution_ready",
+        detail: `Distribution task prepared with caption artifact ${artefactCaptionPath}.`,
+        source: "team.business.seed-demo",
+      });
       formatOutput(
         opts.json ? "json" : "text",
         {
@@ -559,7 +649,10 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
           teamId: opts.teamId,
           projectId,
           boardSeeded,
-          seededTasks: seededBoardTasks.map((task) => ({ taskId: task.taskId, status: task.status })),
+          seededTasks: seededBoardTasks.map((task) => ({
+            taskId: task.taskId,
+            status: task.status,
+          })),
           seededArtifacts: [artefactVideoPath, artefactCaptionPath],
         },
         `Seeded demo business data for ${opts.teamId} (board=${boardSeeded ? "yes" : "no"})`,
@@ -571,31 +664,53 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
   business
     .command("generate-lamp-videos")
     .requiredOption("--team-id <teamId>", "Team id (team-*)")
-    .option("--count <count>", "Number of videos to generate", (value) => {
-      const parsed = Number.parseInt(value, 10);
-      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 10) fail(`invalid_count:${value}`);
-      return parsed;
-    }, 2)
+    .option(
+      "--count <count>",
+      "Number of videos to generate",
+      (value) => {
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isFinite(parsed) || parsed < 1 || parsed > 10) fail(`invalid_count:${value}`);
+        return parsed;
+      },
+      2,
+    )
     .option("--model <model>", "infsh model id", "google/veo-3-1-fast")
-    .option("--spend-per-video-cents <amount>", "Ledger spend per video", (value) => {
-      const parsed = Number.parseInt(value, 10);
-      if (!Number.isFinite(parsed) || parsed < 0) fail(`invalid_spend_per_video_cents:${value}`);
-      return parsed;
-    }, 120)
+    .option(
+      "--spend-per-video-cents <amount>",
+      "Ledger spend per video",
+      (value) => {
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isFinite(parsed) || parsed < 0) fail(`invalid_spend_per_video_cents:${value}`);
+        return parsed;
+      },
+      120,
+    )
     .option("--simulate", "Create deterministic local artifacts without running infsh", false)
     .option("--json", "Output JSON", false)
     .action(
-      async (opts: { teamId: string; count: number; model: string; spendPerVideoCents: number; simulate?: boolean; json?: boolean }) => {
+      async (opts: {
+        teamId: string;
+        count: number;
+        model: string;
+        spendPerVideoCents: number;
+        simulate?: boolean;
+        json?: boolean;
+      }) => {
         ensureCommandPermission("team.business.write");
         const company = await store.readCompanyModel();
         const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
         const executorAgent =
-          company.agents.find((entry) => entry.projectId === projectId && entry.role === "biz_executor") ??
-          company.agents.find((entry) => entry.projectId === projectId);
+          company.agents.find(
+            (entry) => entry.projectId === projectId && entry.role === "biz_executor",
+          ) ?? company.agents.find((entry) => entry.projectId === projectId);
         if (!executorAgent) fail(`team_executor_missing:${opts.teamId}`);
         const stateRoot = resolveOpenclawStateRoot();
         const openclawConfig = await store.readOpenclawConfig();
-        const workspacePath = tryResolveWorkspaceFromOpenclawConfig(openclawConfig, stateRoot, executorAgent.agentId);
+        const workspacePath = tryResolveWorkspaceFromOpenclawConfig(
+          openclawConfig,
+          stateRoot,
+          executorAgent.agentId,
+        );
         const videoDir = path.join(workspacePath, "projects", projectId, "affiliate", "videos");
         await mkdir(videoDir, { recursive: true });
         const createdArtifacts: Array<{
@@ -620,9 +735,12 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
             sourceRef = "simulated://local-video";
           } else {
             const generation = await runInfshVideoGeneration(opts.model.trim(), prompt);
-            const preferredRef = generation.refs.find((ref) => /\.mp4(\?.*)?$/i.test(ref)) ?? generation.refs[0] ?? "";
+            const preferredRef =
+              generation.refs.find((ref) => /\.mp4(\?.*)?$/i.test(ref)) ?? generation.refs[0] ?? "";
             if (!preferredRef) {
-              fail(`infsh_video_ref_missing:variant=${variant}:stdout=${generation.stdout.slice(0, 200)}`);
+              fail(
+                `infsh_video_ref_missing:variant=${variant}:stdout=${generation.stdout.slice(0, 200)}`,
+              );
             }
             sourceRef = preferredRef;
             if (/^https?:\/\//i.test(preferredRef)) {
@@ -631,7 +749,9 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
               const bytes = Buffer.from(await response.arrayBuffer());
               await writeFile(videoPath, bytes);
             } else {
-              const resolvedRef = preferredRef.startsWith("/") ? preferredRef : path.resolve(preferredRef);
+              const resolvedRef = preferredRef.startsWith("/")
+                ? preferredRef
+                : path.resolve(preferredRef);
               if (!(await pathExists(resolvedRef))) fail(`video_path_not_found:${preferredRef}`);
               await cp(resolvedRef, videoPath, { force: true });
             }
@@ -721,7 +841,16 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
         });
         formatOutput(
           opts.json ? "json" : "text",
-          { ok: true, teamId: opts.teamId, projectId, model: opts.model.trim(), count: opts.count, simulated: Boolean(opts.simulate), totalSpendCents: totalSpend, artifacts: createdArtifacts },
+          {
+            ok: true,
+            teamId: opts.teamId,
+            projectId,
+            model: opts.model.trim(),
+            count: opts.count,
+            simulated: Boolean(opts.simulate),
+            totalSpendCents: totalSpend,
+            artifacts: createdArtifacts,
+          },
           `Generated ${createdArtifacts.length} lamp videos for ${opts.teamId} (${opts.simulate ? "simulated" : "infsh"})`,
         );
       },

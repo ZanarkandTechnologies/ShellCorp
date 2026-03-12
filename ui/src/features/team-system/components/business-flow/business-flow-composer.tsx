@@ -55,7 +55,9 @@ const SLOT_THEME: Record<BusinessSlotKey, string> = {
   distribute: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
 };
 
-const SkillNode = memo(function SkillNode({ data }: NodeProps<Node<SkillNodeData>["data"]>): React.JSX.Element {
+const SkillNode = memo(function SkillNode({
+  data,
+}: NodeProps<Node<SkillNodeData>["data"]>): React.JSX.Element {
   const slot = data.slot;
   return (
     <div
@@ -66,36 +68,68 @@ const SkillNode = memo(function SkillNode({ data }: NodeProps<Node<SkillNodeData
       <Handle type="source" position={Position.Right} className="h-2 w-2 !border-0 !bg-primary" />
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">Capability Skill</p>
-        <span className={`rounded-md border px-2 py-0.5 text-[10px] uppercase tracking-wide ${SLOT_THEME[slot]}`}>{slot}</span>
+        <span
+          className={`rounded-md border px-2 py-0.5 text-[10px] uppercase tracking-wide ${SLOT_THEME[slot]}`}
+        >
+          {slot}
+        </span>
       </div>
       <p className="mt-2 text-sm font-semibold">{data.title}</p>
-      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{data.skillsText || "No active skills selected yet."}</p>
+      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+        {data.skillsText || "No active skills selected yet."}
+      </p>
     </div>
   );
 });
 
-const CoreNode = memo(function CoreNode({ data }: NodeProps<Node<CoreNodeData>["data"]>): React.JSX.Element {
+const CoreNode = memo(function CoreNode({
+  data,
+}: NodeProps<Node<CoreNodeData>["data"]>): React.JSX.Element {
   return (
     <div className="min-w-[340px] rounded-xl border border-primary/50 bg-card/95 p-4 shadow-lg ring-1 ring-primary/30">
-      <Handle id="measure-in" type="target" position={Position.Left} style={{ top: "33%" }} className="h-2.5 w-2.5 !border-0 !bg-sky-400" />
-      <Handle id="execute-in" type="target" position={Position.Left} style={{ top: "50%" }} className="h-2.5 w-2.5 !border-0 !bg-amber-400" />
-      <Handle id="distribute-in" type="target" position={Position.Left} style={{ top: "67%" }} className="h-2.5 w-2.5 !border-0 !bg-emerald-400" />
+      <Handle
+        id="measure-in"
+        type="target"
+        position={Position.Left}
+        style={{ top: "33%" }}
+        className="h-2.5 w-2.5 !border-0 !bg-sky-400"
+      />
+      <Handle
+        id="execute-in"
+        type="target"
+        position={Position.Left}
+        style={{ top: "50%" }}
+        className="h-2.5 w-2.5 !border-0 !bg-amber-400"
+      />
+      <Handle
+        id="distribute-in"
+        type="target"
+        position={Position.Left}
+        style={{ top: "67%" }}
+        className="h-2.5 w-2.5 !border-0 !bg-emerald-400"
+      />
       <div className="mb-3 flex items-center justify-between">
         <p className="text-xs uppercase tracking-wider text-primary">Business Core</p>
-        <span className="rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-primary">n8n style</span>
+        <span className="rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-primary">
+          n8n style
+        </span>
       </div>
       <div className="space-y-1.5 text-xs">
         <p>
-          <span className="text-muted-foreground">Plan:</span> <span className="font-medium">{data.planLabel}</span>
+          <span className="text-muted-foreground">Plan:</span>{" "}
+          <span className="font-medium">{data.planLabel}</span>
         </p>
         <p>
-          <span className="text-muted-foreground">Execute:</span> <span className="font-medium">{data.execute}</span>
+          <span className="text-muted-foreground">Execute:</span>{" "}
+          <span className="font-medium">{data.execute}</span>
         </p>
         <p>
-          <span className="text-muted-foreground">Measure:</span> <span className="font-medium">{data.measure}</span>
+          <span className="text-muted-foreground">Measure:</span>{" "}
+          <span className="font-medium">{data.measure}</span>
         </p>
         <p>
-          <span className="text-muted-foreground">Distribute:</span> <span className="font-medium">{data.distribute}</span>
+          <span className="text-muted-foreground">Distribute:</span>{" "}
+          <span className="font-medium">{data.distribute}</span>
         </p>
       </div>
     </div>
@@ -191,7 +225,10 @@ export function BusinessFlowComposer({
   capabilitySkills,
   onSelectSlot,
 }: BusinessFlowComposerProps): React.JSX.Element {
-  const nodes = useMemo(() => createNodes(capabilitySkills, selectedSlot), [capabilitySkills, selectedSlot]);
+  const nodes = useMemo(
+    () => createNodes(capabilitySkills, selectedSlot),
+    [capabilitySkills, selectedSlot],
+  );
   const edges = useMemo(() => createEdges(), []);
   const nodeTypes = useMemo(
     () => ({

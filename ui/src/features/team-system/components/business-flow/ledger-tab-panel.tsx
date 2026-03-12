@@ -26,10 +26,19 @@ import { BusinessAccountSummaryCard } from "./business-account-summary-card";
 interface LedgerTabPanelProps {
   account: ProjectAccountModel;
   events: ProjectAccountEventModel[];
-  onRecordEvent: (input: { type: "credit" | "debit"; amountCents: number; source: string; note?: string }) => Promise<void>;
+  onRecordEvent: (input: {
+    type: "credit" | "debit";
+    amountCents: number;
+    source: string;
+    note?: string;
+  }) => Promise<void>;
 }
 
-export function LedgerTabPanel({ account, events, onRecordEvent }: LedgerTabPanelProps): React.JSX.Element {
+export function LedgerTabPanel({
+  account,
+  events,
+  onRecordEvent,
+}: LedgerTabPanelProps): React.JSX.Element {
   const [source, setSource] = useState("");
   const [note, setNote] = useState("");
   const [amount, setAmount] = useState("");
@@ -40,7 +49,8 @@ export function LedgerTabPanel({ account, events, onRecordEvent }: LedgerTabPane
     [account.currency],
   );
   const sortedEvents = useMemo(
-    () => [...events].sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp)),
+    () =>
+      [...events].sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp)),
     [events],
   );
 
@@ -83,17 +93,32 @@ export function LedgerTabPanel({ account, events, onRecordEvent }: LedgerTabPane
           </div>
           <div className="space-y-1">
             <Label htmlFor="ledger-source">Source</Label>
-            <Input id="ledger-source" value={source} onChange={(event) => setSource(event.target.value)} placeholder="seed_capital" />
+            <Input
+              id="ledger-source"
+              value={source}
+              onChange={(event) => setSource(event.target.value)}
+              placeholder="seed_capital"
+            />
           </div>
           <div className="space-y-1 md:col-span-2">
             <Label htmlFor="ledger-note">Note</Label>
-            <Input id="ledger-note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Initial funding" />
+            <Input
+              id="ledger-note"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Initial funding"
+            />
           </div>
           <div className="flex items-end gap-2 md:col-span-4">
             <Button type="button" onClick={() => submit("credit")} disabled={isSaving}>
               Fund Account
             </Button>
-            <Button type="button" variant="outline" onClick={() => submit("debit")} disabled={isSaving}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => submit("debit")}
+              disabled={isSaving}
+            >
               Record Spend
             </Button>
           </div>
@@ -108,8 +133,16 @@ export function LedgerTabPanel({ account, events, onRecordEvent }: LedgerTabPane
             {sortedEvents.map((event) => (
               <div key={event.id} className="rounded-md border bg-muted/10 p-2">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">{new Date(event.timestamp).toLocaleString()}</p>
-                  <p className={event.type === "credit" ? "font-semibold text-emerald-500" : "font-semibold text-red-500"}>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(event.timestamp).toLocaleString()}
+                  </p>
+                  <p
+                    className={
+                      event.type === "credit"
+                        ? "font-semibold text-emerald-500"
+                        : "font-semibold text-red-500"
+                    }
+                  >
                     {event.type === "credit" ? "+" : "-"}
                     {formatter.format(event.amountCents / 100)}
                   </p>
@@ -121,7 +154,9 @@ export function LedgerTabPanel({ account, events, onRecordEvent }: LedgerTabPane
                 </p>
               </div>
             ))}
-            {sortedEvents.length === 0 ? <p className="text-xs text-muted-foreground">No account events yet.</p> : null}
+            {sortedEvents.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No account events yet.</p>
+            ) : null}
           </div>
         </CardContent>
       </Card>

@@ -93,12 +93,15 @@ export function BusinessSkillLibrary({
         </div>
         <div className="rounded-md border bg-muted/20 p-2 text-xs">
           Assigning to <span className="font-medium">{selectedSlot}</span>:{" "}
-          <span className="text-muted-foreground">{currentSkills[selectedSlot] || "not-set"}</span> (multi-select)
+          <span className="text-muted-foreground">{currentSkills[selectedSlot] || "not-set"}</span>{" "}
+          (multi-select)
         </div>
         <div className="space-y-3">
           {SKILL_LIBRARY.map((section) => (
             <div key={section.category} className="space-y-2">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">{section.category}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                {section.category}
+              </p>
               <div className="flex flex-wrap gap-2">
                 {section.skills.map((skillId) => (
                   <button
@@ -112,7 +115,11 @@ export function BusinessSkillLibrary({
                         : "bg-background hover:bg-muted"
                     }`}
                     onClick={() => {
-                      if (section.category === "measure" || section.category === "execute" || section.category === "distribute") {
+                      if (
+                        section.category === "measure" ||
+                        section.category === "execute" ||
+                        section.category === "distribute"
+                      ) {
                         onSelectSlot(section.category);
                         onToggleSkill(section.category, skillId);
                       }

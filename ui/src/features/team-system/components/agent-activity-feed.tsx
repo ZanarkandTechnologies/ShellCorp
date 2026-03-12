@@ -5,7 +5,13 @@ import { useQuery } from "convex/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAppStore } from "@/lib/app-store";
 import { api } from "../../../../../convex/_generated/api";
@@ -113,7 +119,9 @@ export function AgentActivityFeed({ teamId, candidates }: AgentActivityFeedProps
     if (!feedPage) return;
     setPages((current) => {
       const seen = current.some(
-        (page) => page.nextBeforeTs === feedPage.nextBeforeTs && page.events.length === feedPage.events.length,
+        (page) =>
+          page.nextBeforeTs === feedPage.nextBeforeTs &&
+          page.events.length === feedPage.events.length,
       );
       return seen ? current : [...current, feedPage];
     });
@@ -187,7 +195,10 @@ export function AgentActivityFeed({ teamId, candidates }: AgentActivityFeedProps
             </SelectContent>
           </Select>
           <label className="ml-1 flex items-center gap-2 text-xs text-muted-foreground">
-            <Checkbox checked={beatsOnly} onCheckedChange={(value) => setBeatsOnly(Boolean(value))} />
+            <Checkbox
+              checked={beatsOnly}
+              onCheckedChange={(value) => setBeatsOnly(Boolean(value))}
+            />
             Beat-tagged
           </label>
         </div>
@@ -215,10 +226,14 @@ export function AgentActivityFeed({ teamId, candidates }: AgentActivityFeedProps
                     </Badge>
                   ) : null}
                 </div>
-                <span className="text-xs text-muted-foreground">{formatRelative(event.occurredAt)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatRelative(event.occurredAt)}
+                </span>
               </div>
               <p className="font-medium">{event.label}</p>
-              {event.detail ? <p className="text-xs text-muted-foreground">{event.detail}</p> : null}
+              {event.detail ? (
+                <p className="text-xs text-muted-foreground">{event.detail}</p>
+              ) : null}
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                 <span>{formatTs(event.occurredAt)}</span>
                 {event.taskId ? <span>task: {event.taskId}</span> : null}
@@ -239,12 +254,15 @@ export function AgentActivityFeed({ teamId, candidates }: AgentActivityFeedProps
             </div>
           ))}
           {visibleEvents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No events found for current filters.
-            </p>
+            <p className="text-sm text-muted-foreground">No events found for current filters.</p>
           ) : null}
           {canLoadMore ? (
-            <Button size="sm" variant="outline" className="w-full" onClick={() => setBeforeTs(lastPage?.nextBeforeTs)}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={() => setBeforeTs(lastPage?.nextBeforeTs)}
+            >
               Load Older
             </Button>
           ) : null}

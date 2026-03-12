@@ -23,7 +23,10 @@ import { BusinessFlowComposer } from "./business-flow/business-flow-composer";
 import { BusinessReadinessPanel } from "./business-flow/business-readiness-panel";
 import { BusinessSkillLibrary, type BusinessSlotKey } from "./business-flow/business-skill-library";
 import { ResourcesSection } from "./business-flow/resources-section";
-import { TeamSkillEquipMatrix, type TeamSkillEquipRow } from "./business-flow/team-skill-equip-matrix";
+import {
+  TeamSkillEquipMatrix,
+  type TeamSkillEquipRow,
+} from "./business-flow/team-skill-equip-matrix";
 import type { BusinessBuilderDraft } from "@/lib/business-builder";
 import type { BusinessReadinessIssue } from "@/lib/business-builder";
 
@@ -88,17 +91,11 @@ export function BusinessTab({
                 {saveState.pending ? "Saving..." : "Save Business Config"}
               </Button>
             </div>
-            {saveState.error ? (
-              <p className="text-sm text-destructive">{saveState.error}</p>
-            ) : null}
-            {saveState.ok ? (
-              <p className="text-sm text-emerald-500">{saveState.ok}</p>
-            ) : null}
+            {saveState.error ? <p className="text-sm text-destructive">{saveState.error}</p> : null}
+            {saveState.ok ? <p className="text-sm text-emerald-500">{saveState.ok}</p> : null}
             <Card className="border-dashed">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">
-                  Tracking &amp; Metrics Context
-                </CardTitle>
+                <CardTitle className="text-sm">Tracking &amp; Metrics Context</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 <Textarea
@@ -108,26 +105,22 @@ export function BusinessTab({
                   className="min-h-28"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use `shellcorp team business context set --team-id ... --text
-                  ...` to update this from CLI.
+                  Use `shellcorp team business context set --team-id ... --text ...` to update this
+                  from CLI.
                 </p>
               </CardContent>
             </Card>
           </CardContent>
         </Card>
 
-        <BusinessReadinessPanel
-          issues={readinessIssues}
-          fallbackReady={fallbackReady}
-        />
+        <BusinessReadinessPanel issues={readinessIssues} fallbackReady={fallbackReady} />
 
         <TeamSkillEquipMatrix rows={teamSkillRows} />
 
         <Card>
           <CardContent className="flex items-center justify-between gap-3 pt-4 text-sm">
             <span>
-              Active Experiments: <strong>{activeExperimentCount}</strong>{" "}
-              running
+              Active Experiments: <strong>{activeExperimentCount}</strong> running
             </span>
             <Button variant="outline" size="sm" onClick={onViewProjects}>
               View in Projects
@@ -140,8 +133,7 @@ export function BusinessTab({
         {!hasBusinessConfig ? (
           <Card>
             <CardContent className="pt-4 text-sm text-muted-foreground">
-              Configure capability slots in the flow and save to initialize
-              business orchestration.
+              Configure capability slots in the flow and save to initialize business orchestration.
             </CardContent>
           </Card>
         ) : null}

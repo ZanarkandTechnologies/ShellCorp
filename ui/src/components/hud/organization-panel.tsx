@@ -3,7 +3,13 @@
 import { useMemo, useState } from "react";
 import type { Id } from "@/lib/entity-types";
 import { Building2, Briefcase, MapPin, Search, User, UserSearch, Users } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,16 +35,32 @@ function CreateTeamTabContent({ onDone }: { onDone?: () => void }): React.JSX.El
 
 function RecruitAgentTabContent({ canOpen }: { canOpen: boolean }): React.JSX.Element {
   if (!canOpen) {
-    return <p className="text-sm text-muted-foreground">Recruit Agent is unavailable in the current backend mode.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        Recruit Agent is unavailable in the current backend mode.
+      </p>
+    );
   }
-  return <p className="text-sm text-muted-foreground">Recruit Agent is temporarily unavailable in WS-only mode.</p>;
+  return (
+    <p className="text-sm text-muted-foreground">
+      Recruit Agent is temporarily unavailable in WS-only mode.
+    </p>
+  );
 }
 
 function ManageTeamsTabContent({ canOpen }: { canOpen: boolean }): React.JSX.Element {
   if (!canOpen) {
-    return <p className="text-sm text-muted-foreground">Manage Teams is unavailable in the current backend mode.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        Manage Teams is unavailable in the current backend mode.
+      </p>
+    );
   }
-  return <p className="text-sm text-muted-foreground">Manage Teams is temporarily unavailable in WS-only mode.</p>;
+  return (
+    <p className="text-sm text-muted-foreground">
+      Manage Teams is temporarily unavailable in WS-only mode.
+    </p>
+  );
 }
 
 function DirectoryTabContent(): React.JSX.Element {
@@ -105,16 +127,27 @@ function DirectoryTabContent(): React.JSX.Element {
               <div className="flex items-center gap-2 px-1">
                 <Users className="h-4 w-4 text-muted-foreground" />
                 <h3 className="text-sm font-semibold text-muted-foreground">{teamName}</h3>
-                <Badge variant="secondary" className="ml-auto">{teamEmployees.length}</Badge>
+                <Badge variant="secondary" className="ml-auto">
+                  {teamEmployees.length}
+                </Badge>
               </div>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {teamEmployees.map((employee) => (
-                  <Card key={employee._id} className={cn(highlightedEmployeeIds.has(employee._id) ? "ring-2 ring-primary" : undefined)}>
+                  <Card
+                    key={employee._id}
+                    className={cn(
+                      highlightedEmployeeIds.has(employee._id) ? "ring-2 ring-primary" : undefined,
+                    )}
+                  >
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center gap-2 text-base">
                         <User className="h-4 w-4 text-muted-foreground" />
                         {employee.name}
-                        {employee.isCEO ? <Badge variant="default" className="text-xs">CEO</Badge> : null}
+                        {employee.isCEO ? (
+                          <Badge variant="default" className="text-xs">
+                            CEO
+                          </Badge>
+                        ) : null}
                       </CardTitle>
                       {employee.jobTitle ? (
                         <CardDescription className="flex items-center gap-2">
@@ -125,7 +158,11 @@ function DirectoryTabContent(): React.JSX.Element {
                     </CardHeader>
                     <CardContent className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">{employee.team}</span>
-                      <Button size="sm" variant="outline" onClick={() => handleLocate(employee._id)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleLocate(employee._id)}
+                      >
                         <MapPin className="mr-1 h-3 w-3" />
                         {highlightedEmployeeIds.has(employee._id) ? "Locating..." : "Locate"}
                       </Button>
@@ -138,7 +175,9 @@ function DirectoryTabContent(): React.JSX.Element {
         )}
       </div>
       <div className="flex items-center justify-between border-t pt-3 text-sm text-muted-foreground">
-        <span>Showing {filteredEmployees.length} of {employees.length} employees</span>
+        <span>
+          Showing {filteredEmployees.length} of {employees.length} employees
+        </span>
         {highlightedEmployeeIds.size > 0 ? (
           <span className="text-primary">Employee highlighted in scene</span>
         ) : null}
@@ -161,9 +200,7 @@ export function OrganizationPanel({
             <Building2 className="h-5 w-5" />
             Organization
           </DialogTitle>
-          <DialogDescription>
-            Team and people operations in one panel.
-          </DialogDescription>
+          <DialogDescription>Team and people operations in one panel.</DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="create-team" className="w-full">

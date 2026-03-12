@@ -36,4 +36,3 @@ describe("board_contract", () => {
     expect(coerceActivityEventType("invalid")).toBeUndefined();
   });
 });
-

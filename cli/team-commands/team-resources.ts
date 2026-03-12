@@ -40,18 +40,28 @@ export function registerTeamResources(team: Command, store: SidecarStore): void 
         { ok: true, teamId: opts.teamId, projectId, resources: rows },
         rows.length === 0
           ? `${opts.teamId} has no resources`
-          : rows.map((entry) => `${entry.id} | ${entry.type} | ${entry.remaining}/${entry.limit} ${entry.unit}`).join("\n"),
+          : rows
+              .map(
+                (entry) =>
+                  `${entry.id} | ${entry.type} | ${entry.remaining}/${entry.limit} ${entry.unit}`,
+              )
+              .join("\n"),
       );
     });
 
   resources
     .command("events")
     .requiredOption("--team-id <teamId>", "Team id (team-*)")
-    .option("--limit <limit>", "Max events to show", (value) => {
-      const parsed = Number.parseInt(value, 10);
-      if (!Number.isFinite(parsed) || parsed < 1) fail(`invalid_limit:${value}`);
-      return parsed;
-    }, 20)
+    .option(
+      "--limit <limit>",
+      "Max events to show",
+      (value) => {
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isFinite(parsed) || parsed < 1) fail(`invalid_limit:${value}`);
+        return parsed;
+      },
+      20,
+    )
     .option("--json", "Output JSON", false)
     .action(async (opts: { teamId: string; limit: number; json?: boolean }) => {
       ensureCommandPermission("team.read");
@@ -63,7 +73,12 @@ export function registerTeamResources(team: Command, store: SidecarStore): void 
         { ok: true, teamId: opts.teamId, projectId, events: rows },
         rows.length === 0
           ? `${opts.teamId} has no resource events`
-          : rows.map((entry) => `${entry.ts} | ${entry.kind} | ${entry.resourceId} | delta=${entry.delta} | after=${entry.remainingAfter}`).join("\n"),
+          : rows
+              .map(
+                (entry) =>
+                  `${entry.ts} | ${entry.kind} | ${entry.resourceId} | delta=${entry.delta} | after=${entry.remainingAfter}`,
+              )
+              .join("\n"),
       );
     });
 
@@ -154,10 +169,15 @@ export function registerTeamResources(team: Command, store: SidecarStore): void 
           projectId,
           type,
           name: opts.name?.trim() || existing?.name || type,
-          unit: opts.unit?.trim() || existing?.unit || (type === "cash_budget" ? "usd_cents" : "units"),
+          unit:
+            opts.unit?.trim() || existing?.unit || (type === "cash_budget" ? "usd_cents" : "units"),
           remaining: opts.remaining,
           limit: opts.limit,
-          ...(typeof opts.reserved === "number" ? { reserved: opts.reserved } : existing?.reserved !== undefined ? { reserved: existing.reserved } : {}),
+          ...(typeof opts.reserved === "number"
+            ? { reserved: opts.reserved }
+            : existing?.reserved !== undefined
+              ? { reserved: existing.reserved }
+              : {}),
           trackerSkillId,
           ...(typeof opts.refreshCadenceMinutes === "number"
             ? { refreshCadenceMinutes: opts.refreshCadenceMinutes }
@@ -166,9 +186,20 @@ export function registerTeamResources(team: Command, store: SidecarStore): void 
               : {}),
           policy: {
             advisoryOnly: true as const,
-            ...(typeof opts.softLimit === "number" ? { softLimit: opts.softLimit } : existing?.policy.softLimit !== undefined ? { softLimit: existing.policy.softLimit } : {}),
-            ...(typeof opts.hardLimit === "number" ? { hardLimit: opts.hardLimit } : existing?.policy.hardLimit !== undefined ? { hardLimit: existing.policy.hardLimit } : {}),
-            whenLow: (opts.whenLow === "deprioritize_expensive_tasks" || opts.whenLow === "ask_pm_review" ? opts.whenLow : "warn") as "warn" | "deprioritize_expensive_tasks" | "ask_pm_review",
+            ...(typeof opts.softLimit === "number"
+              ? { softLimit: opts.softLimit }
+              : existing?.policy.softLimit !== undefined
+                ? { softLimit: existing.policy.softLimit }
+                : {}),
+            ...(typeof opts.hardLimit === "number"
+              ? { hardLimit: opts.hardLimit }
+              : existing?.policy.hardLimit !== undefined
+                ? { hardLimit: existing.policy.hardLimit }
+                : {}),
+            whenLow: (opts.whenLow === "deprioritize_expensive_tasks" ||
+            opts.whenLow === "ask_pm_review"
+              ? opts.whenLow
+              : "warn") as "warn" | "deprioritize_expensive_tasks" | "ask_pm_review",
           },
           ...(existing?.metadata ? { metadata: existing.metadata } : {}),
         };
@@ -211,7 +242,13 @@ export function registerTeamResources(team: Command, store: SidecarStore): void 
         });
         formatOutput(
           opts.json ? "json" : "text",
-          { ok: true, teamId: opts.teamId, resourceId, remaining: nextResource.remaining, limit: nextResource.limit },
+          {
+            ok: true,
+            teamId: opts.teamId,
+            resourceId,
+            remaining: nextResource.remaining,
+            limit: nextResource.limit,
+          },
           `Updated resource '${resourceId}' for ${opts.teamId}`,
         );
       },
@@ -230,50 +267,64 @@ export function registerTeamResources(team: Command, store: SidecarStore): void 
     .option("--note <note>", "Event note")
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; resourceId: string; remaining: number; source: string; note?: string; beatId?: string; json?: boolean }) => {
-      ensureCommandPermission("team.resources.write");
-      const company = await store.readCompanyModel();
-      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
-      const existingResources = project.resources ?? defaultProjectResources(projectId);
-      const current = existingResources.find((entry) => entry.id === opts.resourceId.trim());
-      if (!current) fail(`resource_not_found:${opts.resourceId}`);
-      const nextResources = existingResources.map((entry) =>
-        entry.id === current.id ? { ...entry, remaining: opts.remaining } : entry,
-      );
-      const event: ResourceEventModel = {
-        id: `resource-event-${projectId}-${Date.now()}`,
-        projectId,
-        resourceId: current.id,
-        ts: new Date().toISOString(),
-        kind: "refresh",
-        delta: opts.remaining - current.remaining,
-        remainingAfter: opts.remaining,
-        source: opts.source,
-        ...(opts.note?.trim() ? { note: opts.note.trim() } : {}),
-      };
-      await store.writeCompanyModel({
-        ...company,
-        projects: company.projects.map((entry) =>
-          entry.id === projectId
-            ? { ...entry, resources: nextResources, resourceEvents: [...(entry.resourceEvents ?? []), event] }
-            : entry,
-        ),
-      });
-      await tryLogCliActivity({
-        projectId,
-        teamId: opts.teamId.trim(),
-        activityType: "status",
-        label: `resource_refresh:${current.id}`,
-        detail: `remaining=${opts.remaining}`,
-        source: opts.source,
-        beatId: opts.beatId,
-      });
-      formatOutput(
-        opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, resourceId: current.id, remaining: opts.remaining },
-        `Refreshed resource '${current.id}' for ${opts.teamId}`,
-      );
-    });
+    .action(
+      async (opts: {
+        teamId: string;
+        resourceId: string;
+        remaining: number;
+        source: string;
+        note?: string;
+        beatId?: string;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.resources.write");
+        const company = await store.readCompanyModel();
+        const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+        const existingResources = project.resources ?? defaultProjectResources(projectId);
+        const current = existingResources.find((entry) => entry.id === opts.resourceId.trim());
+        if (!current) fail(`resource_not_found:${opts.resourceId}`);
+        const nextResources = existingResources.map((entry) =>
+          entry.id === current.id ? { ...entry, remaining: opts.remaining } : entry,
+        );
+        const event: ResourceEventModel = {
+          id: `resource-event-${projectId}-${Date.now()}`,
+          projectId,
+          resourceId: current.id,
+          ts: new Date().toISOString(),
+          kind: "refresh",
+          delta: opts.remaining - current.remaining,
+          remainingAfter: opts.remaining,
+          source: opts.source,
+          ...(opts.note?.trim() ? { note: opts.note.trim() } : {}),
+        };
+        await store.writeCompanyModel({
+          ...company,
+          projects: company.projects.map((entry) =>
+            entry.id === projectId
+              ? {
+                  ...entry,
+                  resources: nextResources,
+                  resourceEvents: [...(entry.resourceEvents ?? []), event],
+                }
+              : entry,
+          ),
+        });
+        await tryLogCliActivity({
+          projectId,
+          teamId: opts.teamId.trim(),
+          activityType: "status",
+          label: `resource_refresh:${current.id}`,
+          detail: `remaining=${opts.remaining}`,
+          source: opts.source,
+          beatId: opts.beatId,
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId: opts.teamId, resourceId: current.id, remaining: opts.remaining },
+          `Refreshed resource '${current.id}' for ${opts.teamId}`,
+        );
+      },
+    );
 
   resources
     .command("remove")
@@ -283,47 +334,60 @@ export function registerTeamResources(team: Command, store: SidecarStore): void 
     .option("--note <note>", "Event note")
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; resourceId: string; source: string; note?: string; beatId?: string; json?: boolean }) => {
-      ensureCommandPermission("team.resources.write");
-      const company = await store.readCompanyModel();
-      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
-      const resourceId = opts.resourceId.trim();
-      const existing = (project.resources ?? []).find((entry) => entry.id === resourceId);
-      if (!existing) fail(`resource_not_found:${opts.resourceId}`);
-      const event: ResourceEventModel = {
-        id: `resource-event-${projectId}-${Date.now()}`,
-        projectId,
-        resourceId,
-        ts: new Date().toISOString(),
-        kind: "adjustment",
-        delta: -existing.remaining,
-        remainingAfter: 0,
-        source: opts.source,
-        ...(opts.note?.trim() ? { note: opts.note.trim() } : {}),
-      };
-      await store.writeCompanyModel({
-        ...company,
-        projects: company.projects.map((entry) =>
-          entry.id === projectId
-            ? {
-                ...entry,
-                resources: (entry.resources ?? []).filter((row) => row.id !== resourceId),
-                resourceEvents: [...(entry.resourceEvents ?? []), event],
-              }
-            : entry,
-        ),
-      });
-      await tryLogCliActivity({
-        projectId,
-        teamId: opts.teamId.trim(),
-        activityType: "status",
-        label: `resource_remove:${resourceId}`,
-        detail: `removed_remaining=${existing.remaining}`,
-        source: opts.source,
-        beatId: opts.beatId,
-      });
-      formatOutput(opts.json ? "json" : "text", { ok: true, teamId: opts.teamId, resourceId }, `Removed resource '${resourceId}'`);
-    });
+    .action(
+      async (opts: {
+        teamId: string;
+        resourceId: string;
+        source: string;
+        note?: string;
+        beatId?: string;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.resources.write");
+        const company = await store.readCompanyModel();
+        const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+        const resourceId = opts.resourceId.trim();
+        const existing = (project.resources ?? []).find((entry) => entry.id === resourceId);
+        if (!existing) fail(`resource_not_found:${opts.resourceId}`);
+        const event: ResourceEventModel = {
+          id: `resource-event-${projectId}-${Date.now()}`,
+          projectId,
+          resourceId,
+          ts: new Date().toISOString(),
+          kind: "adjustment",
+          delta: -existing.remaining,
+          remainingAfter: 0,
+          source: opts.source,
+          ...(opts.note?.trim() ? { note: opts.note.trim() } : {}),
+        };
+        await store.writeCompanyModel({
+          ...company,
+          projects: company.projects.map((entry) =>
+            entry.id === projectId
+              ? {
+                  ...entry,
+                  resources: (entry.resources ?? []).filter((row) => row.id !== resourceId),
+                  resourceEvents: [...(entry.resourceEvents ?? []), event],
+                }
+              : entry,
+          ),
+        });
+        await tryLogCliActivity({
+          projectId,
+          teamId: opts.teamId.trim(),
+          activityType: "status",
+          label: `resource_remove:${resourceId}`,
+          detail: `removed_remaining=${existing.remaining}`,
+          source: opts.source,
+          beatId: opts.beatId,
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId: opts.teamId, resourceId },
+          `Removed resource '${resourceId}'`,
+        );
+      },
+    );
 
   resources
     .command("reserve")
@@ -338,52 +402,66 @@ export function registerTeamResources(team: Command, store: SidecarStore): void 
     .option("--note <note>", "Event note")
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; resourceId: string; amount: number; source: string; note?: string; beatId?: string; json?: boolean }) => {
-      ensureCommandPermission("team.resources.write");
-      const company = await store.readCompanyModel();
-      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
-      const resourcesList = project.resources ?? [];
-      const current = resourcesList.find((entry) => entry.id === opts.resourceId.trim());
-      if (!current) fail(`resource_not_found:${opts.resourceId}`);
-      const currentReserved = current.reserved ?? 0;
-      const nextReserved = currentReserved + opts.amount;
-      const nextResources = resourcesList.map((entry) =>
-        entry.id === current.id ? { ...entry, reserved: nextReserved } : entry,
-      );
-      const event: ResourceEventModel = {
-        id: `resource-event-${projectId}-${Date.now()}`,
-        projectId,
-        resourceId: current.id,
-        ts: new Date().toISOString(),
-        kind: "adjustment",
-        delta: -opts.amount,
-        remainingAfter: current.remaining,
-        source: opts.source,
-        ...(opts.note?.trim() ? { note: opts.note.trim() } : {}),
-      };
-      await store.writeCompanyModel({
-        ...company,
-        projects: company.projects.map((entry) =>
-          entry.id === projectId
-            ? { ...entry, resources: nextResources, resourceEvents: [...(entry.resourceEvents ?? []), event] }
-            : entry,
-        ),
-      });
-      await tryLogCliActivity({
-        projectId,
-        teamId: opts.teamId.trim(),
-        activityType: "executing",
-        label: `resource_reserve:${current.id}`,
-        detail: `amount=${opts.amount} reserved=${nextReserved}`,
-        source: opts.source,
-        beatId: opts.beatId,
-      });
-      formatOutput(
-        opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, resourceId: current.id, reserved: nextReserved },
-        `Reserved ${opts.amount} on '${current.id}' (reserved=${nextReserved})`,
-      );
-    });
+    .action(
+      async (opts: {
+        teamId: string;
+        resourceId: string;
+        amount: number;
+        source: string;
+        note?: string;
+        beatId?: string;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.resources.write");
+        const company = await store.readCompanyModel();
+        const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+        const resourcesList = project.resources ?? [];
+        const current = resourcesList.find((entry) => entry.id === opts.resourceId.trim());
+        if (!current) fail(`resource_not_found:${opts.resourceId}`);
+        const currentReserved = current.reserved ?? 0;
+        const nextReserved = currentReserved + opts.amount;
+        const nextResources = resourcesList.map((entry) =>
+          entry.id === current.id ? { ...entry, reserved: nextReserved } : entry,
+        );
+        const event: ResourceEventModel = {
+          id: `resource-event-${projectId}-${Date.now()}`,
+          projectId,
+          resourceId: current.id,
+          ts: new Date().toISOString(),
+          kind: "adjustment",
+          delta: -opts.amount,
+          remainingAfter: current.remaining,
+          source: opts.source,
+          ...(opts.note?.trim() ? { note: opts.note.trim() } : {}),
+        };
+        await store.writeCompanyModel({
+          ...company,
+          projects: company.projects.map((entry) =>
+            entry.id === projectId
+              ? {
+                  ...entry,
+                  resources: nextResources,
+                  resourceEvents: [...(entry.resourceEvents ?? []), event],
+                }
+              : entry,
+          ),
+        });
+        await tryLogCliActivity({
+          projectId,
+          teamId: opts.teamId.trim(),
+          activityType: "executing",
+          label: `resource_reserve:${current.id}`,
+          detail: `amount=${opts.amount} reserved=${nextReserved}`,
+          source: opts.source,
+          beatId: opts.beatId,
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId: opts.teamId, resourceId: current.id, reserved: nextReserved },
+          `Reserved ${opts.amount} on '${current.id}' (reserved=${nextReserved})`,
+        );
+      },
+    );
 
   resources
     .command("release")
@@ -398,52 +476,66 @@ export function registerTeamResources(team: Command, store: SidecarStore): void 
     .option("--note <note>", "Event note")
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; resourceId: string; amount: number; source: string; note?: string; beatId?: string; json?: boolean }) => {
-      ensureCommandPermission("team.resources.write");
-      const company = await store.readCompanyModel();
-      const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
-      const resourcesList = project.resources ?? [];
-      const current = resourcesList.find((entry) => entry.id === opts.resourceId.trim());
-      if (!current) fail(`resource_not_found:${opts.resourceId}`);
-      const currentReserved = current.reserved ?? 0;
-      const nextReserved = Math.max(0, currentReserved - opts.amount);
-      const nextResources = resourcesList.map((entry) =>
-        entry.id === current.id ? { ...entry, reserved: nextReserved } : entry,
-      );
-      const event: ResourceEventModel = {
-        id: `resource-event-${projectId}-${Date.now()}`,
-        projectId,
-        resourceId: current.id,
-        ts: new Date().toISOString(),
-        kind: "adjustment",
-        delta: opts.amount,
-        remainingAfter: current.remaining,
-        source: opts.source,
-        ...(opts.note?.trim() ? { note: opts.note.trim() } : {}),
-      };
-      await store.writeCompanyModel({
-        ...company,
-        projects: company.projects.map((entry) =>
-          entry.id === projectId
-            ? { ...entry, resources: nextResources, resourceEvents: [...(entry.resourceEvents ?? []), event] }
-            : entry,
-        ),
-      });
-      await tryLogCliActivity({
-        projectId,
-        teamId: opts.teamId.trim(),
-        activityType: "executing",
-        label: `resource_release:${current.id}`,
-        detail: `amount=${opts.amount} reserved=${nextReserved}`,
-        source: opts.source,
-        beatId: opts.beatId,
-      });
-      formatOutput(
-        opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, resourceId: current.id, reserved: nextReserved },
-        `Released ${opts.amount} on '${current.id}' (reserved=${nextReserved})`,
-      );
-    });
+    .action(
+      async (opts: {
+        teamId: string;
+        resourceId: string;
+        amount: number;
+        source: string;
+        note?: string;
+        beatId?: string;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.resources.write");
+        const company = await store.readCompanyModel();
+        const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
+        const resourcesList = project.resources ?? [];
+        const current = resourcesList.find((entry) => entry.id === opts.resourceId.trim());
+        if (!current) fail(`resource_not_found:${opts.resourceId}`);
+        const currentReserved = current.reserved ?? 0;
+        const nextReserved = Math.max(0, currentReserved - opts.amount);
+        const nextResources = resourcesList.map((entry) =>
+          entry.id === current.id ? { ...entry, reserved: nextReserved } : entry,
+        );
+        const event: ResourceEventModel = {
+          id: `resource-event-${projectId}-${Date.now()}`,
+          projectId,
+          resourceId: current.id,
+          ts: new Date().toISOString(),
+          kind: "adjustment",
+          delta: opts.amount,
+          remainingAfter: current.remaining,
+          source: opts.source,
+          ...(opts.note?.trim() ? { note: opts.note.trim() } : {}),
+        };
+        await store.writeCompanyModel({
+          ...company,
+          projects: company.projects.map((entry) =>
+            entry.id === projectId
+              ? {
+                  ...entry,
+                  resources: nextResources,
+                  resourceEvents: [...(entry.resourceEvents ?? []), event],
+                }
+              : entry,
+          ),
+        });
+        await tryLogCliActivity({
+          projectId,
+          teamId: opts.teamId.trim(),
+          activityType: "executing",
+          label: `resource_release:${current.id}`,
+          detail: `amount=${opts.amount} reserved=${nextReserved}`,
+          source: opts.source,
+          beatId: opts.beatId,
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId: opts.teamId, resourceId: current.id, reserved: nextReserved },
+          `Released ${opts.amount} on '${current.id}' (reserved=${nextReserved})`,
+        );
+      },
+    );
 
   resources
     .command("seed-demo")
@@ -453,7 +545,10 @@ export function registerTeamResources(team: Command, store: SidecarStore): void 
       ensureCommandPermission("team.resources.write");
       const company = await store.readCompanyModel();
       const { projectId, project } = resolveProjectOrFail(company, opts.teamId);
-      const resourcesList = project.resources && project.resources.length > 0 ? project.resources : defaultProjectResources(projectId);
+      const resourcesList =
+        project.resources && project.resources.length > 0
+          ? project.resources
+          : defaultProjectResources(projectId);
       const now = new Date().toISOString();
       const events: ResourceEventModel[] = resourcesList.map((resource) => ({
         id: `resource-event-${resource.id}-${Date.now()}`,
@@ -477,6 +572,10 @@ export function registerTeamResources(team: Command, store: SidecarStore): void 
             : entry,
         ),
       });
-      formatOutput(opts.json ? "json" : "text", { ok: true, teamId: opts.teamId, projectId }, `Seeded resource demo data for ${opts.teamId}`);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, teamId: opts.teamId, projectId },
+        `Seeded resource demo data for ${opts.teamId}`,
+      );
     });
 }

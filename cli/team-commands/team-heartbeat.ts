@@ -68,7 +68,8 @@ export function registerTeamHeartbeat(team: Command, store: SidecarStore): void 
         ensureCommandPermission("team.heartbeat.write");
         const company = await store.readCompanyModel();
         const projectId = projectIdFromTeamId(opts.teamId);
-        if (!company.projects.some((entry) => entry.id === projectId)) fail(`team_not_found:${opts.teamId}`);
+        if (!company.projects.some((entry) => entry.id === projectId))
+          fail(`team_not_found:${opts.teamId}`);
         const withProfile = ensureHeartbeatProfile(company, projectId);
         const nextProfiles = withProfile.company.heartbeatProfiles.map((profile) =>
           profile.id === withProfile.profileId
@@ -82,7 +83,9 @@ export function registerTeamHeartbeat(team: Command, store: SidecarStore): void 
             : profile,
         );
         const nextAgents = withProfile.company.agents.map((agent) =>
-          agent.projectId === projectId ? { ...agent, heartbeatProfileId: withProfile.profileId } : agent,
+          agent.projectId === projectId
+            ? { ...agent, heartbeatProfileId: withProfile.profileId }
+            : agent,
         );
         await store.writeCompanyModel({
           ...withProfile.company,
@@ -108,7 +111,11 @@ export function registerTeamHeartbeat(team: Command, store: SidecarStore): void 
       if (opts.watch && opts.json) {
         fail("invalid_options:--watch cannot be used with --json");
       }
-      const runSync = async (): Promise<{ teamsTouched: number; heartbeatFilesWritten: number; teamsSkipped: number }> => {
+      const runSync = async (): Promise<{
+        teamsTouched: number;
+        heartbeatFilesWritten: number;
+        teamsSkipped: number;
+      }> => {
         return syncTeamHeartbeatFiles({ store, teamId: opts.teamId?.trim() || undefined });
       };
       const firstResult = await runSync();
@@ -138,7 +145,9 @@ export function registerTeamHeartbeat(team: Command, store: SidecarStore): void 
           do {
             syncQueued = false;
             const result = await runSync();
-            console.log(`Heartbeat sync (${nextReason}) wrote ${result.heartbeatFilesWritten} file(s) across ${result.teamsTouched} team(s)`);
+            console.log(
+              `Heartbeat sync (${nextReason}) wrote ${result.heartbeatFilesWritten} file(s) across ${result.teamsTouched} team(s)`,
+            );
             nextReason = "queued-change";
           } while (syncQueued);
         } catch (error) {

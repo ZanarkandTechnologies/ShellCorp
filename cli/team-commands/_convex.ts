@@ -31,7 +31,8 @@ import {
 // ─── Convex HTTP helpers ─────────────────────────────────────────────────────
 
 function resolveConvexSiteUrl(): string {
-  const raw = process.env.SHELLCORP_CONVEX_SITE_URL?.trim() || process.env.CONVEX_SITE_URL?.trim() || "";
+  const raw =
+    process.env.SHELLCORP_CONVEX_SITE_URL?.trim() || process.env.CONVEX_SITE_URL?.trim() || "";
   if (!raw) {
     throw new Error("missing_convex_site_url:set SHELLCORP_CONVEX_SITE_URL");
   }
@@ -59,13 +60,20 @@ function classifyFetchFailure(error: unknown): string {
   if (code === "ENOTFOUND") return "dns_not_found";
   if (code === "EAI_AGAIN") return "dns_lookup_failed";
   if (code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT") return "timeout";
-  if (code.startsWith("ERR_TLS_") || code === "DEPTH_ZERO_SELF_SIGNED_CERT" || code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") {
+  if (
+    code.startsWith("ERR_TLS_") ||
+    code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+    code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
+  ) {
     return "tls_error";
   }
   return "fetch_failed";
 }
 
-export async function postConvexJson(pathname: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+export async function postConvexJson(
+  pathname: string,
+  payload: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   const baseUrl = resolveConvexSiteUrl();
   const endpoint = `${baseUrl}${pathname}`;
   const headers: Record<string, string> = {
@@ -99,15 +107,21 @@ export async function postConvexJson(pathname: string, payload: Record<string, u
   }
   if (!response.ok) {
     const responseRecord = body as Record<string, unknown>;
-    const errorCode = typeof responseRecord.error === "string" ? responseRecord.error : `http_${response.status}`;
+    const errorCode =
+      typeof responseRecord.error === "string" ? responseRecord.error : `http_${response.status}`;
     throw new Error(`convex_http_request_rejected:${errorCode}:url=${endpoint}`);
   }
   return body as Record<string, unknown>;
 }
 
-export async function postBoardCommand(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+export async function postBoardCommand(
+  payload: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   const normalizedPayload = { ...payload };
-  if (typeof normalizedPayload.teamId !== "string" && typeof normalizedPayload.projectId === "string") {
+  if (
+    typeof normalizedPayload.teamId !== "string" &&
+    typeof normalizedPayload.projectId === "string"
+  ) {
     normalizedPayload.teamId = teamIdFromProjectId(normalizedPayload.projectId);
   }
   let body: Record<string, unknown>;
@@ -117,13 +131,17 @@ export async function postBoardCommand(payload: Record<string, unknown>): Promis
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(message.replace("convex_http_", "board_command_"));
   }
-  if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("board_command_invalid_response");
+  if (!body || typeof body !== "object" || Array.isArray(body))
+    throw new Error("board_command_invalid_response");
   return body;
 }
 
 export async function postBoardQuery(payload: Record<string, unknown>): Promise<unknown> {
   const normalizedPayload = { ...payload };
-  if (typeof normalizedPayload.teamId !== "string" && typeof normalizedPayload.projectId === "string") {
+  if (
+    typeof normalizedPayload.teamId !== "string" &&
+    typeof normalizedPayload.projectId === "string"
+  ) {
     normalizedPayload.teamId = teamIdFromProjectId(normalizedPayload.projectId);
   }
   let body: Record<string, unknown>;
@@ -133,11 +151,14 @@ export async function postBoardQuery(payload: Record<string, unknown>): Promise<
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(message.replace("convex_http_", "board_query_"));
   }
-  if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("board_query_invalid_response");
+  if (!body || typeof body !== "object" || Array.isArray(body))
+    throw new Error("board_query_invalid_response");
   return body.data;
 }
 
-export async function postStatusReport(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+export async function postStatusReport(
+  payload: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   try {
     return await postConvexJson("/status/report", payload);
   } catch (error) {
@@ -156,7 +177,8 @@ export async function tryLogCliActivity(payload: {
   source?: string;
   beatId?: string;
 }): Promise<void> {
-  const actorAgentId = payload.actorAgentId?.trim() || process.env.SHELLCORP_ACTOR_AGENT_ID?.trim() || "agent-unknown";
+  const actorAgentId =
+    payload.actorAgentId?.trim() || process.env.SHELLCORP_ACTOR_AGENT_ID?.trim() || "agent-unknown";
   try {
     await postBoardCommand({
       projectId: payload.projectId,
@@ -167,7 +189,10 @@ export async function tryLogCliActivity(payload: {
       activityType: payload.activityType,
       label: payload.label,
       detail: payload.detail,
-      beatId: payload.beatId?.trim() && payload.beatId.trim().length > 0 ? payload.beatId.trim() : undefined,
+      beatId:
+        payload.beatId?.trim() && payload.beatId.trim().length > 0
+          ? payload.beatId.trim()
+          : undefined,
       stepKey: `cli-log-${actorAgentId}-${Date.now()}`,
       status: "planning",
       skillId: payload.source?.trim() || "shellcorp_cli",
@@ -188,7 +213,9 @@ export async function readBoardSnapshot(projectId: string): Promise<{
     const rows = Array.isArray((data as { tasks?: unknown[] })?.tasks)
       ? ((data as { tasks: unknown[] }).tasks as unknown[])
       : [];
-    const safeRows = rows.filter((row) => row && typeof row === "object" && !Array.isArray(row)) as Array<{
+    const safeRows = rows.filter(
+      (row) => row && typeof row === "object" && !Array.isArray(row),
+    ) as Array<{
       taskId?: string;
       title?: string;
       status?: string;
@@ -303,7 +330,9 @@ export async function syncTeamHeartbeatFiles(opts: {
   teamId?: string;
 }): Promise<{ teamsTouched: number; heartbeatFilesWritten: number; teamsSkipped: number }> {
   const company = await opts.store.readCompanyModel();
-  const targetProjects = opts.teamId ? [resolveProjectOrFail(company, opts.teamId).project] : company.projects;
+  const targetProjects = opts.teamId
+    ? [resolveProjectOrFail(company, opts.teamId).project]
+    : company.projects;
   let teamsTouched = 0;
   let teamsSkipped = 0;
   let heartbeatFilesWritten = 0;
@@ -313,7 +342,11 @@ export async function syncTeamHeartbeatFiles(opts: {
       teamsSkipped += 1;
       continue;
     }
-    heartbeatFilesWritten += await writeTeamHeartbeatFiles({ store: opts.store, project, agents: teamAgents });
+    heartbeatFilesWritten += await writeTeamHeartbeatFiles({
+      store: opts.store,
+      project,
+      agents: teamAgents,
+    });
     teamsTouched += 1;
   }
   return { teamsTouched, heartbeatFilesWritten, teamsSkipped };

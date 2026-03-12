@@ -30,7 +30,9 @@ export function ResourcesSection({ resources }: ResourcesSectionProps): React.JS
       </CardHeader>
       <CardContent>
         <details open className="space-y-2">
-          <summary className="cursor-pointer text-xs text-muted-foreground">Tracked resources ({resources.length})</summary>
+          <summary className="cursor-pointer text-xs text-muted-foreground">
+            Tracked resources ({resources.length})
+          </summary>
           <div className="space-y-2 text-sm">
             {resources.map((resource) => (
               <div key={resource.id} className="rounded-md border bg-muted/10 p-2">
@@ -45,7 +47,9 @@ export function ResourcesSection({ resources }: ResourcesSectionProps): React.JS
                 </p>
               </div>
             ))}
-            {resources.length === 0 ? <p className="text-xs text-muted-foreground">No resources configured yet.</p> : null}
+            {resources.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No resources configured yet.</p>
+            ) : null}
           </div>
         </details>
       </CardContent>

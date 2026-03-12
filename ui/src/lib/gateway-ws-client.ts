@@ -7,7 +7,11 @@
  * the full connect.challenge -> Ed25519 signed device auth handshake.
  */
 
-import { loadOrCreateDeviceIdentity, signDevicePayload, type DeviceIdentity } from "./device-identity";
+import {
+  loadOrCreateDeviceIdentity,
+  signDevicePayload,
+  type DeviceIdentity,
+} from "./device-identity";
 import { clearDeviceAuthToken, loadDeviceAuthToken, storeDeviceAuthToken } from "./device-auth";
 
 // --- Frame types ---
@@ -245,10 +249,7 @@ export class GatewayWsClient {
       canFallbackToShared = Boolean(storedToken && this.opts.token);
     }
 
-    const auth =
-      authToken?.trim()
-        ? { token: authToken.trim() }
-        : undefined;
+    const auth = authToken?.trim() ? { token: authToken.trim() } : undefined;
 
     let device:
       | { id: string; publicKey: string; signature: string; signedAt: number; nonce: string }

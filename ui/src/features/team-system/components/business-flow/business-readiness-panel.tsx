@@ -22,7 +22,10 @@ interface BusinessReadinessPanelProps {
   fallbackReady?: boolean;
 }
 
-export function BusinessReadinessPanel({ issues, fallbackReady = false }: BusinessReadinessPanelProps): React.JSX.Element {
+export function BusinessReadinessPanel({
+  issues,
+  fallbackReady = false,
+}: BusinessReadinessPanelProps): React.JSX.Element {
   const ready = issues.length === 0 || fallbackReady;
   return (
     <Card>

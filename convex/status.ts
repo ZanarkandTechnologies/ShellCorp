@@ -54,7 +54,9 @@ export const getMultipleAgentStatuses = query({
         const raw = teamId
           ? await ctx.db
               .query("agentEvents")
-              .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", agentId))
+              .withIndex("by_team_agent_occurred_at", (q) =>
+                q.eq("teamId", teamId).eq("agentId", agentId),
+              )
               .order("desc")
               .take(recentLimit)
           : await ctx.db
@@ -83,7 +85,12 @@ export const getMultipleAgentStatuses = query({
           bubbles: Array<{ id: string; label: string; weight: number }>;
           sessionKey?: string;
           updatedAt?: number;
-          recentEvents?: Array<{ eventType: string; label: string; detail?: string; occurredAt: number }>;
+          recentEvents?: Array<{
+            eventType: string;
+            label: string;
+            detail?: string;
+            occurredAt: number;
+          }>;
         }
       >
     >((acc, agentId, index) => {
@@ -91,11 +98,7 @@ export const getMultipleAgentStatuses = query({
       const eventsForAgent = recentEvents[index] ?? [];
       const latestEvent = eventsForAgent[0];
       const fallbackState =
-        latestEvent?.eventType === "heartbeat_error"
-          ? "error"
-          : latestEvent
-            ? "running"
-            : "idle";
+        latestEvent?.eventType === "heartbeat_error" ? "error" : latestEvent ? "running" : "idle";
       const fallbackStatusText = latestEvent?.label ?? "Idle";
       const fallbackBubbles = eventsForAgent
         .map((event, eventIndex) => ({
@@ -108,8 +111,12 @@ export const getMultipleAgentStatuses = query({
       acc[agentId] = {
         agentId,
         state: typeof row?.state === "string" ? row.state : fallbackState,
-        statusText: typeof row?.statusText === "string" && row.statusText.trim() ? row.statusText : fallbackStatusText,
-        bubbles: Array.isArray(row?.bubbles) && row.bubbles.length > 0 ? row.bubbles : fallbackBubbles,
+        statusText:
+          typeof row?.statusText === "string" && row.statusText.trim()
+            ? row.statusText
+            : fallbackStatusText,
+        bubbles:
+          Array.isArray(row?.bubbles) && row.bubbles.length > 0 ? row.bubbles : fallbackBubbles,
         sessionKey: typeof row?.sessionKey === "string" ? row.sessionKey : undefined,
         updatedAt: typeof row?.updatedAt === "number" ? row.updatedAt : latestEvent?.occurredAt,
         recentEvents: eventsForAgent,
@@ -131,7 +138,9 @@ export const getAgentEvents = query({
     if (teamId) {
       return ctx.db
         .query("agentEvents")
-        .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", args.agentId))
+        .withIndex("by_team_agent_occurred_at", (q) =>
+          q.eq("teamId", teamId).eq("agentId", args.agentId),
+        )
         .order("desc")
         .take(limit);
     }
@@ -157,13 +166,14 @@ export const getTeamActivityFeed = query({
     const teamId = normalizeTeamId(args.teamId);
     if (!teamId) return { events: [], nextBeforeTs: undefined, hasMore: false };
     const limit = Math.min(Math.max(args.limit ?? 120, 1), 300);
-    const beforeTs = typeof args.beforeTs === "number" && Number.isFinite(args.beforeTs) && args.beforeTs > 0 ? args.beforeTs : undefined;
+    const beforeTs =
+      typeof args.beforeTs === "number" && Number.isFinite(args.beforeTs) && args.beforeTs > 0
+        ? args.beforeTs
+        : undefined;
     const agentFilter = args.agentId?.trim();
     const sourceFilter = args.sourceType?.trim();
     const allowedAgentIds = new Set(
-      (args.allowedAgentIds ?? [])
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0),
+      (args.allowedAgentIds ?? []).map((value) => value.trim()).filter((value) => value.length > 0),
     );
     const enforceAllowedAgents = allowedAgentIds.size > 0;
     const overfetch = Math.min(Math.max(limit * 4, 80), 1200);
@@ -171,12 +181,16 @@ export const getTeamActivityFeed = query({
     const [agentEventRows, boardRows] = await Promise.all([
       ctx.db
         .query("agentEvents")
-        .withIndex("by_team_occurred_at", (q) => (beforeTs ? q.eq("teamId", teamId).lt("occurredAt", beforeTs) : q.eq("teamId", teamId)))
+        .withIndex("by_team_occurred_at", (q) =>
+          beforeTs ? q.eq("teamId", teamId).lt("occurredAt", beforeTs) : q.eq("teamId", teamId),
+        )
         .order("desc")
         .take(overfetch),
       ctx.db
         .query("teamBoardEvents")
-        .withIndex("by_team_occurred_at", (q) => (beforeTs ? q.eq("teamId", teamId).lt("occurredAt", beforeTs) : q.eq("teamId", teamId)))
+        .withIndex("by_team_occurred_at", (q) =>
+          beforeTs ? q.eq("teamId", teamId).lt("occurredAt", beforeTs) : q.eq("teamId", teamId),
+        )
         .order("desc")
         .take(overfetch),
     ]);
@@ -216,7 +230,11 @@ export const getTeamActivityFeed = query({
       .filter((event) => {
         if (!sourceFilter || sourceFilter === "all") return true;
         if (sourceFilter === "activity_event") {
-          return event.sourceType === "agent_event" && typeof event.activityType === "string" && event.activityType.trim().length > 0;
+          return (
+            event.sourceType === "agent_event" &&
+            typeof event.activityType === "string" &&
+            event.activityType.trim().length > 0
+          );
         }
         return event.sourceType === sourceFilter;
       })
@@ -268,7 +286,13 @@ type ActivityFeedEvent = {
 };
 
 function uniqueStrings(values: Array<string | undefined>): string[] {
-  return [...new Set(values.filter((value): value is string => typeof value === "string" && value.trim().length > 0))];
+  return [
+    ...new Set(
+      values.filter(
+        (value): value is string => typeof value === "string" && value.trim().length > 0,
+      ),
+    ),
+  ];
 }
 
 export const getAgentActivityFeed = query({
@@ -280,29 +304,41 @@ export const getAgentActivityFeed = query({
   },
   handler: async (ctx, args) => {
     const agentId = args.agentId.trim();
-    if (!agentId) return { events: [], beats: [], ungrouped: [], nextBeforeTs: undefined, hasMore: false };
+    if (!agentId)
+      return { events: [], beats: [], ungrouped: [], nextBeforeTs: undefined, hasMore: false };
     const teamId = normalizeTeamId(args.teamId);
     const limit = Math.min(Math.max(args.limit ?? 120, 1), 300);
-    const beforeTs = typeof args.beforeTs === "number" && Number.isFinite(args.beforeTs) && args.beforeTs > 0 ? args.beforeTs : undefined;
+    const beforeTs =
+      typeof args.beforeTs === "number" && Number.isFinite(args.beforeTs) && args.beforeTs > 0
+        ? args.beforeTs
+        : undefined;
     const overfetch = Math.min(Math.max(limit * 4, 80), 1200);
 
     const agentEventRows = teamId
       ? await ctx.db
           .query("agentEvents")
           .withIndex("by_team_agent_occurred_at", (q) =>
-            beforeTs ? q.eq("teamId", teamId).eq("agentId", agentId).lt("occurredAt", beforeTs) : q.eq("teamId", teamId).eq("agentId", agentId),
+            beforeTs
+              ? q.eq("teamId", teamId).eq("agentId", agentId).lt("occurredAt", beforeTs)
+              : q.eq("teamId", teamId).eq("agentId", agentId),
           )
           .order("desc")
           .take(overfetch)
       : (
-          await ctx.db.query("agentEvents").withIndex("by_agent", (q) => q.eq("agentId", agentId)).order("desc").take(overfetch)
+          await ctx.db
+            .query("agentEvents")
+            .withIndex("by_agent", (q) => q.eq("agentId", agentId))
+            .order("desc")
+            .take(overfetch)
         ).filter((row) => (beforeTs ? row.occurredAt < beforeTs : true));
 
     const boardRows = teamId
       ? (
           await ctx.db
             .query("teamBoardEvents")
-            .withIndex("by_team_occurred_at", (q) => (beforeTs ? q.eq("teamId", teamId).lt("occurredAt", beforeTs) : q.eq("teamId", teamId)))
+            .withIndex("by_team_occurred_at", (q) =>
+              beforeTs ? q.eq("teamId", teamId).lt("occurredAt", beforeTs) : q.eq("teamId", teamId),
+            )
             .order("desc")
             .take(overfetch * 2)
         ).filter((row) => row.actorAgentId === agentId)
@@ -375,9 +411,9 @@ export const getAgentActivityFeed = query({
               ? "error"
               : event.eventType === "task_blocked"
                 ? "blocked"
-              : event.eventType === "task_done"
-                ? "done"
-                : "in_progress",
+                : event.eventType === "task_done"
+                  ? "done"
+                  : "in_progress",
           summary: event.label,
           events: [event],
         });
@@ -388,7 +424,10 @@ export const getAgentActivityFeed = query({
       current.taskIds = uniqueStrings([...current.taskIds, event.taskId]);
       current.sessionKeys = uniqueStrings([...current.sessionKeys, event.sessionKey]);
       current.events.push(event);
-      if (current.outcome !== "error" && (event.eventType === "heartbeat_error" || event.eventType === "task_blocked")) {
+      if (
+        current.outcome !== "error" &&
+        (event.eventType === "heartbeat_error" || event.eventType === "task_blocked")
+      ) {
         current.outcome = event.eventType === "task_blocked" ? "blocked" : "error";
       } else if (current.outcome === "in_progress" && event.eventType === "task_done") {
         current.outcome = "done";
@@ -420,13 +459,27 @@ export const getAgentSummaries = query({
   handler: async (ctx, args) => {
     const teamId = normalizeTeamId(args.teamId);
     if (!teamId) return [];
-    const windowMs = Math.min(Math.max(args.windowMs ?? 6 * 60 * 60 * 1000, 60_000), 14 * 24 * 60 * 60 * 1000);
+    const windowMs = Math.min(
+      Math.max(args.windowMs ?? 6 * 60 * 60 * 1000, 60_000),
+      14 * 24 * 60 * 60 * 1000,
+    );
     const cutoff = Date.now() - windowMs;
 
     const [statusRows, recentEvents, recentBoardRows] = await Promise.all([
-      ctx.db.query("agentStatus").withIndex("by_team_agent", (q) => q.eq("teamId", teamId)).collect(),
-      ctx.db.query("agentEvents").withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId)).order("desc").take(1500),
-      ctx.db.query("teamBoardEvents").withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId)).order("desc").take(2000),
+      ctx.db
+        .query("agentStatus")
+        .withIndex("by_team_agent", (q) => q.eq("teamId", teamId))
+        .collect(),
+      ctx.db
+        .query("agentEvents")
+        .withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId))
+        .order("desc")
+        .take(1500),
+      ctx.db
+        .query("teamBoardEvents")
+        .withIndex("by_team_occurred_at", (q) => q.eq("teamId", teamId))
+        .order("desc")
+        .take(2000),
     ]);
 
     const filteredEvents = recentEvents.filter((row) => row.occurredAt >= cutoff);
@@ -446,11 +499,15 @@ export const getAgentSummaries = query({
           eventsForAgent
             .filter((row) => row.eventType === "heartbeat_start")
             .map((row) => row.beatId)
-            .filter((value): value is string => typeof value === "string" && value.trim().length > 0),
+            .filter(
+              (value): value is string => typeof value === "string" && value.trim().length > 0,
+            ),
         ).size;
         const doneCount = boardForAgent.filter((row) => row.eventType === "task_done").length;
         const blockedCount = boardForAgent.filter((row) => row.eventType === "task_blocked").length;
-        const errorCount = eventsForAgent.filter((row) => row.eventType === "heartbeat_error").length;
+        const errorCount = eventsForAgent.filter(
+          (row) => row.eventType === "heartbeat_error",
+        ).length;
         const latestOccurredAt = Math.max(
           status?.updatedAt ?? 0,
           ...eventsForAgent.map((row) => row.occurredAt),

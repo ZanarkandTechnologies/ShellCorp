@@ -44,6 +44,8 @@ interface AppState {
   setIsChatModalOpen: (isOpen: boolean) => void;
   isUserTasksModalOpen: boolean;
   setIsUserTasksModalOpen: (isOpen: boolean) => void;
+  isCeoWorkbenchOpen: boolean;
+  setIsCeoWorkbenchOpen: (isOpen: boolean) => void;
   isTeamOptionsDialogOpen: boolean;
   setIsTeamOptionsDialogOpen: (isOpen: boolean) => void;
   activeTeamForOptions: TeamData | null;
@@ -111,6 +113,8 @@ export const useAppStore = create<AppState>()(
     setIsChatModalOpen: (isOpen) => set({ isChatModalOpen: isOpen }),
     isUserTasksModalOpen: false,
     setIsUserTasksModalOpen: (isOpen) => set({ isUserTasksModalOpen: isOpen }),
+    isCeoWorkbenchOpen: false,
+    setIsCeoWorkbenchOpen: (isOpen) => set({ isCeoWorkbenchOpen: isOpen }),
     isTeamOptionsDialogOpen: false,
     setIsTeamOptionsDialogOpen: (isOpen) => set({ isTeamOptionsDialogOpen: isOpen }),
     activeTeamForOptions: null,
@@ -137,7 +141,11 @@ export const useAppStore = create<AppState>()(
     activeObjectPanel: null,
     // Modal payload is compared structurally so repeated opens of the same state do not trigger extra work.
     setActiveObjectPanel: (panel) =>
-      set((state) => (areActiveObjectPanelsEqual(state.activeObjectPanel, panel) ? state : { activeObjectPanel: panel })),
+      set((state) =>
+        areActiveObjectPanelsEqual(state.activeObjectPanel, panel)
+          ? state
+          : { activeObjectPanel: panel },
+      ),
     manageAgentEmployeeId: null,
     setManageAgentEmployeeId: (id) => set({ manageAgentEmployeeId: id }),
     viewComputerEmployeeId: null,
@@ -183,5 +191,6 @@ export const useAppStore = create<AppState>()(
 
 if (import.meta.env.DEV && typeof window !== "undefined") {
   // Exposed only in dev so QA scripts can poke the live store instance without importing a second module copy.
-  (window as typeof window & { __SHELLCORP_APP_STORE?: typeof useAppStore }).__SHELLCORP_APP_STORE = useAppStore;
+  (window as typeof window & { __SHELLCORP_APP_STORE?: typeof useAppStore }).__SHELLCORP_APP_STORE =
+    useAppStore;
 }

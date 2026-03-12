@@ -25,7 +25,11 @@ import { useMutation, useQuery } from "convex/react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { computeBusinessReadinessIssues, createBusinessBuilderDraft, projectToBusinessBuilderDraft } from "@/lib/business-builder";
+import {
+  computeBusinessReadinessIssues,
+  createBusinessBuilderDraft,
+  projectToBusinessBuilderDraft,
+} from "@/lib/business-builder";
 import { useAppStore } from "@/lib/app-store";
 import type { ProjectAccountEventModel } from "@/lib/openclaw-types";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
@@ -76,11 +80,23 @@ export function TeamPanel({
 
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [communicationsFilter, setCommunicationsFilter] = useState<CommunicationsFilter>("all");
-  const [boardActionState, setBoardActionState] = useState<{ pending: boolean; error?: string; ok?: string }>({ pending: false });
+  const [boardActionState, setBoardActionState] = useState<{
+    pending: boolean;
+    error?: string;
+    ok?: string;
+  }>({ pending: false });
   const [builderDraft, setBuilderDraft] = useState(() => createBusinessBuilderDraft("none"));
-  const [builderSaveState, setBuilderSaveState] = useState<{ pending: boolean; error?: string; ok?: string }>({ pending: false });
+  const [builderSaveState, setBuilderSaveState] = useState<{
+    pending: boolean;
+    error?: string;
+    ok?: string;
+  }>({ pending: false });
   const [selectedBusinessSlot, setSelectedBusinessSlot] = useState<BusinessSlotKey>("measure");
-  const [ledgerActionState, setLedgerActionState] = useState<{ pending: boolean; error?: string; ok?: string }>({ pending: false });
+  const [ledgerActionState, setLedgerActionState] = useState<{
+    pending: boolean;
+    error?: string;
+    ok?: string;
+  }>({ pending: false });
   const [trackingContext, setTrackingContext] = useState("");
   const [agentConfiguredSkills, setAgentConfiguredSkills] = useState<Record<string, string[]>>({});
 
@@ -98,7 +114,9 @@ export function TeamPanel({
   const project = useMemo(() => {
     if (!companyModel) return null;
     if (!projectId) return companyModel.projects[0] ?? null;
-    return companyModel.projects.find((e) => e.id === projectId) ?? companyModel.projects[0] ?? null;
+    return (
+      companyModel.projects.find((e) => e.id === projectId) ?? companyModel.projects[0] ?? null
+    );
   }, [companyModel, projectId]);
 
   const convexEnabled = isConvexEnabled();
@@ -116,7 +134,9 @@ export function TeamPanel({
   const convexActivity = convexEnabled
     ? useQuery(
         api.board.getProjectActivity,
-        activeProjectId ? { projectId: activeProjectId, teamId: teamScopeId ?? undefined, limit: 60 } : "skip",
+        activeProjectId
+          ? { projectId: activeProjectId, teamId: teamScopeId ?? undefined, limit: 60 }
+          : "skip",
       )
     : undefined;
 
@@ -134,6 +154,11 @@ export function TeamPanel({
         syncState: (task.syncState as PanelTask["syncState"]) ?? "healthy",
         syncError: task.syncError,
         notes: task.notes,
+        taskType: task.taskType as PanelTask["taskType"],
+        approvalState: task.approvalState as PanelTask["approvalState"],
+        linkedSessionKey: task.linkedSessionKey,
+        createdTeamId: task.createdTeamId,
+        createdProjectId: task.createdProjectId,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
         dueAt: task.dueAt,
@@ -221,7 +246,10 @@ export function TeamPanel({
   const businessSkillRows = useMemo(
     () =>
       teamEmployees
-        .filter((employee) => employee.builtInRole === "biz_pm" || employee.builtInRole === "biz_executor")
+        .filter(
+          (employee) =>
+            employee.builtInRole === "biz_pm" || employee.builtInRole === "biz_executor",
+        )
         .map((employee) => {
           const rawId = String(employee._id ?? "");
           const agentId = rawId.startsWith("employee-") ? rawId.replace(/^employee-/, "") : rawId;
@@ -262,7 +290,7 @@ export function TeamPanel({
   );
 
   const hasBusinessConfig = Boolean(project?.businessConfig);
-  const allProjects = globalMode ? companyModel?.projects ?? [] : project ? [project] : [];
+  const allProjects = globalMode ? (companyModel?.projects ?? []) : project ? [project] : [];
 
   const activeExperimentCount = useMemo(
     () => (project?.experiments ?? []).filter((e) => e.status === "running").length,
@@ -272,7 +300,10 @@ export function TeamPanel({
   const readinessIssues = useMemo(
     () =>
       team?.businessReadiness?.issues && team.businessReadiness.issues.length > 0
-        ? team.businessReadiness.issues.map((issue, idx) => ({ code: `team-${idx}`, message: issue }))
+        ? team.businessReadiness.issues.map((issue, idx) => ({
+            code: `team-${idx}`,
+            message: issue,
+          }))
         : computeBusinessReadinessIssues(builderDraft),
     [builderDraft, team?.businessReadiness?.issues],
   );
@@ -311,7 +342,7 @@ export function TeamPanel({
     };
   }, [accountEvents, project?.account, project?.id]);
 
-  const panelTitle = globalMode ? "All Teams" : team?.name ?? "Team";
+  const panelTitle = globalMode ? "All Teams" : (team?.name ?? "Team");
 
   useEffect(() => {
     if (!isOpen) return;

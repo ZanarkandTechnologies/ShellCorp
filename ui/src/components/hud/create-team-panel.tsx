@@ -1,6 +1,12 @@
 "use client";
 
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { CreateTeamForm } from "@/components/hud/create-team-form";
 
 interface CreateTeamPanelProps {
@@ -28,4 +34,3 @@ export function CreateTeamPanel({ isOpen, onOpenChange }: CreateTeamPanelProps):
     </Dialog>
   );
 }
-

@@ -105,13 +105,11 @@ export function OverviewTab({
     .replace(/\s*\|\s*open=\d+\s*closed=\d+\s*$/i, "")
     .trim();
   const teamBusinessDescription =
-    cleanedTeamDescription.length > 0 &&
-    cleanedTeamDescription !== normalizedProjectGoal
+    cleanedTeamDescription.length > 0 && cleanedTeamDescription !== normalizedProjectGoal
       ? cleanedTeamDescription
       : "";
   const teamGoal =
-    normalizedProjectGoal ||
-    "No goal set yet. Use the team CLI to define a clear business target.";
+    normalizedProjectGoal || "No goal set yet. Use the team CLI to define a clear business target.";
 
   const visibleEmployees = globalMode ? employees : teamEmployees;
 
@@ -134,9 +132,7 @@ export function OverviewTab({
           </CardHeader>
           <CardContent className="grid gap-3 text-sm md:grid-cols-2">
             <div className="space-y-1 rounded-md border bg-muted/20 p-3">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Team Name
-              </p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Team Name</p>
               <p className="font-medium">{team?.name ?? panelTitle}</p>
             </div>
             <div className="space-y-1 rounded-md border bg-muted/20 p-3">
@@ -149,15 +145,11 @@ export function OverviewTab({
               </p>
             </div>
             <div className="space-y-1 rounded-md border bg-muted/20 p-3 md:col-span-2">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Goal
-              </p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Goal</p>
               <p>{teamGoal}</p>
             </div>
             <div className="space-y-2 rounded-md border bg-muted/20 p-3 md:col-span-2">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                KPIs
-              </p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">KPIs</p>
               {teamKpis.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {teamKpis.map((kpi) => (
@@ -184,9 +176,7 @@ export function OverviewTab({
               <select
                 className="rounded-md border bg-background px-2 py-1 text-sm"
                 value={project?.id ?? ""}
-                onChange={(event) =>
-                  setSelectedProjectId(event.target.value || null)
-                }
+                onChange={(event) => setSelectedProjectId(event.target.value || null)}
               >
                 {companyModel.projects.map((entry) => (
                   <option key={entry.id} value={entry.id}>
@@ -203,17 +193,14 @@ export function OverviewTab({
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Members</CardTitle>
             </CardHeader>
-            <CardContent className="text-2xl font-semibold">
-              {visibleEmployees.length}
-            </CardContent>
+            <CardContent className="text-2xl font-semibold">{visibleEmployees.length}</CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Open Tickets</CardTitle>
             </CardHeader>
             <CardContent className="text-2xl font-semibold">
-              {summary?.openTickets ??
-                projectTasks.filter((t) => t.status !== "done").length}
+              {summary?.openTickets ?? projectTasks.filter((t) => t.status !== "done").length}
             </CardContent>
           </Card>
           <Card>
@@ -231,9 +218,7 @@ export function OverviewTab({
             <CardContent
               className={`text-2xl font-semibold ${projectProfitCents >= 0 ? "text-emerald-500" : "text-red-500"}`}
             >
-              {hasBusinessConfig
-                ? currencyFormatter.format(projectProfitCents / 100)
-                : "--"}
+              {hasBusinessConfig ? currencyFormatter.format(projectProfitCents / 100) : "--"}
             </CardContent>
           </Card>
         </div>
@@ -257,36 +242,25 @@ export function OverviewTab({
                 Locate All
               </Button>
               {highlightedEmployeeIds.size > 0 ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setHighlightedEmployeeIds(null)}
-                >
+                <Button variant="outline" size="sm" onClick={() => setHighlightedEmployeeIds(null)}>
                   Clear Highlight
                 </Button>
               ) : null}
             </div>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {visibleEmployees.map((employee) => (
-                <div
-                  key={employee._id}
-                  className="rounded-md border bg-muted/20 p-3"
-                >
+                <div key={employee._id} className="rounded-md border bg-muted/20 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-medium">{employee.name}</p>
                     <Badge variant="outline" className="text-[10px] uppercase">
                       {employee.jobTitle ?? "operator"}
                     </Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {employee.jobTitle ?? "Operator"}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{employee.jobTitle ?? "Operator"}</p>
                 </div>
               ))}
               {visibleEmployees.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No team members assigned.
-                </p>
+                <p className="text-sm text-muted-foreground">No team members assigned.</p>
               ) : null}
             </div>
           </CardContent>

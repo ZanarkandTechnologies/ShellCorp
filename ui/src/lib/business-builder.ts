@@ -1,6 +1,16 @@
-import type { ProjectModel, ProjectResourceModel, ResourceLowBehavior, ResourceType } from "./openclaw-types";
+import type {
+  ProjectModel,
+  ProjectResourceModel,
+  ResourceLowBehavior,
+  ResourceType,
+} from "./openclaw-types";
 
-export type BusinessTypeOption = "none" | "affiliate_marketing" | "content_creator" | "saas" | "custom";
+export type BusinessTypeOption =
+  | "none"
+  | "affiliate_marketing"
+  | "content_creator"
+  | "saas"
+  | "custom";
 
 export interface BusinessBuilderResourceDraft {
   id?: string;
@@ -94,12 +104,17 @@ export function createBusinessBuilderDraft(type: BusinessTypeOption): BusinessBu
   };
 }
 
-export function projectToBusinessBuilderDraft(project: ProjectModel | null | undefined): BusinessBuilderDraft {
+export function projectToBusinessBuilderDraft(
+  project: ProjectModel | null | undefined,
+): BusinessBuilderDraft {
   if (!project?.businessConfig) return createBusinessBuilderDraft("none");
   const businessType = (project.businessConfig.type as BusinessTypeOption) || "custom";
   return {
     businessType:
-      businessType === "affiliate_marketing" || businessType === "content_creator" || businessType === "saas" || businessType === "custom"
+      businessType === "affiliate_marketing" ||
+      businessType === "content_creator" ||
+      businessType === "saas" ||
+      businessType === "custom"
         ? businessType
         : "custom",
     capabilitySkills: {
@@ -125,7 +140,10 @@ export function projectToBusinessBuilderDraft(project: ProjectModel | null | und
   };
 }
 
-export function toProjectResources(projectId: string, resources: BusinessBuilderResourceDraft[]): ProjectResourceModel[] {
+export function toProjectResources(
+  projectId: string,
+  resources: BusinessBuilderResourceDraft[],
+): ProjectResourceModel[] {
   return resources.map((resource) => ({
     id:
       resource.id ??
@@ -144,7 +162,9 @@ export function toProjectResources(projectId: string, resources: BusinessBuilder
     limit: resource.limit,
     ...(typeof resource.reserved === "number" ? { reserved: resource.reserved } : {}),
     trackerSkillId: resource.trackerSkillId,
-    ...(typeof resource.refreshCadenceMinutes === "number" ? { refreshCadenceMinutes: resource.refreshCadenceMinutes } : {}),
+    ...(typeof resource.refreshCadenceMinutes === "number"
+      ? { refreshCadenceMinutes: resource.refreshCadenceMinutes }
+      : {}),
     policy: {
       advisoryOnly: true,
       ...(typeof resource.softLimit === "number" ? { softLimit: resource.softLimit } : {}),
@@ -155,21 +175,36 @@ export function toProjectResources(projectId: string, resources: BusinessBuilder
   }));
 }
 
-export function computeBusinessReadinessIssues(draft: BusinessBuilderDraft): BusinessReadinessIssue[] {
+export function computeBusinessReadinessIssues(
+  draft: BusinessBuilderDraft,
+): BusinessReadinessIssue[] {
   const issues: BusinessReadinessIssue[] = [];
-  if (!draft.capabilitySkills.measure.trim()) issues.push({ code: "missing_measure", message: "Measure skill is missing." });
-  if (!draft.capabilitySkills.execute.trim()) issues.push({ code: "missing_execute", message: "Execute skill is missing." });
-  if (!draft.capabilitySkills.distribute.trim()) issues.push({ code: "missing_distribute", message: "Distribute skill is missing." });
+  if (!draft.capabilitySkills.measure.trim())
+    issues.push({ code: "missing_measure", message: "Measure skill is missing." });
+  if (!draft.capabilitySkills.execute.trim())
+    issues.push({ code: "missing_execute", message: "Execute skill is missing." });
+  if (!draft.capabilitySkills.distribute.trim())
+    issues.push({ code: "missing_distribute", message: "Distribute skill is missing." });
   const requiredTypes: ResourceType[] = ["cash_budget", "api_quota", "distribution_slots"];
   for (const resourceType of requiredTypes) {
     if (!draft.resources.some((resource) => resource.type === resourceType)) {
-      issues.push({ code: `missing_${resourceType}`, message: `Missing ${resourceType} resource.` });
+      issues.push({
+        code: `missing_${resourceType}`,
+        message: `Missing ${resourceType} resource.`,
+      });
     }
   }
   for (const resource of draft.resources) {
-    if (resource.limit < 0) issues.push({ code: `invalid_limit_${resource.type}`, message: `${resource.name} has negative limit.` });
+    if (resource.limit < 0)
+      issues.push({
+        code: `invalid_limit_${resource.type}`,
+        message: `${resource.name} has negative limit.`,
+      });
     if (resource.remaining > resource.limit) {
-      issues.push({ code: `remaining_over_limit_${resource.type}`, message: `${resource.name} remaining exceeds limit.` });
+      issues.push({
+        code: `remaining_over_limit_${resource.type}`,
+        message: `${resource.name} remaining exceeds limit.`,
+      });
     }
   }
   return issues;

@@ -78,4 +78,3 @@ describe("status-http-contract", () => {
     expect(report?.teamId).toBe("team-proj-alpha");
   });
 });
-

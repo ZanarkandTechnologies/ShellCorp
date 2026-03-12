@@ -128,10 +128,7 @@ export function ProjectsTab({
           const entryProfit = entryRevenue - entryCost;
 
           return (
-            <Card
-              key={entry.id}
-              className={isActiveProject ? "border-primary/60" : undefined}
-            >
+            <Card key={entry.id} className={isActiveProject ? "border-primary/60" : undefined}>
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between gap-2">
                   <CardTitle className="text-sm">{entry.name}</CardTitle>
@@ -150,9 +147,7 @@ export function ProjectsTab({
                   <span className="text-muted-foreground">Profit pulse</span>
                   <span
                     className={
-                      entryProfit >= 0
-                        ? "font-medium text-emerald-500"
-                        : "font-medium text-red-500"
+                      entryProfit >= 0 ? "font-medium text-emerald-500" : "font-medium text-red-500"
                     }
                   >
                     {currencyFormatter.format(entryProfit / 100)}
@@ -165,9 +160,7 @@ export function ProjectsTab({
                     </Badge>
                   ))}
                   {(entry.kpis ?? []).length === 0 ? (
-                    <span className="text-xs text-muted-foreground">
-                      No KPIs yet.
-                    </span>
+                    <span className="text-xs text-muted-foreground">No KPIs yet.</span>
                   ) : null}
                 </div>
                 {globalMode ? (

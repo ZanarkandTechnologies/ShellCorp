@@ -58,7 +58,11 @@ describe("project artefact panel helpers", () => {
   });
 
   it("derives project scope roots from defaults and hints", () => {
-    const roots = deriveProjectScopeRoots("proj-1", ["projects/proj-1/output/video.mp4"], "/data/projects/proj-1");
+    const roots = deriveProjectScopeRoots(
+      "proj-1",
+      ["projects/proj-1/output/video.mp4"],
+      "/data/projects/proj-1",
+    );
     expect(roots.some((entry) => entry.includes("projects/proj-1/"))).toBe(true);
     expect(roots.some((entry) => entry.includes("output/"))).toBe(true);
   });

@@ -20,4 +20,3 @@ export const UI_Z = {
   chat: 1800,
   critical: 2000,
 } as const;
-

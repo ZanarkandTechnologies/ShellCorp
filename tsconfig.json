@@ -11,5 +11,5 @@
     "types": ["node"],
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "cli/**/*.ts"]
+  "include": ["src/**/*.ts", "cli/**/*.ts", "extensions/**/*.ts"]
 }

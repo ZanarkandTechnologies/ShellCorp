@@ -23,20 +23,14 @@ interface KanbanTaskCardProps {
   onOpen: (task: PanelTask) => void;
 }
 
-export function KanbanTaskCard({
-  task,
-  ownerLabel,
-  onOpen,
-}: KanbanTaskCardProps): JSX.Element {
+export function KanbanTaskCard({ task, ownerLabel, onOpen }: KanbanTaskCardProps): JSX.Element {
   return (
     <button
       type="button"
       className="group w-full cursor-pointer rounded-lg border bg-card p-3 text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onClick={() => onOpen(task)}
     >
-      <p className="mb-2 line-clamp-2 text-sm font-medium leading-snug">
-        {task.title}
-      </p>
+      <p className="mb-2 line-clamp-2 text-sm font-medium leading-snug">{task.title}</p>
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge
           variant="outline"

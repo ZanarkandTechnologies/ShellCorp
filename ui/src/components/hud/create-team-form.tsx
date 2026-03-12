@@ -6,7 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { BusinessBuilderForm } from "@/components/hud/business-builder-form";
-import { createBusinessBuilderDraft, type BusinessBuilderDraft, type BusinessTypeOption } from "@/lib/business-builder";
+import {
+  createBusinessBuilderDraft,
+  type BusinessBuilderDraft,
+  type BusinessTypeOption,
+} from "@/lib/business-builder";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 
@@ -15,7 +19,14 @@ interface CreateTeamFormProps {
 }
 
 function parseKpiList(input: string): string[] {
-  return [...new Set(input.split(/[,\n]/g).map((entry) => entry.trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      input
+        .split(/[,\n]/g)
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 export function CreateTeamForm({ onDone }: CreateTeamFormProps): React.JSX.Element {
@@ -25,7 +36,9 @@ export function CreateTeamForm({ onDone }: CreateTeamFormProps): React.JSX.Eleme
   const [description, setDescription] = useState("");
   const [goal, setGoal] = useState("");
   const [kpisRaw, setKpisRaw] = useState("weekly_shipped_tickets, closed_vs_open_ticket_ratio");
-  const [builderDraft, setBuilderDraft] = useState<BusinessBuilderDraft>(() => createBusinessBuilderDraft("none"));
+  const [builderDraft, setBuilderDraft] = useState<BusinessBuilderDraft>(() =>
+    createBusinessBuilderDraft("none"),
+  );
   const [includeBuilder, setIncludeBuilder] = useState(true);
   const [includeGrowth, setIncludeGrowth] = useState(true);
   const [includePm, setIncludePm] = useState(true);
@@ -114,7 +127,11 @@ export function CreateTeamForm({ onDone }: CreateTeamFormProps): React.JSX.Eleme
     <div className="space-y-3">
       <div className="space-y-2">
         <Label>Team Name *</Label>
-        <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Buffalos AI" />
+        <Input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Buffalos AI"
+        />
       </div>
       <div className="space-y-2">
         <Label>Description</Label>
@@ -136,29 +153,51 @@ export function CreateTeamForm({ onDone }: CreateTeamFormProps): React.JSX.Eleme
       </div>
       <div className="space-y-2">
         <Label>KPIs (comma or newline separated)</Label>
-        <Textarea value={kpisRaw} onChange={(event) => setKpisRaw(event.target.value)} className="min-h-[72px]" />
+        <Textarea
+          value={kpisRaw}
+          onChange={(event) => setKpisRaw(event.target.value)}
+          className="min-h-[72px]"
+        />
       </div>
-      <BusinessBuilderForm value={builderDraft} onChange={setBuilderDraft} disabled={isSubmitting} />
+      <BusinessBuilderForm
+        value={builderDraft}
+        onChange={setBuilderDraft}
+        disabled={isSubmitting}
+      />
       {builderDraft.businessType === "none" ? (
         <div className="space-y-2">
           <Label>Auto Roles</Label>
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label className="flex items-center gap-2">
-              <input type="checkbox" checked={includeBuilder} onChange={(event) => setIncludeBuilder(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={includeBuilder}
+                onChange={(event) => setIncludeBuilder(event.target.checked)}
+              />
               builder
             </label>
             <label className="flex items-center gap-2">
-              <input type="checkbox" checked={includeGrowth} onChange={(event) => setIncludeGrowth(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={includeGrowth}
+                onChange={(event) => setIncludeGrowth(event.target.checked)}
+              />
               growth_marketer
             </label>
             <label className="flex items-center gap-2">
-              <input type="checkbox" checked={includePm} onChange={(event) => setIncludePm(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={includePm}
+                onChange={(event) => setIncludePm(event.target.checked)}
+              />
               pm
             </label>
           </div>
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">Business teams auto-create PM and Executor agents.</p>
+        <p className="text-xs text-muted-foreground">
+          Business teams auto-create PM and Executor agents.
+        </p>
       )}
       <div className="space-y-2">
         <Label>Options</Label>
@@ -172,7 +211,11 @@ export function CreateTeamForm({ onDone }: CreateTeamFormProps): React.JSX.Eleme
             Register new role agents in OpenClaw config
           </label>
           <label className="flex items-center gap-2">
-            <input type="checkbox" checked={withCluster} onChange={(event) => setWithCluster(event.target.checked)} />
+            <input
+              type="checkbox"
+              checked={withCluster}
+              onChange={(event) => setWithCluster(event.target.checked)}
+            />
             Create team cluster object in office layout
           </label>
         </div>
