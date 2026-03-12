@@ -15,6 +15,11 @@ export type ParsedBoardCommandPayload = {
   priority?: string;
   detail?: string;
   notes?: string;
+  taskType?: string;
+  approvalState?: string;
+  linkedSessionKey?: string;
+  createdTeamId?: string;
+  createdProjectId?: string;
   label?: string;
   activityType?: string;
   actorType?: string;
@@ -69,6 +74,11 @@ export function parseBoardCommandPayload(value: unknown): ParsedBoardCommandPayl
   const priority = asTrimmedString(record.priority);
   const detail = asTrimmedString(record.detail);
   const notes = asTrimmedString(record.notes);
+  const taskType = asTrimmedString(record.taskType);
+  const approvalState = asTrimmedString(record.approvalState);
+  const linkedSessionKey = asTrimmedString(record.linkedSessionKey);
+  const createdTeamId = asTrimmedString(record.createdTeamId);
+  const createdProjectId = asTrimmedString(record.createdProjectId);
   const label = asTrimmedString(record.label);
   const activityType = asTrimmedString(record.activityType);
   const actorType = asTrimmedString(record.actorType);
@@ -86,6 +96,11 @@ export function parseBoardCommandPayload(value: unknown): ParsedBoardCommandPayl
   if (priority) payload.priority = priority;
   if (detail) payload.detail = detail;
   if (notes) payload.notes = notes;
+  if (taskType) payload.taskType = taskType;
+  if (approvalState) payload.approvalState = approvalState;
+  if (linkedSessionKey) payload.linkedSessionKey = linkedSessionKey;
+  if (createdTeamId) payload.createdTeamId = createdTeamId;
+  if (createdProjectId) payload.createdProjectId = createdProjectId;
   if (label) payload.label = label;
   if (activityType) payload.activityType = activityType;
   if (actorType) payload.actorType = actorType;
@@ -104,7 +119,8 @@ export function parseBoardQueryPayload(value: unknown): ParsedBoardQueryPayload 
   const projectId = asTrimmedString(record.projectId);
   const query = asTrimmedString(record.query);
   if (!projectId || !query) return null;
-  if (query !== "tasks" && query !== "board_events" && query !== "activity" && query !== "next") return null;
+  if (query !== "tasks" && query !== "board_events" && query !== "activity" && query !== "next")
+    return null;
   const payload: ParsedBoardQueryPayload = {
     projectId,
     query,
@@ -119,4 +135,3 @@ export function parseBoardQueryPayload(value: unknown): ParsedBoardQueryPayload 
   if (typeof limit === "number") payload.limit = limit;
   return payload;
 }
-

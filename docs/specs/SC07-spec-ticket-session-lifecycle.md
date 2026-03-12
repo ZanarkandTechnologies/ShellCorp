@@ -16,6 +16,7 @@ Define ticket lifecycle semantics in Shell Company where one active ticket maps 
 For SC07:
 
 - `ticket == session` while ticket state is active (`todo`, `in_progress`, `blocked`).
+- The ticket/task card is also the compact operator-visible memory surface for the active session.
 - Ticket close transitions associated session to closed/archived state.
 - Reopen creates a new active session link unless policy explicitly allows resume.
 
@@ -72,6 +73,7 @@ For SC07:
 
 - Status changes keep existing active session unless entering close condition.
 - Assignment changes require explicit rebind confirmation in UI.
+- Task notes should stay useful as compact resume state even when the richer reasoning thread lives in the linked session.
 
 ### Close Ticket
 

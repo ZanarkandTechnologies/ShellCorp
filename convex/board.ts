@@ -1,3 +1,23 @@
+/**
+ * BOARD DOMAIN
+ * ============
+ * Purpose
+ * - Persist canonical Convex-backed board tasks, task activity, and team timeline state.
+ *
+ * KEY CONCEPTS:
+ * - Board tasks are the shared operational container for task state, compact working memory, and lightweight workflow metadata.
+ * - CEO proposal/review work reuses task-local metadata instead of a separate workflow backend.
+ *
+ * USAGE:
+ * - `boardCommand` handles task lifecycle and activity mutations.
+ * - `getProjectBoard` and `getCompanyBoardTasks` power Team Panel and CEO/founder workflow surfaces.
+ *
+ * MEMORY REFERENCES:
+ * - MEM-0129
+ * - MEM-0132
+ * - MEM-0155
+ */
+
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
@@ -22,6 +42,11 @@ type TaskRow = {
   syncState: string;
   syncError?: string;
   notes?: string;
+  taskType?: string;
+  approvalState?: string;
+  linkedSessionKey?: string;
+  createdTeamId?: string;
+  createdProjectId?: string;
   createdAt: number;
   updatedAt: number;
   createdBy?: string;
@@ -52,7 +77,6 @@ const ROLE_PERMISSIONS: Record<string, BoardPermission[]> = {
   biz_executor: ["team.read", "team.board.write", "team.activity.write"],
   readonly: ["team.read"],
 };
-
 
 function ensureTaskId(input?: string): string {
   const cleaned = trimOrUndefined(input);
@@ -91,13 +115,16 @@ function permissionSetFromInput(actorRole: string, raw?: string): Set<BoardPermi
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean);
-    if (entries.includes("*")) return new Set(["team.read", "team.board.write", "team.activity.write"]);
+    if (entries.includes("*"))
+      return new Set(["team.read", "team.board.write", "team.activity.write"]);
     return new Set(entries as BoardPermission[]);
   }
   return new Set(ROLE_PERMISSIONS[actorRole] ?? ROLE_PERMISSIONS.operator);
 }
 
-function mapActivityTypeToAgentState(activityType: string): "planning" | "executing" | "blocked" | "done" | undefined {
+function mapActivityTypeToAgentState(
+  activityType: string,
+): "planning" | "executing" | "blocked" | "done" | undefined {
   if (activityType === "planning") return "planning";
   if (activityType === "executing") return "executing";
   if (activityType === "blocked") return "blocked";
@@ -117,6 +144,11 @@ export const boardCommand = mutation({
     priority: v.optional(v.string()),
     detail: v.optional(v.string()),
     notes: v.optional(v.string()),
+    taskType: v.optional(v.string()),
+    approvalState: v.optional(v.string()),
+    linkedSessionKey: v.optional(v.string()),
+    createdTeamId: v.optional(v.string()),
+    createdProjectId: v.optional(v.string()),
     label: v.optional(v.string()),
     activityType: v.optional(v.string()),
     actorType: v.optional(v.string()),
@@ -140,12 +172,14 @@ export const boardCommand = mutation({
     const stepKey = trimOrUndefined(args.stepKey);
     const beatId = trimOrUndefined(args.beatId);
     const occurredAt = nowMs(args.occurredAt);
-    const actorType = coerceBoardActorType(args.actorType) ?? (command === "activity_log" ? "agent" : "operator");
+    const actorType =
+      coerceBoardActorType(args.actorType) ?? (command === "activity_log" ? "agent" : "operator");
     const actorRole = trimOrUndefined(args.actorRole)?.toLowerCase() ?? "operator";
     const actorAgentId = trimOrUndefined(args.actorAgentId);
     const requiredPermission = requiredPermissionForCommand(command);
     const permissions = permissionSetFromInput(actorRole, trimOrUndefined(args.allowedPermissions));
-    if (!permissions.has(requiredPermission)) throw new Error(`permission_denied:${requiredPermission}:role=${actorRole}`);
+    if (!permissions.has(requiredPermission))
+      throw new Error(`permission_denied:${requiredPermission}:role=${actorRole}`);
     const teamMembershipCache = new Map<string, boolean>();
     const isAgentInTeam = async (agentId: string): Promise<boolean> => {
       const cached = teamMembershipCache.get(agentId);
@@ -161,7 +195,9 @@ export const boardCommand = mutation({
           .first(),
         ctx.db
           .query("agentEvents")
-          .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", agentId))
+          .withIndex("by_team_agent_occurred_at", (q) =>
+            q.eq("teamId", teamId).eq("agentId", agentId),
+          )
           .order("desc")
           .first(),
       ]);
@@ -184,7 +220,9 @@ export const boardCommand = mutation({
       if (stepKey) {
         const existing = await ctx.db
           .query("agentEvents")
-          .withIndex("by_project_step_key", (q) => q.eq("projectId", projectId).eq("stepKey", stepKey))
+          .withIndex("by_project_step_key", (q) =>
+            q.eq("projectId", projectId).eq("stepKey", stepKey),
+          )
           .first();
         if (existing) return { ok: true, duplicate: true, taskId: trimOrUndefined(args.taskId) };
       }
@@ -211,11 +249,18 @@ export const boardCommand = mutation({
     const ownerAgentId = trimOrUndefined(args.ownerAgentId);
     const detail = trimOrUndefined(args.detail);
     const notes = trimOrUndefined(args.notes);
+    const taskType = trimOrUndefined(args.taskType);
+    const approvalState = trimOrUndefined(args.approvalState);
+    const linkedSessionKey = trimOrUndefined(args.linkedSessionKey);
+    const createdTeamId = trimOrUndefined(args.createdTeamId);
+    const createdProjectId = trimOrUndefined(args.createdProjectId);
 
     if (stepKey) {
       const existing = await ctx.db
         .query("teamBoardEvents")
-        .withIndex("by_project_step_key", (q) => q.eq("projectId", projectId).eq("stepKey", stepKey))
+        .withIndex("by_project_step_key", (q) =>
+          q.eq("projectId", projectId).eq("stepKey", stepKey),
+        )
         .first();
       if (existing) return { ok: true, duplicate: true, taskId: existing.taskId };
     }
@@ -226,7 +271,9 @@ export const boardCommand = mutation({
       const nextTaskId = ensureTaskId(taskId);
       const existing = await ctx.db
         .query("teamBoardTasks")
-        .withIndex("by_project_task_id", (q) => q.eq("projectId", projectId).eq("taskId", nextTaskId))
+        .withIndex("by_project_task_id", (q) =>
+          q.eq("projectId", projectId).eq("taskId", nextTaskId),
+        )
         .first();
       if (existing) throw new Error(`task_exists:${nextTaskId}`);
       const status = coerceBoardTaskStatus(args.status) ?? "todo";
@@ -241,7 +288,12 @@ export const boardCommand = mutation({
         provider: "internal",
         canonicalProvider: "internal",
         syncState: "healthy",
-        notes,
+        notes: notes ?? detail,
+        taskType,
+        approvalState,
+        linkedSessionKey,
+        createdTeamId,
+        createdProjectId,
         createdAt: occurredAt,
         updatedAt: occurredAt,
         createdBy: actorAgentId,
@@ -310,6 +362,11 @@ export const boardCommand = mutation({
       const title = trimOrUndefined(args.title);
       if (title !== undefined) patch.title = title;
       if (detail !== undefined) patch.notes = detail;
+      if (taskType !== undefined) patch.taskType = taskType;
+      if (approvalState !== undefined) patch.approvalState = approvalState;
+      if (linkedSessionKey !== undefined) patch.linkedSessionKey = linkedSessionKey;
+      if (createdTeamId !== undefined) patch.createdTeamId = createdTeamId;
+      if (createdProjectId !== undefined) patch.createdProjectId = createdProjectId;
       if (typeof args.dueAt === "number") patch.dueAt = args.dueAt;
       eventType = "task_updated";
       eventLabel = trimOrUndefined(args.label) ?? "Task details updated";
@@ -392,6 +449,11 @@ export const getProjectBoard = query({
       syncState: row.syncState,
       syncError: row.syncError,
       notes: row.notes,
+      taskType: row.taskType,
+      approvalState: row.approvalState,
+      linkedSessionKey: row.linkedSessionKey,
+      createdTeamId: row.createdTeamId,
+      createdProjectId: row.createdProjectId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       dueAt: row.dueAt,
@@ -400,6 +462,43 @@ export const getProjectBoard = query({
       projectId: args.projectId,
       tasks,
     };
+  },
+});
+
+export const getCompanyBoardTasks = query({
+  args: {
+    taskType: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const taskType = trimOrUndefined(args.taskType);
+    const rows = await ctx.db.query("teamBoardTasks").collect();
+    const filtered = taskType ? rows.filter((row) => row.taskType === taskType) : rows;
+    const tasks = filtered
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .slice(0, 500)
+      .map((row) => ({
+        taskId: row.taskId,
+        projectId: row.projectId,
+        title: row.title,
+        status: row.status,
+        ownerAgentId: row.ownerAgentId,
+        priority: row.priority,
+        provider: row.provider,
+        canonicalProvider: row.canonicalProvider,
+        providerUrl: row.providerUrl,
+        syncState: row.syncState,
+        syncError: row.syncError,
+        notes: row.notes,
+        taskType: row.taskType,
+        approvalState: row.approvalState,
+        linkedSessionKey: row.linkedSessionKey,
+        createdTeamId: row.createdTeamId,
+        createdProjectId: row.createdProjectId,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        dueAt: row.dueAt,
+      }));
+    return { tasks };
   },
 });
 
@@ -416,7 +515,9 @@ export const getProjectBoardEvents = query({
     if (args.taskId?.trim()) {
       return ctx.db
         .query("teamBoardEvents")
-        .withIndex("by_project_task_occurred_at", (q) => q.eq("projectId", args.projectId).eq("taskId", args.taskId!.trim()))
+        .withIndex("by_project_task_occurred_at", (q) =>
+          q.eq("projectId", args.projectId).eq("taskId", args.taskId!.trim()),
+        )
         .order("desc")
         .take(limit);
     }
@@ -450,16 +551,25 @@ export const getProjectActivity = query({
       if (teamId) {
         const rows = await ctx.db
           .query("agentEvents")
-          .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", args.agentId!.trim()))
+          .withIndex("by_team_agent_occurred_at", (q) =>
+            q.eq("teamId", teamId).eq("agentId", args.agentId!.trim()),
+          )
           .order("desc")
           .take(overfetch);
         return rows
-          .filter((row) => row.projectId === args.projectId && typeof row.activityType === "string" && row.activityType.trim().length > 0)
+          .filter(
+            (row) =>
+              row.projectId === args.projectId &&
+              typeof row.activityType === "string" &&
+              row.activityType.trim().length > 0,
+          )
           .slice(0, limit);
       }
       const rows = await ctx.db
         .query("agentEvents")
-        .withIndex("by_project_agent_occurred_at", (q) => q.eq("projectId", args.projectId).eq("agentId", args.agentId!.trim()))
+        .withIndex("by_project_agent_occurred_at", (q) =>
+          q.eq("projectId", args.projectId).eq("agentId", args.agentId!.trim()),
+        )
         .order("desc")
         .take(overfetch);
       return rows
@@ -473,7 +583,12 @@ export const getProjectActivity = query({
         .order("desc")
         .take(overfetch);
       return rows
-        .filter((row) => row.projectId === args.projectId && typeof row.activityType === "string" && row.activityType.trim().length > 0)
+        .filter(
+          (row) =>
+            row.projectId === args.projectId &&
+            typeof row.activityType === "string" &&
+            row.activityType.trim().length > 0,
+        )
         .slice(0, limit);
     }
     const rows = await ctx.db
@@ -510,7 +625,9 @@ export const getTeamTimeline = query({
       agentId
         ? ctx.db
             .query("agentEvents")
-            .withIndex("by_team_agent_occurred_at", (q) => q.eq("teamId", teamId).eq("agentId", agentId))
+            .withIndex("by_team_agent_occurred_at", (q) =>
+              q.eq("teamId", teamId).eq("agentId", agentId),
+            )
             .order("desc")
             .take(limit)
         : ctx.db
@@ -567,4 +684,3 @@ export const getNextTaskCandidates = query({
     }));
   },
 });
-

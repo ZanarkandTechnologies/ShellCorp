@@ -39,7 +39,7 @@ export default defineSchema({
         id: v.string(),
         label: v.string(),
         weight: v.number(),
-      })
+      }),
     ),
     currentBeatId: v.optional(v.string()),
     sessionKey: v.optional(v.string()),
@@ -63,6 +63,11 @@ export default defineSchema({
     syncState: v.string(),
     syncError: v.optional(v.string()),
     notes: v.optional(v.string()),
+    taskType: v.optional(v.string()),
+    approvalState: v.optional(v.string()),
+    linkedSessionKey: v.optional(v.string()),
+    createdTeamId: v.optional(v.string()),
+    createdProjectId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
     createdBy: v.optional(v.string()),
@@ -93,5 +98,4 @@ export default defineSchema({
     .index("by_project_occurred_at", ["projectId", "occurredAt"])
     .index("by_project_task_occurred_at", ["projectId", "taskId", "occurredAt"])
     .index("by_project_step_key", ["projectId", "stepKey"]),
-
 });

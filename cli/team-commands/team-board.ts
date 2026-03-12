@@ -33,6 +33,11 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .option("--owner-agent-id <agentId>", "Assigned agent id")
     .option("--priority <priority>", "low|medium|high", "medium")
     .option("--status <status>", "todo|in_progress|blocked|done", "todo")
+    .option("--task-type <taskType>", "Optional workflow type metadata")
+    .option("--approval-state <state>", "Optional approval state metadata")
+    .option("--linked-session-key <sessionKey>", "Optional linked session key")
+    .option("--created-team-id <teamId>", "Optional created team id metadata")
+    .option("--created-project-id <projectId>", "Optional created project id metadata")
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--detail <detail>", "Optional detail")
@@ -45,6 +50,11 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
         ownerAgentId?: string;
         priority: string;
         status: string;
+        taskType?: string;
+        approvalState?: string;
+        linkedSessionKey?: string;
+        createdTeamId?: string;
+        createdProjectId?: string;
         actorAgentId: string;
         beatId?: string;
         detail?: string;
@@ -61,6 +71,11 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           ownerAgentId: opts.ownerAgentId?.trim() || undefined,
           priority: parseBoardTaskPriority(opts.priority),
           status: parseBoardTaskStatus(opts.status),
+          taskType: opts.taskType?.trim() || undefined,
+          approvalState: opts.approvalState?.trim() || undefined,
+          linkedSessionKey: opts.linkedSessionKey?.trim() || undefined,
+          createdTeamId: opts.createdTeamId?.trim() || undefined,
+          createdProjectId: opts.createdProjectId?.trim() || undefined,
           actorType: "operator",
           actorAgentId: opts.actorAgentId.trim(),
           beatId: optionalBeatId(opts.beatId),
@@ -83,26 +98,36 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--detail <detail>", "Optional detail")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; status: string; actorAgentId: string; beatId?: string; detail?: string; json?: boolean }) => {
-      ensureCommandPermission("team.board.write");
-      const company = await store.readCompanyModel();
-      const { projectId } = resolveProjectOrFail(company, opts.teamId);
-      const result = await postBoardCommand({
-        projectId,
-        command: "task_move",
-        taskId: opts.taskId.trim(),
-        status: parseBoardTaskStatus(opts.status),
-        actorType: "operator",
-        actorAgentId: opts.actorAgentId.trim(),
-        beatId: optionalBeatId(opts.beatId),
-        detail: opts.detail?.trim() || undefined,
-      });
-      formatOutput(
-        opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, projectId, result },
-        `Moved task ${opts.taskId} to ${opts.status}`,
-      );
-    });
+    .action(
+      async (opts: {
+        teamId: string;
+        taskId: string;
+        status: string;
+        actorAgentId: string;
+        beatId?: string;
+        detail?: string;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.board.write");
+        const company = await store.readCompanyModel();
+        const { projectId } = resolveProjectOrFail(company, opts.teamId);
+        const result = await postBoardCommand({
+          projectId,
+          command: "task_move",
+          taskId: opts.taskId.trim(),
+          status: parseBoardTaskStatus(opts.status),
+          actorType: "operator",
+          actorAgentId: opts.actorAgentId.trim(),
+          beatId: optionalBeatId(opts.beatId),
+          detail: opts.detail?.trim() || undefined,
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId: opts.teamId, projectId, result },
+          `Moved task ${opts.taskId} to ${opts.status}`,
+        );
+      },
+    );
 
   boardTask
     .command("update")
@@ -110,6 +135,11 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .requiredOption("--task-id <taskId>", "Task id")
     .option("--title <title>", "Updated task title")
     .option("--detail <detail>", "Updated task detail/notes")
+    .option("--task-type <taskType>", "Updated workflow type metadata")
+    .option("--approval-state <state>", "Updated approval state metadata")
+    .option("--linked-session-key <sessionKey>", "Updated linked session key metadata")
+    .option("--created-team-id <teamId>", "Updated created team id metadata")
+    .option("--created-project-id <projectId>", "Updated created project id metadata")
     .option("--due-at <timestamp>", "Due timestamp (ms epoch)", (value) => {
       const parsed = Number(value);
       if (!Number.isFinite(parsed) || parsed < 0) fail(`invalid_due_at:${value}`);
@@ -124,14 +154,30 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
         taskId: string;
         title?: string;
         detail?: string;
+        taskType?: string;
+        approvalState?: string;
+        linkedSessionKey?: string;
+        createdTeamId?: string;
+        createdProjectId?: string;
         dueAt?: number;
         actorAgentId: string;
         beatId?: string;
         json?: boolean;
       }) => {
         ensureCommandPermission("team.board.write");
-        if (!opts.title?.trim() && !opts.detail?.trim() && typeof opts.dueAt !== "number") {
-          fail("task_update_requires_change:title|detail|due-at");
+        if (
+          !opts.title?.trim() &&
+          !opts.detail?.trim() &&
+          !opts.taskType?.trim() &&
+          !opts.approvalState?.trim() &&
+          !opts.linkedSessionKey?.trim() &&
+          !opts.createdTeamId?.trim() &&
+          !opts.createdProjectId?.trim() &&
+          typeof opts.dueAt !== "number"
+        ) {
+          fail(
+            "task_update_requires_change:title|detail|task-type|approval-state|linked-session-key|created-team-id|created-project-id|due-at",
+          );
         }
         const company = await store.readCompanyModel();
         const { projectId } = resolveProjectOrFail(company, opts.teamId);
@@ -141,6 +187,11 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           taskId: opts.taskId.trim(),
           title: opts.title?.trim() || undefined,
           detail: opts.detail?.trim() || undefined,
+          taskType: opts.taskType?.trim() || undefined,
+          approvalState: opts.approvalState?.trim() || undefined,
+          linkedSessionKey: opts.linkedSessionKey?.trim() || undefined,
+          createdTeamId: opts.createdTeamId?.trim() || undefined,
+          createdProjectId: opts.createdProjectId?.trim() || undefined,
           dueAt: opts.dueAt,
           actorType: "operator",
           actorAgentId: opts.actorAgentId.trim(),
@@ -161,24 +212,32 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
-      ensureCommandPermission("team.board.write");
-      const company = await store.readCompanyModel();
-      const { projectId } = resolveProjectOrFail(company, opts.teamId);
-      const result = await postBoardCommand({
-        projectId,
-        command: "task_delete",
-        taskId: opts.taskId.trim(),
-        actorType: "operator",
-        actorAgentId: opts.actorAgentId.trim(),
-        beatId: optionalBeatId(opts.beatId),
-      });
-      formatOutput(
-        opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, projectId, result },
-        `Deleted task ${opts.taskId}`,
-      );
-    });
+    .action(
+      async (opts: {
+        teamId: string;
+        taskId: string;
+        actorAgentId: string;
+        beatId?: string;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.board.write");
+        const company = await store.readCompanyModel();
+        const { projectId } = resolveProjectOrFail(company, opts.teamId);
+        const result = await postBoardCommand({
+          projectId,
+          command: "task_delete",
+          taskId: opts.taskId.trim(),
+          actorType: "operator",
+          actorAgentId: opts.actorAgentId.trim(),
+          beatId: optionalBeatId(opts.beatId),
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId: opts.teamId, projectId, result },
+          `Deleted task ${opts.taskId}`,
+        );
+      },
+    );
 
   boardTask
     .command("assign")
@@ -188,25 +247,34 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; ownerAgentId: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
-      ensureCommandPermission("team.board.write");
-      const company = await store.readCompanyModel();
-      const { projectId } = resolveProjectOrFail(company, opts.teamId);
-      const result = await postBoardCommand({
-        projectId,
-        command: "task_assign",
-        taskId: opts.taskId.trim(),
-        ownerAgentId: opts.ownerAgentId.trim(),
-        actorType: "operator",
-        actorAgentId: opts.actorAgentId.trim(),
-        beatId: optionalBeatId(opts.beatId),
-      });
-      formatOutput(
-        opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, projectId, result },
-        `Assigned task ${opts.taskId} to ${opts.ownerAgentId}`,
-      );
-    });
+    .action(
+      async (opts: {
+        teamId: string;
+        taskId: string;
+        ownerAgentId: string;
+        actorAgentId: string;
+        beatId?: string;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.board.write");
+        const company = await store.readCompanyModel();
+        const { projectId } = resolveProjectOrFail(company, opts.teamId);
+        const result = await postBoardCommand({
+          projectId,
+          command: "task_assign",
+          taskId: opts.taskId.trim(),
+          ownerAgentId: opts.ownerAgentId.trim(),
+          actorType: "operator",
+          actorAgentId: opts.actorAgentId.trim(),
+          beatId: optionalBeatId(opts.beatId),
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId: opts.teamId, projectId, result },
+          `Assigned task ${opts.taskId} to ${opts.ownerAgentId}`,
+        );
+      },
+    );
 
   boardTask
     .command("block")
@@ -216,25 +284,34 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; reason?: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
-      ensureCommandPermission("team.board.write");
-      const company = await store.readCompanyModel();
-      const { projectId } = resolveProjectOrFail(company, opts.teamId);
-      const result = await postBoardCommand({
-        projectId,
-        command: "task_block",
-        taskId: opts.taskId.trim(),
-        actorType: "operator",
-        actorAgentId: opts.actorAgentId.trim(),
-        beatId: optionalBeatId(opts.beatId),
-        detail: opts.reason?.trim() || undefined,
-      });
-      formatOutput(
-        opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, projectId, result },
-        `Blocked task ${opts.taskId}`,
-      );
-    });
+    .action(
+      async (opts: {
+        teamId: string;
+        taskId: string;
+        reason?: string;
+        actorAgentId: string;
+        beatId?: string;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.board.write");
+        const company = await store.readCompanyModel();
+        const { projectId } = resolveProjectOrFail(company, opts.teamId);
+        const result = await postBoardCommand({
+          projectId,
+          command: "task_block",
+          taskId: opts.taskId.trim(),
+          actorType: "operator",
+          actorAgentId: opts.actorAgentId.trim(),
+          beatId: optionalBeatId(opts.beatId),
+          detail: opts.reason?.trim() || undefined,
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId: opts.teamId, projectId, result },
+          `Blocked task ${opts.taskId}`,
+        );
+      },
+    );
 
   boardTask
     .command("done")
@@ -244,25 +321,34 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; note?: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
-      ensureCommandPermission("team.board.write");
-      const company = await store.readCompanyModel();
-      const { projectId } = resolveProjectOrFail(company, opts.teamId);
-      const result = await postBoardCommand({
-        projectId,
-        command: "task_done",
-        taskId: opts.taskId.trim(),
-        actorType: "operator",
-        actorAgentId: opts.actorAgentId.trim(),
-        beatId: optionalBeatId(opts.beatId),
-        detail: opts.note?.trim() || undefined,
-      });
-      formatOutput(
-        opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, projectId, result },
-        `Marked task ${opts.taskId} done`,
-      );
-    });
+    .action(
+      async (opts: {
+        teamId: string;
+        taskId: string;
+        note?: string;
+        actorAgentId: string;
+        beatId?: string;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.board.write");
+        const company = await store.readCompanyModel();
+        const { projectId } = resolveProjectOrFail(company, opts.teamId);
+        const result = await postBoardCommand({
+          projectId,
+          command: "task_done",
+          taskId: opts.taskId.trim(),
+          actorType: "operator",
+          actorAgentId: opts.actorAgentId.trim(),
+          beatId: optionalBeatId(opts.beatId),
+          detail: opts.note?.trim() || undefined,
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId: opts.teamId, projectId, result },
+          `Marked task ${opts.taskId} done`,
+        );
+      },
+    );
 
   boardTask
     .command("reopen")
@@ -272,25 +358,34 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; note?: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
-      ensureCommandPermission("team.board.write");
-      const company = await store.readCompanyModel();
-      const { projectId } = resolveProjectOrFail(company, opts.teamId);
-      const result = await postBoardCommand({
-        projectId,
-        command: "task_reopen",
-        taskId: opts.taskId.trim(),
-        actorType: "operator",
-        actorAgentId: opts.actorAgentId.trim(),
-        beatId: optionalBeatId(opts.beatId),
-        detail: opts.note?.trim() || undefined,
-      });
-      formatOutput(
-        opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, projectId, result },
-        `Reopened task ${opts.taskId}`,
-      );
-    });
+    .action(
+      async (opts: {
+        teamId: string;
+        taskId: string;
+        note?: string;
+        actorAgentId: string;
+        beatId?: string;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.board.write");
+        const company = await store.readCompanyModel();
+        const { projectId } = resolveProjectOrFail(company, opts.teamId);
+        const result = await postBoardCommand({
+          projectId,
+          command: "task_reopen",
+          taskId: opts.taskId.trim(),
+          actorType: "operator",
+          actorAgentId: opts.actorAgentId.trim(),
+          beatId: optionalBeatId(opts.beatId),
+          detail: opts.note?.trim() || undefined,
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId: opts.teamId, projectId, result },
+          `Reopened task ${opts.taskId}`,
+        );
+      },
+    );
 
   boardTask
     .command("reprioritize")
@@ -300,25 +395,34 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .option("--actor-agent-id <agentId>", "Actor agent id", "main")
     .option("--beat-id <beatId>", "Optional heartbeat beat id")
     .option("--json", "Output JSON", false)
-    .action(async (opts: { teamId: string; taskId: string; priority: string; actorAgentId: string; beatId?: string; json?: boolean }) => {
-      ensureCommandPermission("team.board.write");
-      const company = await store.readCompanyModel();
-      const { projectId } = resolveProjectOrFail(company, opts.teamId);
-      const result = await postBoardCommand({
-        projectId,
-        command: "task_reprioritize",
-        taskId: opts.taskId.trim(),
-        priority: parseBoardTaskPriority(opts.priority),
-        actorType: "operator",
-        actorAgentId: opts.actorAgentId.trim(),
-        beatId: optionalBeatId(opts.beatId),
-      });
-      formatOutput(
-        opts.json ? "json" : "text",
-        { ok: true, teamId: opts.teamId, projectId, result },
-        `Reprioritized task ${opts.taskId} to ${opts.priority}`,
-      );
-    });
+    .action(
+      async (opts: {
+        teamId: string;
+        taskId: string;
+        priority: string;
+        actorAgentId: string;
+        beatId?: string;
+        json?: boolean;
+      }) => {
+        ensureCommandPermission("team.board.write");
+        const company = await store.readCompanyModel();
+        const { projectId } = resolveProjectOrFail(company, opts.teamId);
+        const result = await postBoardCommand({
+          projectId,
+          command: "task_reprioritize",
+          taskId: opts.taskId.trim(),
+          priority: parseBoardTaskPriority(opts.priority),
+          actorType: "operator",
+          actorAgentId: opts.actorAgentId.trim(),
+          beatId: optionalBeatId(opts.beatId),
+        });
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, teamId: opts.teamId, projectId, result },
+          `Reprioritized task ${opts.taskId} to ${opts.priority}`,
+        );
+      },
+    );
 
   boardTask
     .command("list")
@@ -330,12 +434,16 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
       const company = await store.readCompanyModel();
       const { projectId } = resolveProjectOrFail(company, opts.teamId);
       const data = await postBoardQuery({ projectId, query: "tasks" });
-      const tasks = Array.isArray((data as { tasks?: unknown[] })?.tasks) ? ((data as { tasks: unknown[] }).tasks as unknown[]) : [];
+      const tasks = Array.isArray((data as { tasks?: unknown[] })?.tasks)
+        ? ((data as { tasks: unknown[] }).tasks as unknown[])
+        : [];
       const filtered =
         opts.status?.trim() && tasks.length > 0
           ? tasks.filter((entry) => {
               if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
-              return (entry as { status?: string }).status === parseBoardTaskStatus(opts.status!.trim());
+              return (
+                (entry as { status?: string }).status === parseBoardTaskStatus(opts.status!.trim())
+              );
             })
           : tasks;
       formatOutput(
@@ -345,7 +453,13 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           ? `${opts.teamId} has no board tasks`
           : filtered
               .map((row) => {
-                const task = row as { taskId?: string; status?: string; priority?: string; title?: string; ownerAgentId?: string };
+                const task = row as {
+                  taskId?: string;
+                  status?: string;
+                  priority?: string;
+                  title?: string;
+                  ownerAgentId?: string;
+                };
                 return `${task.taskId ?? "unknown"} | ${task.status ?? "todo"} | ${task.priority ?? "medium"} | ${task.ownerAgentId ?? "unassigned"} | ${task.title ?? ""}`;
               })
               .join("\n"),
@@ -359,7 +473,10 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .command("report")
     .requiredOption("--team-id <teamId>", "Team id (team-*)")
     .requiredOption("--agent-id <agentId>", "Agent id")
-    .requiredOption("--state <state>", "running|ok|no_work|error|idle|planning|executing|blocked|done")
+    .requiredOption(
+      "--state <state>",
+      "running|ok|no_work|error|idle|planning|executing|blocked|done",
+    )
     .requiredOption("--status-text <text>", "Current status detail")
     .option("--step-key <stepKey>", "Idempotency key")
     .option("--skill-id <skillId>", "Optional related skill id")
@@ -422,7 +539,10 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .command("log")
     .requiredOption("--team-id <teamId>", "Team id (team-*)")
     .requiredOption("--agent-id <agentId>", "Agent id")
-    .requiredOption("--activity-type <type>", "planning|research|executing|distributing|blocked|handoff|summary|status")
+    .requiredOption(
+      "--activity-type <type>",
+      "planning|research|executing|distributing|blocked|handoff|summary|status",
+    )
     .requiredOption("--label <label>", "Activity label")
     .option("--detail <detail>", "Activity detail")
     .option("--task-id <taskId>", "Task id context")
@@ -474,11 +594,16 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .command("timeline")
     .requiredOption("--team-id <teamId>", "Team id (team-*)")
     .option("--agent-id <agentId>", "Filter agent")
-    .option("--limit <limit>", "Max rows", (value) => {
-      const parsed = Number.parseInt(value, 10);
-      if (!Number.isFinite(parsed) || parsed < 1) fail(`invalid_limit:${value}`);
-      return parsed;
-    }, 20)
+    .option(
+      "--limit <limit>",
+      "Max rows",
+      (value) => {
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isFinite(parsed) || parsed < 1) fail(`invalid_limit:${value}`);
+        return parsed;
+      },
+      20,
+    )
     .option("--json", "Output JSON", false)
     .action(async (opts: { teamId: string; agentId?: string; limit: number; json?: boolean }) => {
       ensureCommandPermission("team.read");
@@ -498,8 +623,17 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           ? `${opts.teamId} has no activity events`
           : rows
               .map((row) => {
-                const event = row as { occurredAt?: number; agentId?: string; activityType?: string; label?: string; taskId?: string };
-                const at = typeof event.occurredAt === "number" ? new Date(event.occurredAt).toISOString() : "unknown-time";
+                const event = row as {
+                  occurredAt?: number;
+                  agentId?: string;
+                  activityType?: string;
+                  label?: string;
+                  taskId?: string;
+                };
+                const at =
+                  typeof event.occurredAt === "number"
+                    ? new Date(event.occurredAt).toISOString()
+                    : "unknown-time";
                 return `${at} | ${event.agentId ?? "unknown-agent"} | ${event.activityType ?? "status"} | ${event.label ?? ""} | ${event.taskId ?? "-"}`;
               })
               .join("\n"),
@@ -510,11 +644,16 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
     .command("next")
     .requiredOption("--team-id <teamId>", "Team id (team-*)")
     .option("--agent-id <agentId>", "Agent id for personalized ranking")
-    .option("--limit <limit>", "Max rows", (value) => {
-      const parsed = Number.parseInt(value, 10);
-      if (!Number.isFinite(parsed) || parsed < 1) fail(`invalid_limit:${value}`);
-      return parsed;
-    }, 5)
+    .option(
+      "--limit <limit>",
+      "Max rows",
+      (value) => {
+        const parsed = Number.parseInt(value, 10);
+        if (!Number.isFinite(parsed) || parsed < 1) fail(`invalid_limit:${value}`);
+        return parsed;
+      },
+      5,
+    )
     .option("--json", "Output JSON", false)
     .action(async (opts: { teamId: string; agentId?: string; limit: number; json?: boolean }) => {
       ensureCommandPermission("team.read");
@@ -534,7 +673,13 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           ? `${opts.teamId} has no next candidates`
           : list
               .map((row) => {
-                const candidate = row as { taskId?: string; priority?: string; status?: string; title?: string; ownerAgentId?: string };
+                const candidate = row as {
+                  taskId?: string;
+                  priority?: string;
+                  status?: string;
+                  title?: string;
+                  ownerAgentId?: string;
+                };
                 return `${candidate.taskId ?? "unknown"} | ${candidate.priority ?? "medium"} | ${candidate.ownerAgentId ?? "unassigned"} | ${candidate.title ?? ""}`;
               })
               .join("\n"),

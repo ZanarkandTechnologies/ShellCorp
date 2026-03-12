@@ -68,6 +68,7 @@ import type {
   CapabilitySlotModel,
   BusinessConfigModel,
   TeamBusinessSkillSyncResult,
+  TeamProposalModel,
 } from "../openclaw-types";
 
 type Json = Record<string, unknown>;
@@ -87,7 +88,9 @@ export function toAgent(entry: unknown): AgentCardModel | null {
   const agentId = String(row.agentId ?? row.id ?? "").trim();
   if (!agentId) return null;
   const allow = Array.isArray((row.toolPolicy as Json | undefined)?.allow)
-    ? ((row.toolPolicy as Json).allow as unknown[]).filter((v): v is string => typeof v === "string")
+    ? ((row.toolPolicy as Json).allow as unknown[]).filter(
+        (v): v is string => typeof v === "string",
+      )
     : [];
   const deny = Array.isArray((row.toolPolicy as Json | undefined)?.deny)
     ? ((row.toolPolicy as Json).deny as unknown[]).filter((v): v is string => typeof v === "string")
@@ -120,7 +123,11 @@ export function toSession(agentId: string, entry: unknown): SessionRowModel | nu
   };
 }
 
-export function toTimeline(agentId: string, sessionKey: string, payload: unknown): SessionTimelineModel {
+export function toTimeline(
+  agentId: string,
+  sessionKey: string,
+  payload: unknown,
+): SessionTimelineModel {
   const row = payload && typeof payload === "object" ? (payload as Json) : {};
   const rawEvents = Array.isArray(row.events) ? row.events : [];
   const events = rawEvents
@@ -136,7 +143,10 @@ export function toTimeline(agentId: string, sessionKey: string, payload: unknown
       if (!text.trim()) return null;
       const sourceRaw = String(event.source ?? "").trim();
       const source: SessionTimelineEvent["source"] =
-        sourceRaw === "heartbeat" || sourceRaw === "ui" || sourceRaw === "operator" || sourceRaw === "unknown"
+        sourceRaw === "heartbeat" ||
+        sourceRaw === "ui" ||
+        sourceRaw === "operator" ||
+        sourceRaw === "unknown"
           ? sourceRaw
           : undefined;
       const eventId = typeof event.eventId === "string" ? event.eventId : undefined;
@@ -159,14 +169,19 @@ export function toTimeline(agentId: string, sessionKey: string, payload: unknown
   return {
     agentId,
     sessionKey,
-    tokenUsage: row.tokenUsage && typeof row.tokenUsage === "object" ? (row.tokenUsage as SessionTimelineModel["tokenUsage"]) : undefined,
+    tokenUsage:
+      row.tokenUsage && typeof row.tokenUsage === "object"
+        ? (row.tokenUsage as SessionTimelineModel["tokenUsage"])
+        : undefined,
     events,
   };
 }
 
 export function scoreBubbleLabel(text: string): string[] {
   const labels = new Set<string>();
-  const toolMatch = text.match(/\b(ReadFile|WriteFile|Edit|ApplyPatch|Shell|Bash|TodoWrite|AskQuestion|Subagent|SemanticSearch|WebSearch)\b/gi);
+  const toolMatch = text.match(
+    /\b(ReadFile|WriteFile|Edit|ApplyPatch|Shell|Bash|TodoWrite|AskQuestion|Subagent|SemanticSearch|WebSearch)\b/gi,
+  );
   for (const hit of toolMatch ?? []) labels.add(hit);
   const skillMatch = text.match(/\b(skill|skills)\s*[:=]\s*([a-z0-9_-]+)/i);
   if (skillMatch?.[2]) labels.add(`skill:${skillMatch[2]}`);
@@ -213,23 +228,24 @@ export function finalizeHeartbeatWindow(
   };
 }
 
-export function parseHeartbeatWindows(events: SessionTimelineEvent[], sessionKey: string): HeartbeatWindow[] {
+export function parseHeartbeatWindows(
+  events: SessionTimelineEvent[],
+  sessionKey: string,
+): HeartbeatWindow[] {
   const windows: HeartbeatWindow[] = [];
   const ordered = [...events].sort((a, b) => a.ts - b.ts);
   let counter = 0;
-  let current:
-    | {
-        beatId: string;
-        sessionKey: string;
-        startedAt: number;
-        trigger: HeartbeatWindow["trigger"];
-        status: HeartbeatWindow["status"];
-        summary: string;
-        eventCount: number;
-        actionCount: number;
-        bubbles: Map<string, number>;
-      }
-    | null = null;
+  let current: {
+    beatId: string;
+    sessionKey: string;
+    startedAt: number;
+    trigger: HeartbeatWindow["trigger"];
+    status: HeartbeatWindow["status"];
+    summary: string;
+    eventCount: number;
+    actionCount: number;
+    bubbles: Map<string, number>;
+  } | null = null;
 
   for (const event of ordered) {
     if (isHeartbeatStartEvent(event)) {
@@ -435,8 +451,9 @@ export function toToolCatalogEntry(entry: unknown): ToolCatalogEntry | null {
   if (!id) return null;
   const source = String(row.source ?? "core");
   const defaultProfiles = Array.isArray(row.defaultProfiles)
-    ? row.defaultProfiles.filter((value): value is "minimal" | "coding" | "messaging" | "full" =>
-        value === "minimal" || value === "coding" || value === "messaging" || value === "full",
+    ? row.defaultProfiles.filter(
+        (value): value is "minimal" | "coding" | "messaging" | "full" =>
+          value === "minimal" || value === "coding" || value === "messaging" || value === "full",
       )
     : [];
   return {
@@ -465,7 +482,10 @@ export function toToolCatalogGroup(entry: unknown): ToolCatalogGroup | null {
   };
 }
 
-export function toToolsCatalogResult(entry: unknown, fallbackAgentId: string): ToolsCatalogResult | null {
+export function toToolsCatalogResult(
+  entry: unknown,
+  fallbackAgentId: string,
+): ToolsCatalogResult | null {
   if (!entry || typeof entry !== "object") return null;
   const row = entry as Json;
   return {
@@ -511,7 +531,9 @@ export function toChannelAccountSnapshot(entry: unknown): ChannelAccountSnapshot
     lastProbeAt: typeof row.lastProbeAt === "number" ? row.lastProbeAt : null,
     mode: typeof row.mode === "string" ? row.mode : null,
     dmPolicy: typeof row.dmPolicy === "string" ? row.dmPolicy : null,
-    allowFrom: Array.isArray(row.allowFrom) ? row.allowFrom.filter((value): value is string => typeof value === "string") : null,
+    allowFrom: Array.isArray(row.allowFrom)
+      ? row.allowFrom.filter((value): value is string => typeof value === "string")
+      : null,
     tokenSource: typeof row.tokenSource === "string" ? row.tokenSource : null,
     botTokenSource: typeof row.botTokenSource === "string" ? row.botTokenSource : null,
     appTokenSource: typeof row.appTokenSource === "string" ? row.appTokenSource : null,
@@ -521,7 +543,8 @@ export function toChannelAccountSnapshot(entry: unknown): ChannelAccountSnapshot
     webhookPath: typeof row.webhookPath === "string" ? row.webhookPath : null,
     webhookUrl: typeof row.webhookUrl === "string" ? row.webhookUrl : null,
     baseUrl: typeof row.baseUrl === "string" ? row.baseUrl : null,
-    allowUnmentionedGroups: typeof row.allowUnmentionedGroups === "boolean" ? row.allowUnmentionedGroups : null,
+    allowUnmentionedGroups:
+      typeof row.allowUnmentionedGroups === "boolean" ? row.allowUnmentionedGroups : null,
     cliPath: typeof row.cliPath === "string" ? row.cliPath : null,
     dbPath: typeof row.dbPath === "string" ? row.dbPath : null,
     port: typeof row.port === "number" ? row.port : null,
@@ -534,42 +557,56 @@ export function toChannelAccountSnapshot(entry: unknown): ChannelAccountSnapshot
 export function toChannelsStatusSnapshot(entry: unknown): ChannelsStatusSnapshot | null {
   if (!entry || typeof entry !== "object") return null;
   const row = entry as Json;
-  const channelAccountsRaw = row.channelAccounts && typeof row.channelAccounts === "object"
-    ? (row.channelAccounts as Record<string, unknown>)
-    : {};
+  const channelAccountsRaw =
+    row.channelAccounts && typeof row.channelAccounts === "object"
+      ? (row.channelAccounts as Record<string, unknown>)
+      : {};
   const channelAccounts: Record<string, ChannelAccountSnapshot[]> = {};
   for (const [channelId, accounts] of Object.entries(channelAccountsRaw)) {
     channelAccounts[channelId] = normalizeArray(accounts, toChannelAccountSnapshot);
   }
-  const channelDefaultAccountIdRaw = row.channelDefaultAccountId && typeof row.channelDefaultAccountId === "object"
-    ? (row.channelDefaultAccountId as Record<string, unknown>)
-    : {};
+  const channelDefaultAccountIdRaw =
+    row.channelDefaultAccountId && typeof row.channelDefaultAccountId === "object"
+      ? (row.channelDefaultAccountId as Record<string, unknown>)
+      : {};
   const channelDefaultAccountId = Object.fromEntries(
     Object.entries(channelDefaultAccountIdRaw).map(([key, value]) => [key, String(value ?? "")]),
   );
   return {
     ts: typeof row.ts === "number" ? row.ts : Date.now(),
-    channelOrder: Array.isArray(row.channelOrder) ? row.channelOrder.filter((value): value is string => typeof value === "string") : [],
+    channelOrder: Array.isArray(row.channelOrder)
+      ? row.channelOrder.filter((value): value is string => typeof value === "string")
+      : [],
     channelLabels:
       row.channelLabels && typeof row.channelLabels === "object"
         ? Object.fromEntries(
-            Object.entries(row.channelLabels as Record<string, unknown>).map(([key, value]) => [key, String(value ?? key)]),
+            Object.entries(row.channelLabels as Record<string, unknown>).map(([key, value]) => [
+              key,
+              String(value ?? key),
+            ]),
           )
         : {},
     channelDetailLabels:
       row.channelDetailLabels && typeof row.channelDetailLabels === "object"
         ? Object.fromEntries(
-            Object.entries(row.channelDetailLabels as Record<string, unknown>).map(([key, value]) => [key, String(value ?? "")]),
+            Object.entries(row.channelDetailLabels as Record<string, unknown>).map(
+              ([key, value]) => [key, String(value ?? "")],
+            ),
           )
         : undefined,
     channelSystemImages:
       row.channelSystemImages && typeof row.channelSystemImages === "object"
         ? Object.fromEntries(
-            Object.entries(row.channelSystemImages as Record<string, unknown>).map(([key, value]) => [key, String(value ?? "")]),
+            Object.entries(row.channelSystemImages as Record<string, unknown>).map(
+              ([key, value]) => [key, String(value ?? "")],
+            ),
           )
         : undefined,
     channelMeta: normalizeArray(row.channelMeta, toChannelMetaEntry),
-    channels: row.channels && typeof row.channels === "object" ? (row.channels as Record<string, unknown>) : {},
+    channels:
+      row.channels && typeof row.channels === "object"
+        ? (row.channels as Record<string, unknown>)
+        : {},
     channelAccounts,
     channelDefaultAccountId,
   };
@@ -601,7 +638,10 @@ export function toCronJob(entry: unknown): CronJob | null {
     sessionTarget: row.sessionTarget === "isolated" ? "isolated" : "main",
     wakeMode: row.wakeMode === "now" ? "now" : "next-heartbeat",
     payload,
-    delivery: row.delivery && typeof row.delivery === "object" ? (row.delivery as CronJob["delivery"]) : undefined,
+    delivery:
+      row.delivery && typeof row.delivery === "object"
+        ? (row.delivery as CronJob["delivery"])
+        : undefined,
     state: row.state && typeof row.state === "object" ? (row.state as CronJob["state"]) : undefined,
   };
 }
@@ -621,7 +661,8 @@ export function toSkillStatusEntry(entry: unknown): SkillStatusEntry | null {
   const row = entry as Json;
   const name = String(row.name ?? "").trim();
   if (!name) return null;
-  const requirements = row.requirements && typeof row.requirements === "object" ? (row.requirements as Json) : {};
+  const requirements =
+    row.requirements && typeof row.requirements === "object" ? (row.requirements as Json) : {};
   const missing = row.missing && typeof row.missing === "object" ? (row.missing as Json) : {};
   return {
     name,
@@ -639,16 +680,32 @@ export function toSkillStatusEntry(entry: unknown): SkillStatusEntry | null {
     blockedByAllowlist: row.blockedByAllowlist === true,
     eligible: row.eligible !== false,
     requirements: {
-      bins: Array.isArray(requirements.bins) ? requirements.bins.filter((value): value is string => typeof value === "string") : [],
-      env: Array.isArray(requirements.env) ? requirements.env.filter((value): value is string => typeof value === "string") : [],
-      config: Array.isArray(requirements.config) ? requirements.config.filter((value): value is string => typeof value === "string") : [],
-      os: Array.isArray(requirements.os) ? requirements.os.filter((value): value is string => typeof value === "string") : [],
+      bins: Array.isArray(requirements.bins)
+        ? requirements.bins.filter((value): value is string => typeof value === "string")
+        : [],
+      env: Array.isArray(requirements.env)
+        ? requirements.env.filter((value): value is string => typeof value === "string")
+        : [],
+      config: Array.isArray(requirements.config)
+        ? requirements.config.filter((value): value is string => typeof value === "string")
+        : [],
+      os: Array.isArray(requirements.os)
+        ? requirements.os.filter((value): value is string => typeof value === "string")
+        : [],
     },
     missing: {
-      bins: Array.isArray(missing.bins) ? missing.bins.filter((value): value is string => typeof value === "string") : [],
-      env: Array.isArray(missing.env) ? missing.env.filter((value): value is string => typeof value === "string") : [],
-      config: Array.isArray(missing.config) ? missing.config.filter((value): value is string => typeof value === "string") : [],
-      os: Array.isArray(missing.os) ? missing.os.filter((value): value is string => typeof value === "string") : [],
+      bins: Array.isArray(missing.bins)
+        ? missing.bins.filter((value): value is string => typeof value === "string")
+        : [],
+      env: Array.isArray(missing.env)
+        ? missing.env.filter((value): value is string => typeof value === "string")
+        : [],
+      config: Array.isArray(missing.config)
+        ? missing.config.filter((value): value is string => typeof value === "string")
+        : [],
+      os: Array.isArray(missing.os)
+        ? missing.os.filter((value): value is string => typeof value === "string")
+        : [],
     },
     configChecks: Array.isArray(row.configChecks)
       ? row.configChecks
@@ -679,7 +736,9 @@ export function toSkillStatusEntry(entry: unknown): SkillStatusEntry | null {
               id,
               kind,
               label: String(install.label ?? id),
-              bins: Array.isArray(install.bins) ? install.bins.filter((item): item is string => typeof item === "string") : [],
+              bins: Array.isArray(install.bins)
+                ? install.bins.filter((item): item is string => typeof item === "string")
+                : [],
             };
           })
           .filter((value): value is NonNullable<typeof value> => value !== null)
@@ -760,15 +819,32 @@ export function toAgentMemoryEntry(agentId: string, entry: unknown): AgentMemory
     },
     rawText,
     text,
-    ts: typeof row.ts === "number" ? row.ts : typeof row.timestamp === "number" ? row.timestamp : undefined,
+    ts:
+      typeof row.ts === "number"
+        ? row.ts
+        : typeof row.timestamp === "number"
+          ? row.timestamp
+          : undefined,
     type: normalizedType,
     memId: typeof row.memId === "string" ? row.memId : undefined,
-    tags: Array.isArray(row.tags) ? row.tags.filter((tag): tag is string => typeof tag === "string") : [],
-    metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : undefined,
+    tags: Array.isArray(row.tags)
+      ? row.tags.filter((tag): tag is string => typeof tag === "string")
+      : [],
+    metadata:
+      row.metadata && typeof row.metadata === "object"
+        ? (row.metadata as Record<string, unknown>)
+        : undefined,
   };
 }
 
-const VALID_ACTION_TYPES = new Set(["tool_call", "external_message", "deploy", "delete", "write", "config_change"]);
+const VALID_ACTION_TYPES = new Set([
+  "tool_call",
+  "external_message",
+  "deploy",
+  "delete",
+  "write",
+  "config_change",
+]);
 const VALID_RISK_LEVELS = new Set(["low", "medium", "high", "critical"]);
 
 export function toPendingApproval(entry: unknown): PendingApprovalModel | null {
@@ -781,13 +857,147 @@ export function toPendingApproval(entry: unknown): PendingApprovalModel | null {
   return {
     id,
     agentId: String(row.agentId ?? "").trim(),
-    actionType: VALID_ACTION_TYPES.has(actionType) ? (actionType as PendingApprovalModel["actionType"]) : "tool_call",
+    actionType: VALID_ACTION_TYPES.has(actionType)
+      ? (actionType as PendingApprovalModel["actionType"])
+      : "tool_call",
     toolName: typeof row.toolName === "string" ? row.toolName : undefined,
     description: String(row.description ?? ""),
-    riskLevel: VALID_RISK_LEVELS.has(riskLevel) ? (riskLevel as PendingApprovalModel["riskLevel"]) : "medium",
+    riskLevel: VALID_RISK_LEVELS.has(riskLevel)
+      ? (riskLevel as PendingApprovalModel["riskLevel"])
+      : "medium",
     createdAt: typeof row.createdAt === "number" ? row.createdAt : Date.now(),
     context: typeof row.context === "string" ? row.context : undefined,
     status: row.status === "approved" || row.status === "rejected" ? row.status : "pending",
+  };
+}
+
+export function toTeamProposal(entry: unknown): TeamProposalModel | null {
+  const row = asRecord(entry);
+  const id = String(row.id ?? "").trim();
+  const requestedBy = String(row.requestedBy ?? "").trim();
+  const sourceAgentId = String(row.sourceAgentId ?? "").trim();
+  const title = String(row.title ?? "").trim();
+  const proposedTeamName = String(row.proposedTeamName ?? "").trim();
+  if (!id || !requestedBy || !sourceAgentId || !title || !proposedTeamName) return null;
+  const ideaBriefNode = asRecord(row.ideaBrief);
+  const focus = String(ideaBriefNode.focus ?? "").trim();
+  const targetCustomer = String(ideaBriefNode.targetCustomer ?? "").trim();
+  const primaryGoal = String(ideaBriefNode.primaryGoal ?? "").trim();
+  const constraints = String(ideaBriefNode.constraints ?? "").trim();
+  if (!focus || !targetCustomer || !primaryGoal || !constraints) return null;
+  const proposedRoles = normalizeArray(row.proposedRoles, (item) => {
+    const value = asRecord(item);
+    const roleId = String(value.roleId ?? "").trim();
+    const roleTitle = String(value.title ?? "").trim();
+    const rationale = String(value.rationale ?? "").trim();
+    if (!roleId || !roleTitle || !rationale) return null;
+    const mappedRuntimeRole = String(value.mappedRuntimeRole ?? "").trim();
+    return {
+      roleId,
+      title: roleTitle,
+      rationale,
+      supported: value.supported !== false,
+      mappedRuntimeRole:
+        mappedRuntimeRole === "ceo" ||
+        mappedRuntimeRole === "builder" ||
+        mappedRuntimeRole === "growth_marketer" ||
+        mappedRuntimeRole === "pm" ||
+        mappedRuntimeRole === "biz_pm" ||
+        mappedRuntimeRole === "biz_executor"
+          ? mappedRuntimeRole
+          : undefined,
+    };
+  });
+  const proposedInitialBoardItems = normalizeArray(row.proposedInitialBoardItems, (item) => {
+    const value = asRecord(item);
+    const itemId = String(value.id ?? "").trim();
+    const itemTitle = String(value.title ?? "").trim();
+    if (!itemId || !itemTitle) return null;
+    return {
+      id: itemId,
+      title: itemTitle,
+      detail:
+        typeof value.detail === "string" && value.detail.trim() ? value.detail.trim() : undefined,
+      ownerRoleId:
+        typeof value.ownerRoleId === "string" && value.ownerRoleId.trim()
+          ? value.ownerRoleId.trim()
+          : undefined,
+    };
+  });
+  const businessNode = asRecord(row.proposedBusinessConfig);
+  const capabilityNode = asRecord(businessNode.capabilitySkills);
+  const businessType = String(businessNode.businessType ?? "custom");
+  return {
+    id,
+    requestedBy,
+    sourceAgentId,
+    title,
+    ideaBrief: {
+      focus,
+      targetCustomer,
+      primaryGoal,
+      constraints,
+      notes:
+        typeof ideaBriefNode.notes === "string" && ideaBriefNode.notes.trim()
+          ? ideaBriefNode.notes.trim()
+          : undefined,
+    },
+    ideaGateStatus:
+      row.ideaGateStatus === "passed" || row.ideaGateStatus === "blocked"
+        ? row.ideaGateStatus
+        : "draft",
+    researchSummary: String(row.researchSummary ?? ""),
+    proposalSummary: String(row.proposalSummary ?? ""),
+    proposedTeamName,
+    proposedDescription: String(row.proposedDescription ?? ""),
+    proposedRoles,
+    proposedBusinessConfig: {
+      businessType:
+        businessType === "affiliate_marketing" ||
+        businessType === "content_creator" ||
+        businessType === "saas" ||
+        businessType === "custom"
+          ? businessType
+          : "custom",
+      capabilitySkills: {
+        measure: String(capabilityNode.measure ?? ""),
+        execute: String(capabilityNode.execute ?? ""),
+        distribute: String(capabilityNode.distribute ?? ""),
+      },
+    },
+    proposedInitialBoardItems,
+    approvalStatus:
+      row.approvalStatus === "approved" ||
+      row.approvalStatus === "rejected" ||
+      row.approvalStatus === "changes_requested"
+        ? row.approvalStatus
+        : "pending",
+    executionStatus:
+      row.executionStatus === "ready_to_create" ||
+      row.executionStatus === "creating" ||
+      row.executionStatus === "created" ||
+      row.executionStatus === "failed"
+        ? row.executionStatus
+        : "draft",
+    reviewTaskTitle: String(row.reviewTaskTitle ?? `Review CEO proposal: ${proposedTeamName}`),
+    createdAt: typeof row.createdAt === "number" ? row.createdAt : Date.now(),
+    updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : Date.now(),
+    approvalNote:
+      typeof row.approvalNote === "string" && row.approvalNote.trim()
+        ? row.approvalNote.trim()
+        : undefined,
+    executionError:
+      typeof row.executionError === "string" && row.executionError.trim()
+        ? row.executionError.trim()
+        : undefined,
+    createdTeamId:
+      typeof row.createdTeamId === "string" && row.createdTeamId.trim()
+        ? row.createdTeamId.trim()
+        : undefined,
+    createdProjectId:
+      typeof row.createdProjectId === "string" && row.createdProjectId.trim()
+        ? row.createdProjectId.trim()
+        : undefined,
   };
 }
 
@@ -811,7 +1021,15 @@ export const DEFAULT_COMPANY_MODEL: CompanyModel = {
     },
   ],
   projects: [],
-  agents: [{ agentId: "main", role: "ceo", heartbeatProfileId: "hb-ceo", isCeo: true, lifecycleState: "active" }],
+  agents: [
+    {
+      agentId: "main",
+      role: "ceo",
+      heartbeatProfileId: "hb-ceo",
+      isCeo: true,
+      lifecycleState: "active",
+    },
+  ],
   roleSlots: [],
   tasks: [],
   federationPolicies: [],
@@ -843,6 +1061,7 @@ export const DEFAULT_COMPANY_MODEL: CompanyModel = {
     },
   ],
   channelBindings: [],
+  teamProposals: [],
   heartbeatRuntime: {
     enabled: true,
     pluginId: "shellcorp-heartbeat",
@@ -928,7 +1147,10 @@ export function toLedgerEntry(projectId: string, entry: unknown): LedgerEntryMod
   };
 }
 
-export function toProjectAccount(projectId: string, entry: unknown): ProjectAccountModel | undefined {
+export function toProjectAccount(
+  projectId: string,
+  entry: unknown,
+): ProjectAccountModel | undefined {
   const row = asRecord(entry);
   const id = String(row.id ?? "").trim();
   const updatedAt = String(row.updatedAt ?? "").trim();
@@ -943,7 +1165,10 @@ export function toProjectAccount(projectId: string, entry: unknown): ProjectAcco
   };
 }
 
-export function toProjectAccountEvent(projectId: string, entry: unknown): ProjectAccountEventModel | null {
+export function toProjectAccountEvent(
+  projectId: string,
+  entry: unknown,
+): ProjectAccountEventModel | null {
   const row = asRecord(entry);
   const id = String(row.id ?? "").trim();
   const accountId = String(row.accountId ?? "").trim();
@@ -1017,14 +1242,23 @@ export function toMetricEvent(projectId: string, entry: unknown): MetricEventMod
   };
 }
 
-export function toResourceType(entry: unknown): "cash_budget" | "api_quota" | "distribution_slots" | "custom" {
-  if (entry === "cash_budget" || entry === "api_quota" || entry === "distribution_slots" || entry === "custom") {
+export function toResourceType(
+  entry: unknown,
+): "cash_budget" | "api_quota" | "distribution_slots" | "custom" {
+  if (
+    entry === "cash_budget" ||
+    entry === "api_quota" ||
+    entry === "distribution_slots" ||
+    entry === "custom"
+  ) {
     return entry;
   }
   return "custom";
 }
 
-export function toResourceLowBehavior(entry: unknown): "warn" | "deprioritize_expensive_tasks" | "ask_pm_review" {
+export function toResourceLowBehavior(
+  entry: unknown,
+): "warn" | "deprioritize_expensive_tasks" | "ask_pm_review" {
   if (entry === "deprioritize_expensive_tasks" || entry === "ask_pm_review") return entry;
   return "warn";
 }
@@ -1061,7 +1295,9 @@ export function toProjectResource(projectId: string, entry: unknown): ProjectRes
     limit: Number.isFinite(limit) ? limit : 0,
     reserved: Number.isFinite(reserved) ? reserved : undefined,
     trackerSkillId,
-    refreshCadenceMinutes: Number.isFinite(refreshCadenceMinutes) ? Math.max(1, Math.floor(refreshCadenceMinutes)) : undefined,
+    refreshCadenceMinutes: Number.isFinite(refreshCadenceMinutes)
+      ? Math.max(1, Math.floor(refreshCadenceMinutes))
+      : undefined,
     policy: {
       advisoryOnly: true,
       softLimit: Number.isFinite(Number(policy.softLimit)) ? Number(policy.softLimit) : undefined,
@@ -1102,7 +1338,9 @@ export function toProject(entry: unknown): ProjectModel | null {
   if (!id || !departmentId || !name) return null;
   const status = String(row.status ?? "active");
   const ledger = normalizeArray(row.ledger, (item) => toLedgerEntry(id, item));
-  const accountEvents = normalizeArray(row.accountEvents, (item) => toProjectAccountEvent(id, item));
+  const accountEvents = normalizeArray(row.accountEvents, (item) =>
+    toProjectAccountEvent(id, item),
+  );
   return {
     id,
     departmentId,
@@ -1110,7 +1348,9 @@ export function toProject(entry: unknown): ProjectModel | null {
     githubUrl: String(row.githubUrl ?? ""),
     status: status === "paused" || status === "archived" ? status : "active",
     goal: String(row.goal ?? ""),
-    kpis: Array.isArray(row.kpis) ? row.kpis.filter((item): item is string => typeof item === "string") : [],
+    kpis: Array.isArray(row.kpis)
+      ? row.kpis.filter((item): item is string => typeof item === "string")
+      : [],
     trackingContext: typeof row.trackingContext === "string" ? row.trackingContext : undefined,
     businessConfig: toBusinessConfig(row.businessConfig),
     account:
@@ -1121,7 +1361,8 @@ export function toProject(entry: unknown): ProjectModel | null {
             projectId: id,
             currency: "USD",
             balanceCents: accountEvents[accountEvents.length - 1]?.balanceAfterCents ?? 0,
-            updatedAt: accountEvents[accountEvents.length - 1]?.timestamp ?? new Date().toISOString(),
+            updatedAt:
+              accountEvents[accountEvents.length - 1]?.timestamp ?? new Date().toISOString(),
           }
         : undefined),
     accountEvents,
@@ -1138,16 +1379,27 @@ export function toCompanyAgent(entry: unknown): CompanyAgentModel | null {
   const agentId = String(row.agentId ?? "").trim();
   const role = String(row.role ?? "");
   if (!agentId) return null;
-  if (role !== "ceo" && role !== "builder" && role !== "growth_marketer" && role !== "pm" && role !== "biz_pm" && role !== "biz_executor") return null;
+  if (
+    role !== "ceo" &&
+    role !== "builder" &&
+    role !== "growth_marketer" &&
+    role !== "pm" &&
+    role !== "biz_pm" &&
+    role !== "biz_executor"
+  )
+    return null;
   const lifecycle = String(row.lifecycleState ?? "active");
   return {
     agentId,
     role,
-    projectId: typeof row.projectId === "string" && row.projectId.trim() ? row.projectId : undefined,
+    projectId:
+      typeof row.projectId === "string" && row.projectId.trim() ? row.projectId : undefined,
     heartbeatProfileId: String(row.heartbeatProfileId ?? ""),
     isCeo: Boolean(row.isCeo),
     lifecycleState:
-      lifecycle === "idle" || lifecycle === "pending_spawn" || lifecycle === "retired" ? lifecycle : "active",
+      lifecycle === "idle" || lifecycle === "pending_spawn" || lifecycle === "retired"
+        ? lifecycle
+        : "active",
   };
 }
 
@@ -1156,7 +1408,14 @@ export function toRoleSlot(entry: unknown): RoleSlotModel | null {
   const projectId = String(row.projectId ?? "").trim();
   const role = String(row.role ?? "");
   if (!projectId) return null;
-  if (role !== "builder" && role !== "growth_marketer" && role !== "pm" && role !== "biz_pm" && role !== "biz_executor") return null;
+  if (
+    role !== "builder" &&
+    role !== "growth_marketer" &&
+    role !== "pm" &&
+    role !== "biz_pm" &&
+    role !== "biz_executor"
+  )
+    return null;
   const desiredCount = Number(row.desiredCount ?? 0);
   return {
     projectId,
@@ -1177,11 +1436,12 @@ export function toTask(entry: unknown): FederatedTaskModel | null {
   const provider = String(row.provider ?? row.sourceProvider ?? "internal");
   const canonicalProvider = String(row.canonicalProvider ?? (provider || "internal"));
   const syncState = String(row.syncState ?? "healthy");
-  const artefactPathRaw = typeof row.artefactPath === "string"
-    ? row.artefactPath
-    : typeof row.artifactPath === "string"
-      ? row.artifactPath
-      : "";
+  const artefactPathRaw =
+    typeof row.artefactPath === "string"
+      ? row.artefactPath
+      : typeof row.artifactPath === "string"
+        ? row.artifactPath
+        : "";
   const artefactPath = artefactPathRaw.trim() || undefined;
   return {
     id,
@@ -1190,18 +1450,23 @@ export function toTask(entry: unknown): FederatedTaskModel | null {
     status: status === "in_progress" || status === "blocked" || status === "done" ? status : "todo",
     ownerAgentId: typeof row.ownerAgentId === "string" ? row.ownerAgentId : undefined,
     priority: priority === "low" || priority === "high" ? priority : "medium",
-    provider: provider === "notion" || provider === "vibe" || provider === "linear" ? provider : "internal",
+    provider:
+      provider === "notion" || provider === "vibe" || provider === "linear" ? provider : "internal",
     canonicalProvider:
-      canonicalProvider === "notion" || canonicalProvider === "vibe" || canonicalProvider === "linear"
+      canonicalProvider === "notion" ||
+      canonicalProvider === "vibe" ||
+      canonicalProvider === "linear"
         ? canonicalProvider
         : "internal",
-    providerUrl: typeof row.providerUrl === "string" && row.providerUrl.trim() ? row.providerUrl : undefined,
+    providerUrl:
+      typeof row.providerUrl === "string" && row.providerUrl.trim() ? row.providerUrl : undefined,
     artefactPath,
     syncState:
       syncState === "pending" || syncState === "conflict" || syncState === "error"
         ? (syncState as TaskSyncState)
         : "healthy",
-    syncError: typeof row.syncError === "string" && row.syncError.trim() ? row.syncError : undefined,
+    syncError:
+      typeof row.syncError === "string" && row.syncError.trim() ? row.syncError : undefined,
     updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : Date.now(),
   };
 }
@@ -1215,13 +1480,18 @@ export function toFederationPolicy(entry: unknown): FederationProjectPolicy | nu
     ? row.mirrors
         .filter((value): value is string => typeof value === "string")
         .map((value) => value.trim())
-        .filter((value) => value === "internal" || value === "notion" || value === "vibe" || value === "linear")
+        .filter(
+          (value) =>
+            value === "internal" || value === "notion" || value === "vibe" || value === "linear",
+        )
     : [];
   const conflictPolicy = String(row.conflictPolicy ?? "canonical_wins");
   return {
     projectId,
     canonicalProvider:
-      canonicalProvider === "notion" || canonicalProvider === "vibe" || canonicalProvider === "linear"
+      canonicalProvider === "notion" ||
+      canonicalProvider === "vibe" ||
+      canonicalProvider === "linear"
         ? canonicalProvider
         : "internal",
     mirrors,
@@ -1270,7 +1540,8 @@ export function toProviderIndexProfile(entry: unknown): ProviderIndexProfile | n
   return {
     profileId: String(row.profileId ?? `${projectId}:${provider}:${entityId}`),
     projectId,
-    provider: provider === "internal" || provider === "vibe" || provider === "linear" ? provider : "notion",
+    provider:
+      provider === "internal" || provider === "vibe" || provider === "linear" ? provider : "notion",
     entityId,
     entityName: String(row.entityName ?? entityId),
     toolNamingPrefix: typeof row.toolNamingPrefix === "string" ? row.toolNamingPrefix : undefined,
@@ -1296,7 +1567,15 @@ export function toHeartbeatProfile(entry: unknown): HeartbeatProfileModel | null
   const id = String(row.id ?? "").trim();
   const role = String(row.role ?? "");
   if (!id) return null;
-  if (role !== "ceo" && role !== "builder" && role !== "growth_marketer" && role !== "pm" && role !== "biz_pm" && role !== "biz_executor") return null;
+  if (
+    role !== "ceo" &&
+    role !== "builder" &&
+    role !== "growth_marketer" &&
+    role !== "pm" &&
+    role !== "biz_pm" &&
+    role !== "biz_executor"
+  )
+    return null;
   const cadenceMinutes = Number(row.cadenceMinutes ?? 10);
   return {
     id,
@@ -1353,7 +1632,8 @@ export function toOfficeObject(entry: unknown): CompanyOfficeObjectModel | null 
     return null;
   }
   const positionInput = Array.isArray(row.position) ? row.position : [];
-  if (positionInput.length !== 3 || positionInput.some((value) => typeof value !== "number")) return null;
+  if (positionInput.length !== 3 || positionInput.some((value) => typeof value !== "number"))
+    return null;
   const px = Number(positionInput[0]);
   const py = Number(positionInput[1]);
   const pz = Number(positionInput[2]);
@@ -1365,15 +1645,22 @@ export function toOfficeObject(entry: unknown): CompanyOfficeObjectModel | null 
     meshType,
     position: [px, py, pz],
     rotation:
-      rotationInput && rotationInput.length === 3 && rotationInput.every((value) => typeof value === "number")
+      rotationInput &&
+      rotationInput.length === 3 &&
+      rotationInput.every((value) => typeof value === "number")
         ? [Number(rotationInput[0]), Number(rotationInput[1]), Number(rotationInput[2])]
         : undefined,
     scale:
-      scaleInput && scaleInput.length === 3 && scaleInput.every((value) => typeof value === "number")
+      scaleInput &&
+      scaleInput.length === 3 &&
+      scaleInput.every((value) => typeof value === "number")
         ? [Number(scaleInput[0]), Number(scaleInput[1]), Number(scaleInput[2])]
         : undefined,
     projectId: typeof row.projectId === "string" ? row.projectId : undefined,
-    metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : undefined,
+    metadata:
+      row.metadata && typeof row.metadata === "object"
+        ? (row.metadata as Record<string, unknown>)
+        : undefined,
   };
 }
 
@@ -1395,7 +1682,8 @@ export function toOfficeObjectSidecar(entry: unknown): OfficeObjectSidecarModel 
     return null;
   }
   const positionInput = Array.isArray(row.position) ? row.position : [];
-  if (positionInput.length !== 3 || positionInput.some((value) => typeof value !== "number")) return null;
+  if (positionInput.length !== 3 || positionInput.some((value) => typeof value !== "number"))
+    return null;
   const px = Number(positionInput[0]);
   const py = Number(positionInput[1]);
   const pz = Number(positionInput[2]);
@@ -1408,14 +1696,21 @@ export function toOfficeObjectSidecar(entry: unknown): OfficeObjectSidecarModel 
     meshType,
     position: [px, py, pz],
     rotation:
-      rotationInput && rotationInput.length === 3 && rotationInput.every((value) => typeof value === "number")
+      rotationInput &&
+      rotationInput.length === 3 &&
+      rotationInput.every((value) => typeof value === "number")
         ? [Number(rotationInput[0]), Number(rotationInput[1]), Number(rotationInput[2])]
         : undefined,
     scale:
-      scaleInput && scaleInput.length === 3 && scaleInput.every((value) => typeof value === "number")
+      scaleInput &&
+      scaleInput.length === 3 &&
+      scaleInput.every((value) => typeof value === "number")
         ? [Number(scaleInput[0]), Number(scaleInput[1]), Number(scaleInput[2])]
         : undefined,
-    metadata: row.metadata && typeof row.metadata === "object" ? (row.metadata as Record<string, unknown>) : undefined,
+    metadata:
+      row.metadata && typeof row.metadata === "object"
+        ? (row.metadata as Record<string, unknown>)
+        : undefined,
   };
 }
 
@@ -1435,6 +1730,7 @@ export function normalizeCompanyModel(value: unknown): CompanyModel {
   const providerIndexProfiles = normalizeArray(row.providerIndexProfiles, toProviderIndexProfile);
   const heartbeatProfiles = normalizeArray(row.heartbeatProfiles, toHeartbeatProfile);
   const channelBindings = normalizeArray(row.channelBindings, toChannelBinding);
+  const teamProposals = normalizeArray(row.teamProposals, toTeamProposal);
   const officeObjects = normalizeArray(row.officeObjects, toOfficeObject);
   const runtime = asRecord(row.heartbeatRuntime);
   return {
@@ -1446,13 +1742,18 @@ export function normalizeCompanyModel(value: unknown): CompanyModel {
     tasks,
     federationPolicies,
     providerIndexProfiles,
-    heartbeatProfiles: heartbeatProfiles.length > 0 ? heartbeatProfiles : DEFAULT_COMPANY_MODEL.heartbeatProfiles,
+    heartbeatProfiles:
+      heartbeatProfiles.length > 0 ? heartbeatProfiles : DEFAULT_COMPANY_MODEL.heartbeatProfiles,
     channelBindings,
+    teamProposals,
     heartbeatRuntime: {
       enabled: runtime.enabled !== false,
       pluginId: String(runtime.pluginId ?? DEFAULT_COMPANY_MODEL.heartbeatRuntime.pluginId),
       serviceId: String(runtime.serviceId ?? DEFAULT_COMPANY_MODEL.heartbeatRuntime.serviceId),
-      cadenceMinutes: Math.max(1, Number(runtime.cadenceMinutes ?? DEFAULT_COMPANY_MODEL.heartbeatRuntime.cadenceMinutes)),
+      cadenceMinutes: Math.max(
+        1,
+        Number(runtime.cadenceMinutes ?? DEFAULT_COMPANY_MODEL.heartbeatRuntime.cadenceMinutes),
+      ),
       notes: typeof runtime.notes === "string" ? runtime.notes : undefined,
     },
     officeObjects,
@@ -1481,7 +1782,11 @@ export function buildReconciliationWarnings(
   const metaIds = new Set(company.agents.map((agent) => agent.agentId));
 
   for (const metaAgent of company.agents) {
-    if (metaAgent.lifecycleState === "active" && configuredIds.has(metaAgent.agentId) && !runtimeIds.has(metaAgent.agentId)) {
+    if (
+      metaAgent.lifecycleState === "active" &&
+      configuredIds.has(metaAgent.agentId) &&
+      !runtimeIds.has(metaAgent.agentId)
+    ) {
       warnings.push({
         code: "missing_runtime_agent",
         message: `Expected active agent '${metaAgent.agentId}' is missing from OpenClaw runtime.`,
@@ -1509,7 +1814,10 @@ export function buildReconciliationWarnings(
 
   for (const slot of company.roleSlots) {
     const activeCount = company.agents.filter(
-      (agent) => agent.projectId === slot.projectId && agent.role === slot.role && agent.lifecycleState === "active",
+      (agent) =>
+        agent.projectId === slot.projectId &&
+        agent.role === slot.role &&
+        agent.lifecycleState === "active",
     ).length;
     if (activeCount < slot.desiredCount) {
       warnings.push({
@@ -1523,7 +1831,10 @@ export function buildReconciliationWarnings(
     const targetAgent =
       binding.agentIdOverride ||
       company.agents.find(
-        (agent) => agent.projectId === binding.projectId && agent.role === binding.agentRole && agent.lifecycleState === "active",
+        (agent) =>
+          agent.projectId === binding.projectId &&
+          agent.role === binding.agentRole &&
+          agent.lifecycleState === "active",
       )?.agentId;
     if (!targetAgent) {
       warnings.push({
@@ -1545,7 +1856,9 @@ export function buildReconciliationWarnings(
   return warnings;
 }
 
-export function parseConfiguredAgentsFromConfig(snapshot: OpenClawConfigSnapshot | null): AgentCardModel[] {
+export function parseConfiguredAgentsFromConfig(
+  snapshot: OpenClawConfigSnapshot | null,
+): AgentCardModel[] {
   if (!snapshot) return [];
   const root = asRecord(snapshot.config);
   const agentsNode = asRecord(root.agents);
@@ -1563,8 +1876,12 @@ export function parseConfiguredAgentsFromConfig(snapshot: OpenClawConfigSnapshot
       agentDir: String(row.agentDir ?? ""),
       sandboxMode: String(sandbox.mode ?? "off"),
       toolPolicy: {
-        allow: Array.isArray(tools.allow) ? tools.allow.filter((item): item is string => typeof item === "string") : [],
-        deny: Array.isArray(tools.deny) ? tools.deny.filter((item): item is string => typeof item === "string") : [],
+        allow: Array.isArray(tools.allow)
+          ? tools.allow.filter((item): item is string => typeof item === "string")
+          : [],
+        deny: Array.isArray(tools.deny)
+          ? tools.deny.filter((item): item is string => typeof item === "string")
+          : [],
       },
       sessionCount: 0,
     };

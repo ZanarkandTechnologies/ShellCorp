@@ -31,6 +31,7 @@ import { registerTeamResources } from "./team-resources.js";
 import { registerTeamFunds } from "./team-funds.js";
 import { registerTeamBoard } from "./team-board.js";
 import { registerTeamHeartbeat } from "./team-heartbeat.js";
+import { registerTeamProposal } from "./team-proposal.js";
 
 export function registerTeamCommands(program: Command): void {
   const store = createSidecarStore();
@@ -40,7 +41,11 @@ export function registerTeamCommands(program: Command): void {
     .command("status")
     .description("Report agent status with auto-resolved team/agent context")
     .argument("<statusText>", "Operator-readable status text")
-    .option("--state <state>", "planning|research|executing|distributing|blocked|handoff|summary|status (legacy values supported)", "status")
+    .option(
+      "--state <state>",
+      "planning|research|executing|distributing|blocked|handoff|summary|status (legacy values supported)",
+      "status",
+    )
     .option("--agent-id <agentId>", "Optional agent id override")
     .option("--team-id <teamId>", "Optional team id override (team-*)")
     .option("--label <label>", "Optional activity label override")
@@ -70,15 +75,22 @@ export function registerTeamCommands(program: Command): void {
         if (!detail) fail("invalid_status_text");
 
         const agentId =
-          opts.agentId?.trim() || process.env.SHELLCORP_AGENT_ID?.trim() || process.env.SHELLCORP_ACTOR_AGENT_ID?.trim();
+          opts.agentId?.trim() ||
+          process.env.SHELLCORP_AGENT_ID?.trim() ||
+          process.env.SHELLCORP_ACTOR_AGENT_ID?.trim();
         if (!agentId) fail("missing_agent_id:use_--agent-id_or_SHELLCORP_AGENT_ID");
 
-        const teamId = opts.teamId?.trim() || process.env.SHELLCORP_TEAM_ID?.trim() || resolveTeamIdForAgent(company, agentId);
+        const teamId =
+          opts.teamId?.trim() ||
+          process.env.SHELLCORP_TEAM_ID?.trim() ||
+          resolveTeamIdForAgent(company, agentId);
         const { projectId } = resolveProjectOrFail(company, teamId);
         const activityType = resolveStatusActivityType(opts.state.trim());
         const label =
           opts.label?.trim() ||
-          (activityType === "planning" || activityType === "executing" || activityType === "blocked" ? activityType : "status");
+          (activityType === "planning" || activityType === "executing" || activityType === "blocked"
+            ? activityType
+            : "status");
         const stepKey = opts.stepKey?.trim() || `status-${agentId}-${Date.now()}`;
 
         const result = await postBoardCommand({
@@ -97,13 +109,25 @@ export function registerTeamCommands(program: Command): void {
         });
         formatOutput(
           opts.json ? "json" : "text",
-          { ok: true, teamId, projectId, agentId, activityType, label, statusText: detail, stepKey, result },
+          {
+            ok: true,
+            teamId,
+            projectId,
+            agentId,
+            activityType,
+            label,
+            statusText: detail,
+            stepKey,
+            result,
+          },
           `Reported status for ${agentId} (${activityType})`,
         );
       },
     );
 
-  const team = program.command("team").description("Manage team entities mapped to company projects");
+  const team = program
+    .command("team")
+    .description("Manage team entities mapped to company projects");
 
   registerTeamCore(team, store);
   registerTeamBusiness(team, store);
@@ -111,6 +135,7 @@ export function registerTeamCommands(program: Command): void {
   registerTeamFunds(team, store);
   registerTeamBoard(team, store);
   registerTeamHeartbeat(team, store);
+  registerTeamProposal(team, store);
 }
 
 export function registerDoctorCommands(program: Command): void {

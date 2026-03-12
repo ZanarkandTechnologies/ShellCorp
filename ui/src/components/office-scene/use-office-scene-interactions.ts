@@ -13,6 +13,7 @@
  * MEMORY REFERENCES:
  * - MEM-0108
  * - MEM-0143
+ * - MEM-0153
  */
 
 import { useCallback } from 'react';
@@ -27,6 +28,7 @@ export function useOfficeSceneInteractions(params: {
     handleBackgroundClick: (event: ThreeEvent<MouseEvent>) => void;
     handleEmployeeClick: (employeeId: EmployeeData['_id']) => Promise<void>;
     handleTeamClick: (team: TeamData) => Promise<void>;
+    handleCeoDeskClick: (event: ThreeEvent<MouseEvent>) => void;
 } {
     const { employees } = params;
     const { openEmployeeChat } = useChatActions();
@@ -37,6 +39,7 @@ export function useOfficeSceneInteractions(params: {
     const setSelectedTeamId = useAppStore((state) => state.setSelectedTeamId);
     const setSelectedProjectId = useAppStore((state) => state.setSelectedProjectId);
     const setKanbanFocusAgentId = useAppStore((state) => state.setKanbanFocusAgentId);
+    const setIsCeoWorkbenchOpen = useAppStore((state) => state.setIsCeoWorkbenchOpen);
     const placementMode = useAppStore((state) => state.placementMode);
     const isDragging = useAppStore((state) => state.isDragging);
     const setSelectedObjectId = useAppStore((state) => state.setSelectedObjectId);
@@ -96,9 +99,20 @@ export function useOfficeSceneInteractions(params: {
         [isDragging, placementMode.active, setSelectedObjectId],
     );
 
+    const handleCeoDeskClick = useCallback(
+        (event: ThreeEvent<MouseEvent>) => {
+            if (useAppStore.getState().placementMode.active) return;
+            event.stopPropagation();
+            setSelectedObjectId(null);
+            setIsCeoWorkbenchOpen(true);
+        },
+        [setIsCeoWorkbenchOpen, setSelectedObjectId],
+    );
+
     return {
         handleBackgroundClick,
         handleEmployeeClick,
         handleTeamClick,
+        handleCeoDeskClick,
     };
 }

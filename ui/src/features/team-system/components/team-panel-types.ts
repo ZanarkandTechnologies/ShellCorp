@@ -11,7 +11,14 @@
  * - Import specific types/helpers into tab components as needed.
  */
 
-export type TabKey = "overview" | "kanban" | "projects" | "communications" | "timeline" | "business" | "ledger";
+export type TabKey =
+  | "overview"
+  | "kanban"
+  | "projects"
+  | "communications"
+  | "timeline"
+  | "business"
+  | "ledger";
 
 export type TaskStatus = "todo" | "in_progress" | "blocked" | "done";
 
@@ -20,6 +27,14 @@ export type TaskProvider = "internal" | "notion" | "vibe" | "linear";
 export type TaskSyncState = "healthy" | "pending" | "conflict" | "error";
 
 export type TaskPriority = "low" | "medium" | "high";
+export type TaskWorkflowType = "team_proposal";
+export type TaskApprovalState =
+  | "draft"
+  | "pending_review"
+  | "approved"
+  | "rejected"
+  | "changes_requested"
+  | "executed";
 
 export type CommunicationsFilter = "all" | "planning" | "executing" | "blocked" | "handoff";
 
@@ -35,6 +50,11 @@ export type PanelTask = {
   syncState: TaskSyncState;
   syncError?: string;
   notes?: string;
+  taskType?: TaskWorkflowType;
+  approvalState?: TaskApprovalState;
+  linkedSessionKey?: string;
+  createdTeamId?: string;
+  createdProjectId?: string;
   createdAt?: number;
   updatedAt?: number;
   dueAt?: number;
@@ -65,9 +85,7 @@ export type AgentCandidate = {
   name: string;
 };
 
-export function statusColumns(
-  tasks: PanelTask[],
-): Record<TaskStatus, PanelTask[]> {
+export function statusColumns(tasks: PanelTask[]): Record<TaskStatus, PanelTask[]> {
   return {
     todo: tasks.filter((t) => t.status === "todo"),
     in_progress: tasks.filter((t) => t.status === "in_progress"),
@@ -92,9 +110,7 @@ export function extractArtefactPath(entry: unknown): string | undefined {
 export function deriveProjectId(teamId: string | null): string | null {
   if (!teamId) return null;
   const normalized = teamId.trim().toLowerCase();
-  return normalized.startsWith("team-")
-    ? normalized.replace(/^team-/, "")
-    : null;
+  return normalized.startsWith("team-") ? normalized.replace(/^team-/, "") : null;
 }
 
 export const PRIORITY_COLORS: Record<TaskPriority, string> = {

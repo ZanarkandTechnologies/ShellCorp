@@ -70,6 +70,13 @@ type CompanySnapshot = {
   roleSlots: Array<{ projectId: string; desiredCount: number; role?: string }>;
   heartbeatProfiles: Array<{ id: string; goal: string }>;
   agents: Array<{ agentId?: string; projectId?: string; heartbeatProfileId: string; role?: string }>;
+  teamProposals?: Array<{
+    id: string;
+    approvalStatus: string;
+    executionStatus: string;
+    createdTeamId?: string;
+    createdProjectId?: string;
+  }>;
 };
 
 async function setupStateDir(): Promise<string> {
@@ -213,6 +220,77 @@ describe("team CLI", () => {
     const finalModel = JSON.parse(finalRaw) as CompanySnapshot;
     const project = finalModel.projects.find((entry) => entry.id === "proj-omega");
     expect(project?.kpis ?? []).toEqual([]);
+  });
+
+  it("persists and executes team proposals through the CLI", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+
+    await runCommand([
+      "team",
+      "proposal",
+      "create",
+      "--json-input",
+      JSON.stringify({
+        businessType: "affiliate_marketing",
+        requestedBy: "founder",
+        sourceAgentId: "main",
+        ideaBrief: {
+          focus: "affiliate content engine",
+          targetCustomer: "home office shoppers",
+          primaryGoal: "ship weekly revenue-producing content",
+          constraints: "keep spend low and use proven channels",
+        },
+      }),
+    ]);
+
+    const afterCreateRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const afterCreate = JSON.parse(afterCreateRaw) as CompanySnapshot;
+    const proposalId = afterCreate.teamProposals?.[0]?.id;
+    expect(proposalId).toBeTruthy();
+
+    await runCommand(["team", "proposal", "approve", "--proposal-id", proposalId!, "--note", "looks good"]);
+    await runCommand(["team", "proposal", "execute", "--proposal-id", proposalId!]);
+
+    const finalRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const finalModel = JSON.parse(finalRaw) as CompanySnapshot;
+    const executed = finalModel.teamProposals?.find((entry) => entry.id === proposalId);
+    expect(executed?.approvalStatus).toBe("approved");
+    expect(executed?.executionStatus).toBe("created");
+    expect(executed?.createdTeamId).toBe("team-proj-affiliate-content-engine-team");
+    expect(finalModel.projects.some((entry) => entry.id === "proj-affiliate-content-engine-team")).toBe(true);
+  });
+
+  it("blocks proposal execution until founder approval is recorded", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+
+    await runCommand([
+      "team",
+      "proposal",
+      "create",
+      "--json-input",
+      JSON.stringify({
+        businessType: "affiliate_marketing",
+        requestedBy: "founder",
+        sourceAgentId: "main",
+        ideaBrief: {
+          focus: "affiliate content engine",
+          targetCustomer: "home office shoppers",
+          primaryGoal: "ship weekly revenue-producing content",
+          constraints: "keep spend low and use proven channels",
+        },
+      }),
+    ]);
+
+    const afterCreateRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const afterCreate = JSON.parse(afterCreateRaw) as CompanySnapshot;
+    const proposalId = afterCreate.teamProposals?.[0]?.id;
+    expect(proposalId).toBeTruthy();
+
+    await expect(
+      runCommand(["team", "proposal", "execute", "--proposal-id", proposalId!]),
+    ).rejects.toThrow("proposal_not_approved");
   });
 
   it("sets team heartbeat profile and remaps agents", async () => {
@@ -845,6 +923,12 @@ describe("team CLI", () => {
       "high",
       "--owner-agent-id",
       "delta-executor",
+      "--task-type",
+      "team_proposal",
+      "--approval-state",
+      "pending_review",
+      "--linked-session-key",
+      "agent:main:main",
       "--beat-id",
       "beat-delta-1",
     ]);
@@ -861,6 +945,12 @@ describe("team CLI", () => {
       "Draft launch copy",
       "--detail",
       "Updated via cli",
+      "--approval-state",
+      "approved",
+      "--created-team-id",
+      "team-proj-delta-launch",
+      "--created-project-id",
+      "proj-delta-launch",
     ]);
     await runCommand(["team", "board", "task", "list", "--team-id", "team-proj-delta", "--json"]);
     await runCommand([
@@ -924,6 +1014,10 @@ describe("team CLI", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/board/query"))).toBe(true);
     expect(commandPayloads.some((payload) => payload.teamId === "team-proj-delta")).toBe(true);
     expect(commandPayloads.some((payload) => payload.beatId === "beat-delta-1")).toBe(true);
+    expect(commandPayloads.some((payload) => payload.taskType === "team_proposal")).toBe(true);
+    expect(commandPayloads.some((payload) => payload.approvalState === "approved")).toBe(true);
+    expect(commandPayloads.some((payload) => payload.linkedSessionKey === "agent:main:main")).toBe(true);
+    expect(commandPayloads.some((payload) => payload.createdTeamId === "team-proj-delta-launch")).toBe(true);
     expect(commandPayloads.some((payload) => payload.command === "activity_log" && payload.beatId === "beat-delta-1")).toBe(true);
     expect(queryPayloads.some((payload) => payload.teamId === "team-proj-delta")).toBe(true);
   });
@@ -1108,6 +1202,43 @@ describe("team CLI", () => {
     ).rejects.toThrow("permission_denied:team.meta.write:role=operator");
   });
 
+  it("requires business and board permissions before executing a proposal", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+
+    await runCommand([
+      "team",
+      "proposal",
+      "create",
+      "--json-input",
+      JSON.stringify({
+        businessType: "affiliate_marketing",
+        requestedBy: "founder",
+        sourceAgentId: "main",
+        ideaBrief: {
+          focus: "affiliate content engine",
+          targetCustomer: "home office shoppers",
+          primaryGoal: "ship weekly revenue-producing content",
+          constraints: "keep spend low and use proven channels",
+        },
+      }),
+    ]);
+
+    const afterCreateRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const afterCreate = JSON.parse(afterCreateRaw) as CompanySnapshot;
+    const proposalId = afterCreate.teamProposals?.[0]?.id;
+    expect(proposalId).toBeTruthy();
+
+    await runCommand(["team", "proposal", "approve", "--proposal-id", proposalId!, "--note", "approved"]);
+
+    process.env.SHELLCORP_ACTOR_ROLE = "operator";
+    process.env.SHELLCORP_ALLOWED_PERMISSIONS = "team.meta.write";
+
+    await expect(
+      runCommand(["team", "proposal", "execute", "--proposal-id", proposalId!]),
+    ).rejects.toThrow("permission_denied:team.business.write:role=operator");
+  });
+
   it("supports team funds deposit, spend, ledger, and balance", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
@@ -1162,4 +1293,3 @@ describe("team CLI", () => {
     expect((project?.ledger ?? []).length).toBe(2);
   });
 });
-

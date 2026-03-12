@@ -85,6 +85,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
         handleBackgroundClick,
         handleEmployeeClick,
         handleTeamClick,
+        handleCeoDeskClick,
     } = useOfficeSceneInteractions({ employees });
 
     useOfficeSceneCameraTransition({
@@ -145,6 +146,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
                         position={ceoDeskData.position}
                         rotationY={ceoDeskData.rotationY}
                         isHovered={false}
+                        onClick={handleCeoDeskClick}
                     />
                 </group>
             )}

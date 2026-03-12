@@ -120,6 +120,44 @@ Command:
 npm run shell -- doctor team-data
 ```
 
+### 7) Create a founder-review team proposal
+
+Intent:
+
+`Research a new business idea, write a proposal packet, and send it to founder review.`
+
+Command:
+
+```bash
+npm run shell -- team proposal create --json-input '{
+  "businessType":"affiliate_marketing",
+  "requestedBy":"founder",
+  "sourceAgentId":"main",
+  "ideaBrief":{
+    "focus":"affiliate content engine",
+    "targetCustomer":"home office shoppers",
+    "primaryGoal":"ship weekly revenue-generating content",
+    "constraints":"keep spend low and use proven channels"
+  },
+  "researchSummary":"Creator-led affiliate teams usually need a planning owner, an execution owner, clear acquisition channels, and measurable link tracking.",
+  "proposalSummary":"Create a lightweight affiliate team with clear KPI ownership and first-week board items."
+}'
+```
+
+### 8) Review and execute an approved proposal
+
+Intent:
+
+`Check founder decision status, then create the team from the approved proposal.`
+
+Command:
+
+```bash
+npm run shell -- team proposal list --json
+npm run shell -- team proposal approve --proposal-id proposal-affiliate-content-engine-team-123 --note "Looks good"
+npm run shell -- team proposal execute --proposal-id proposal-affiliate-content-engine-team-123 --json
+```
+
 ## Machine-Readable Mode
 
 Any command that supports `--json` can be used for agent automation:
@@ -128,4 +166,3 @@ Any command that supports `--json` can be used for agent automation:
 npm run shell -- team list --json
 npm run shell -- doctor team-data --json
 ```
-

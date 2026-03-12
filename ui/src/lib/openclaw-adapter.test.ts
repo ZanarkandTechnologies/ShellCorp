@@ -376,10 +376,18 @@ describe("agent files fallback", () => {
         files: [{ name: "HEARTBEAT.md", path: "HEARTBEAT.md", missing: false }],
       })),
     };
-    const adapter = new OpenClawAdapter("http://127.0.0.1:8787", "http://127.0.0.1:8787", wsClient as never);
+    const adapter = new OpenClawAdapter(
+      "http://127.0.0.1:8787",
+      "http://127.0.0.1:8787",
+      wsClient as never,
+    );
     const result = await adapter.listAgentFiles("buffalos-ai-executor");
-    expect(wsClient.request).toHaveBeenCalledWith("agents.files.list", { agentId: "buffalos-ai-executor" });
+    expect(wsClient.request).toHaveBeenCalledWith("agents.files.list", {
+      agentId: "buffalos-ai-executor",
+    });
     expect(fetchMock).toHaveBeenCalled();
-    expect(result.files.some((entry) => entry.path.includes("projects/proj-buffalos-ai-v2"))).toBe(true);
+    expect(result.files.some((entry) => entry.path.includes("projects/proj-buffalos-ai-v2"))).toBe(
+      true,
+    );
   });
 });

@@ -5,7 +5,16 @@
  */
 
 /** Full agent lifecycle state union — MEM-0144 */
-export type AgentState = "running" | "ok" | "no_work" | "error" | "idle" | "planning" | "executing" | "blocked" | "done";
+export type AgentState =
+  | "running"
+  | "ok"
+  | "no_work"
+  | "error"
+  | "idle"
+  | "planning"
+  | "executing"
+  | "blocked"
+  | "done";
 
 export interface AgentCardModel {
   agentId: string;
@@ -315,7 +324,14 @@ export interface CompanyAgentModel {
 export interface CompanyOfficeObjectModel {
   id: string;
   identifier?: string;
-  meshType: "team-cluster" | "plant" | "couch" | "bookshelf" | "pantry" | "glass-wall" | "custom-mesh";
+  meshType:
+    | "team-cluster"
+    | "plant"
+    | "couch"
+    | "bookshelf"
+    | "pantry"
+    | "glass-wall"
+    | "custom-mesh";
   position: [number, number, number];
   rotation?: [number, number, number];
   scale?: [number, number, number];
@@ -430,6 +446,72 @@ export interface HeartbeatRuntimeModel {
   notes?: string;
 }
 
+export type TeamProposalIdeaGateStatus = "draft" | "passed" | "blocked";
+export type TeamProposalApprovalStatus = "pending" | "approved" | "rejected" | "changes_requested";
+export type TeamProposalExecutionStatus =
+  | "draft"
+  | "ready_to_create"
+  | "creating"
+  | "created"
+  | "failed";
+
+export interface TeamProposalIdeaBrief {
+  focus: string;
+  targetCustomer: string;
+  primaryGoal: string;
+  constraints: string;
+  notes?: string;
+}
+
+export interface TeamProposalRoleRecommendation {
+  roleId: string;
+  title: string;
+  rationale: string;
+  supported: boolean;
+  mappedRuntimeRole?: AgentRole;
+}
+
+export interface TeamProposalBoardItem {
+  id: string;
+  title: string;
+  detail?: string;
+  ownerRoleId?: string;
+}
+
+export interface TeamProposalBusinessConfig {
+  businessType: "affiliate_marketing" | "content_creator" | "saas" | "custom";
+  capabilitySkills: {
+    measure: string;
+    execute: string;
+    distribute: string;
+  };
+}
+
+export interface TeamProposalModel {
+  id: string;
+  requestedBy: string;
+  sourceAgentId: string;
+  title: string;
+  ideaBrief: TeamProposalIdeaBrief;
+  ideaGateStatus: TeamProposalIdeaGateStatus;
+  researchSummary: string;
+  proposalSummary: string;
+  proposedTeamName: string;
+  proposedDescription: string;
+  proposedRoles: TeamProposalRoleRecommendation[];
+  proposedBusinessConfig: TeamProposalBusinessConfig;
+  proposedInitialBoardItems: TeamProposalBoardItem[];
+  approvalStatus: TeamProposalApprovalStatus;
+  executionStatus: TeamProposalExecutionStatus;
+  reviewTaskTitle: string;
+  createdAt: number;
+  updatedAt: number;
+  approvalNote?: string;
+  executionError?: string;
+  createdTeamId?: string;
+  createdProjectId?: string;
+}
+
 export interface CompanyModel {
   version: number;
   departments: DepartmentModel[];
@@ -442,6 +524,7 @@ export interface CompanyModel {
   heartbeatProfiles: HeartbeatProfileModel[];
   channelBindings: ChannelBindingModel[];
   heartbeatRuntime: HeartbeatRuntimeModel;
+  teamProposals: TeamProposalModel[];
   officeObjects?: CompanyOfficeObjectModel[];
 }
 
@@ -463,7 +546,13 @@ export interface ProjectWorkloadSummary {
   queuePressure: "low" | "medium" | "high";
 }
 
-export type ApprovalActionType = "tool_call" | "external_message" | "deploy" | "delete" | "write" | "config_change";
+export type ApprovalActionType =
+  | "tool_call"
+  | "external_message"
+  | "deploy"
+  | "delete"
+  | "write"
+  | "config_change";
 export type ApprovalRiskLevel = "low" | "medium" | "high" | "critical";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 

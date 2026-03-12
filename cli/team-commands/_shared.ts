@@ -125,8 +125,22 @@ export const PERMISSION_BY_ROLE: Record<string, TeamPermission[]> = {
     "team.heartbeat.write",
     "team.archive",
   ],
-  biz_pm: ["team.read", "team.meta.write", "team.kpi.write", "team.business.write", "team.board.write", "team.activity.write"],
-  pm: ["team.read", "team.meta.write", "team.kpi.write", "team.business.write", "team.board.write", "team.activity.write"],
+  biz_pm: [
+    "team.read",
+    "team.meta.write",
+    "team.kpi.write",
+    "team.business.write",
+    "team.board.write",
+    "team.activity.write",
+  ],
+  pm: [
+    "team.read",
+    "team.meta.write",
+    "team.kpi.write",
+    "team.business.write",
+    "team.board.write",
+    "team.activity.write",
+  ],
   biz_executor: ["team.read", "team.board.write", "team.activity.write"],
   builder: ["team.read", "team.board.write", "team.activity.write"],
   growth_marketer: ["team.read", "team.board.write", "team.activity.write"],
@@ -137,7 +151,10 @@ export const execFileAsync = promisify(execFile);
 // ─── Permission helpers ───────────────────────────────────────────────────────
 
 export function readActorRole(): string {
-  return (process.env.SHELLCORP_ACTOR_ROLE?.trim().toLowerCase() || "operator").replace(/\s+/g, "_");
+  return (process.env.SHELLCORP_ACTOR_ROLE?.trim().toLowerCase() || "operator").replace(
+    /\s+/g,
+    "_",
+  );
 }
 
 export function resolveAllowedPermissions(): Set<TeamPermission> | "all" {
@@ -254,11 +271,11 @@ export function layeredHeartbeatTemplate(roleName: string, projectName: string):
     "- If status report fails, retry once; if still failing, output `STATUS: MOCK_STATUS(report_failed)`.",
     "- Preflight checks:",
     "  - `command -v shellcorp`",
-    "  - `export SHELLCORP_AGENT_ID=\"<agent-id>\"`",
-    "  - `export SHELLCORP_TEAM_ID=\"<team-id>\"`",
-    "  - `test -n \"$SHELLCORP_CONVEX_SITE_URL\" || test -n \"$CONVEX_SITE_URL\"`",
+    '  - `export SHELLCORP_AGENT_ID="<agent-id>"`',
+    '  - `export SHELLCORP_TEAM_ID="<team-id>"`',
+    '  - `test -n "$SHELLCORP_CONVEX_SITE_URL" || test -n "$CONVEX_SITE_URL"`',
     "- Preferred command pattern:",
-    "  shellcorp status --state planning \"<your decision>\"",
+    '  shellcorp status --state planning "<your decision>"',
     "- `status` writes both live status and timeline context in one call.",
     "- If tools are unavailable, output a clear MOCK_STATUS line instead.",
     "",
@@ -277,14 +294,25 @@ export function layeredHeartbeatTemplate(roleName: string, projectName: string):
 // ─── Parse / validate helpers ─────────────────────────────────────────────────
 
 export function parseBusinessType(raw: string): BusinessType {
-  if (raw === "affiliate_marketing" || raw === "content_creator" || raw === "saas" || raw === "custom") {
+  if (
+    raw === "affiliate_marketing" ||
+    raw === "content_creator" ||
+    raw === "saas" ||
+    raw === "custom"
+  ) {
     return raw;
   }
   throw new Error(`invalid_business_type: ${raw}`);
 }
 
 export function parseResourceKind(raw: string): ResourceKind {
-  if (raw === "cash_budget" || raw === "api_quota" || raw === "distribution_slots" || raw === "custom") return raw;
+  if (
+    raw === "cash_budget" ||
+    raw === "api_quota" ||
+    raw === "distribution_slots" ||
+    raw === "custom"
+  )
+    return raw;
   throw new Error(`invalid_resource_type: ${raw}`);
 }
 
@@ -299,7 +327,13 @@ export function parseCapabilityCategory(raw: string): CapabilityCategory {
 }
 
 export function parseRoleSlotRole(raw: string): Exclude<AgentRole, "ceo"> {
-  if (raw === "builder" || raw === "growth_marketer" || raw === "pm" || raw === "biz_pm" || raw === "biz_executor") {
+  if (
+    raw === "builder" ||
+    raw === "growth_marketer" ||
+    raw === "pm" ||
+    raw === "biz_pm" ||
+    raw === "biz_executor"
+  ) {
     return raw;
   }
   throw new Error(`invalid_role: ${raw}`);
@@ -351,7 +385,8 @@ export function parseStatusReportState(raw: string): StatusReportState {
 export function parseConfigJson(raw: string): Record<string, string> {
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid_config_json_object");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      throw new Error("invalid_config_json_object");
     const out: Record<string, string> = {};
     for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
       if (typeof value === "string") out[key] = value;
@@ -392,14 +427,21 @@ export function optionalBeatId(value: string | undefined): string | undefined {
 
 // ─── Domain helpers ───────────────────────────────────────────────────────────
 
-export function ensureProjectAccount(projectId: string, project: CompanyModel["projects"][number]): ProjectAccountModel {
+export function ensureProjectAccount(
+  projectId: string,
+  project: CompanyModel["projects"][number],
+): ProjectAccountModel {
   const existing = (project as { account?: ProjectAccountModel }).account;
   if (existing && existing.id) return existing;
-  const accountEvents = (project as { accountEvents?: ProjectAccountEventModel[] }).accountEvents ?? [];
+  const accountEvents =
+    (project as { accountEvents?: ProjectAccountEventModel[] }).accountEvents ?? [];
   const derivedBalance =
     accountEvents.length > 0
-      ? accountEvents[accountEvents.length - 1]?.balanceAfterCents ?? 0
-      : (project.ledger ?? []).reduce((total, entry) => total + (entry.type === "revenue" ? entry.amount : -entry.amount), 0);
+      ? (accountEvents[accountEvents.length - 1]?.balanceAfterCents ?? 0)
+      : (project.ledger ?? []).reduce(
+          (total, entry) => total + (entry.type === "revenue" ? entry.amount : -entry.amount),
+          0,
+        );
   return {
     id: `${projectId}:account`,
     projectId,
@@ -409,7 +451,10 @@ export function ensureProjectAccount(projectId: string, project: CompanyModel["p
   };
 }
 
-export function resolveProjectOrFail(company: CompanyModel, teamId: string): { projectId: string; project: CompanyModel["projects"][number] } {
+export function resolveProjectOrFail(
+  company: CompanyModel,
+  teamId: string,
+): { projectId: string; project: CompanyModel["projects"][number] } {
   const projectId = projectIdFromTeamId(teamId);
   const project = company.projects.find((entry) => entry.id === projectId);
   if (!project) throw new Error(`team_not_found: ${teamId}`);
@@ -585,7 +630,9 @@ export function buildTeamBusinessSkillTargets(project: CompanyModel["projects"][
         ...parseSkillList(project.businessConfig.slots.distribute.skillId),
       ])
     : [];
-  const trackerSkills = uniqueSkills((project.resources ?? []).map((resource) => resource.trackerSkillId));
+  const trackerSkills = uniqueSkills(
+    (project.resources ?? []).map((resource) => resource.trackerSkillId),
+  );
   const sharedCore = ["shellcorp-team-cli", "status-self-reporter"];
   const pmCore = ["shellcorp-kanban-ops", "ledger-manager", "experiment-runner"];
   return {
@@ -594,7 +641,11 @@ export function buildTeamBusinessSkillTargets(project: CompanyModel["projects"][
   };
 }
 
-export function applyAgentSkillsByMode(currentSkills: string[], targetSkills: string[], mode: BusinessEquipMode): string[] {
+export function applyAgentSkillsByMode(
+  currentSkills: string[],
+  targetSkills: string[],
+  mode: BusinessEquipMode,
+): string[] {
   if (mode === "append_only") return uniqueSkills([...currentSkills, ...targetSkills]);
   return uniqueSkills(targetSkills);
 }
@@ -617,11 +668,15 @@ export async function isDirectory(filePath: string): Promise<boolean> {
   }
 }
 
-export async function resolveSkillSourceDirectory(skillsRoot: string, skillId: string): Promise<string | null> {
+export async function resolveSkillSourceDirectory(
+  skillsRoot: string,
+  skillId: string,
+): Promise<string | null> {
   const directPath = path.join(skillsRoot, skillId);
   if (
     (await isDirectory(directPath)) &&
-    ((await pathExists(path.join(directPath, "SKILL.md"))) || (await pathExists(path.join(directPath, "skill.md"))))
+    ((await pathExists(path.join(directPath, "SKILL.md"))) ||
+      (await pathExists(path.join(directPath, "skill.md"))))
   ) {
     return directPath;
   }
@@ -635,7 +690,8 @@ export async function resolveSkillSourceDirectory(skillsRoot: string, skillId: s
     const nestedPath = path.join(skillsRoot, category, skillId);
     if (
       (await isDirectory(nestedPath)) &&
-      ((await pathExists(path.join(nestedPath, "SKILL.md"))) || (await pathExists(path.join(nestedPath, "skill.md"))))
+      ((await pathExists(path.join(nestedPath, "SKILL.md"))) ||
+        (await pathExists(path.join(nestedPath, "skill.md"))))
     ) {
       return nestedPath;
     }
@@ -678,7 +734,8 @@ export function collectVideoLikeStrings(value: unknown, out: Set<string>): void 
 
 export function extractVideoRefsFromCommandOutput(stdout: string): string[] {
   const refs = new Set<string>();
-  const regex = /(https?:\/\/[^\s"'`]+|\/[^\s"'`]+\.(?:mp4|mov|webm|mkv)|[^\s"'`]+\.(?:mp4|mov|webm|mkv))/gi;
+  const regex =
+    /(https?:\/\/[^\s"'`]+|\/[^\s"'`]+\.(?:mp4|mov|webm|mkv)|[^\s"'`]+\.(?:mp4|mov|webm|mkv))/gi;
   let match: RegExpExecArray | null = regex.exec(stdout);
   while (match) {
     refs.add(match[1]);
@@ -721,8 +778,10 @@ export async function runInfshVideoGeneration(
     const fallback = await execFileAsync("infsh", ["app", "run", model, "--input", input], {
       maxBuffer: 10 * 1024 * 1024,
     });
-    const stdout = typeof fallback.stdout === "string" ? fallback.stdout : String(fallback.stdout ?? "");
-    const stderr = typeof fallback.stderr === "string" ? fallback.stderr : String(fallback.stderr ?? "");
+    const stdout =
+      typeof fallback.stdout === "string" ? fallback.stdout : String(fallback.stdout ?? "");
+    const stderr =
+      typeof fallback.stderr === "string" ? fallback.stderr : String(fallback.stderr ?? "");
     return { refs: extractVideoRefsFromCommandOutput(stdout), stdout, stderr };
   }
 }
@@ -740,7 +799,12 @@ export function defaultProjectResources(projectId: string): ProjectResourceModel
       reserved: 0,
       trackerSkillId: "resource-cash-tracker",
       refreshCadenceMinutes: 15,
-      policy: { advisoryOnly: true, softLimit: 1500, hardLimit: 0, whenLow: "deprioritize_expensive_tasks" },
+      policy: {
+        advisoryOnly: true,
+        softLimit: 1500,
+        hardLimit: 0,
+        whenLow: "deprioritize_expensive_tasks",
+      },
       metadata: { currency: "USD" },
     },
     {
@@ -793,7 +857,9 @@ export function ensureProjectResources(
 
 export function ensureBusinessHeartbeatProfiles(company: CompanyModel): CompanyModel {
   const missingPm = !company.heartbeatProfiles.some((profile) => profile.id === "hb-biz-pm");
-  const missingExecutor = !company.heartbeatProfiles.some((profile) => profile.id === "hb-biz-executor");
+  const missingExecutor = !company.heartbeatProfiles.some(
+    (profile) => profile.id === "hb-biz-executor",
+  );
   if (!missingPm && !missingExecutor) return company;
   const nextProfiles = [...company.heartbeatProfiles];
   if (missingPm) {
@@ -819,7 +885,11 @@ export function ensureBusinessHeartbeatProfiles(company: CompanyModel): CompanyM
   return { ...company, heartbeatProfiles: nextProfiles };
 }
 
-export function buildAutoAgents(projectId: string, slug: string, roles: TeamRole[]): CompanyAgentModel[] {
+export function buildAutoAgents(
+  projectId: string,
+  slug: string,
+  roles: TeamRole[],
+): CompanyAgentModel[] {
   return roles.map((role) => ({
     agentId: `${slug}-${role.replace("_marketer", "")}`,
     role,
@@ -924,7 +994,8 @@ export async function upsertBusinessCronJobs(projectId: string, agentIds: string
   for (const agentId of agentIds) {
     const isPm = /-pm$/.test(agentId);
     const jobId = `biz-heartbeat-${projectId}-${isPm ? "pm" : "executor"}`;
-    const payloadMessage = "Read HEARTBEAT.md and follow it exactly. End your response with HEARTBEAT_OK.";
+    const payloadMessage =
+      "Read HEARTBEAT.md and follow it exactly. End your response with HEARTBEAT_OK.";
     existingById.set(jobId, {
       id: jobId,
       agentId,
@@ -990,7 +1061,10 @@ export async function ensureWorkspaceWithBootstrap(opts: {
   await writeFileIfMissing(path.join(workspacePath, "AGENTS.md"), agentsTemplate);
   await writeFileIfMissing(path.join(workspacePath, "SOUL.md"), soulTemplate);
   await writeFileIfMissing(path.join(workspacePath, "TOOLS.md"), "# TOOLS\n");
-  await writeFileIfMissing(path.join(workspacePath, "IDENTITY.md"), `# IDENTITY\n\n- agentId: ${opts.agent.agentId}\n`);
+  await writeFileIfMissing(
+    path.join(workspacePath, "IDENTITY.md"),
+    `# IDENTITY\n\n- agentId: ${opts.agent.agentId}\n`,
+  );
   await writeFileIfMissing(path.join(workspacePath, "USER.md"), "# USER\n");
   await writeFileIfMissing(path.join(workspacePath, "HEARTBEAT.md"), defaultHeartbeat);
 }
@@ -1067,36 +1141,47 @@ export function runDoctor(company: CompanyModel): string[] {
   for (const agent of company.agents) {
     if (seenAgents.has(agent.agentId)) issues.push(`duplicate_agent_id:${agent.agentId}`);
     seenAgents.add(agent.agentId);
-    if (agent.projectId && !projectIds.has(agent.projectId)) issues.push(`agent_project_missing:${agent.agentId}:${agent.projectId}`);
+    if (agent.projectId && !projectIds.has(agent.projectId))
+      issues.push(`agent_project_missing:${agent.agentId}:${agent.projectId}`);
     if (!heartbeatIds.has(agent.heartbeatProfileId)) {
       issues.push(`agent_heartbeat_missing:${agent.agentId}:${agent.heartbeatProfileId}`);
     }
   }
   for (const slot of company.roleSlots) {
-    if (!projectIds.has(slot.projectId)) issues.push(`role_slot_project_missing:${slot.projectId}:${slot.role}`);
+    if (!projectIds.has(slot.projectId))
+      issues.push(`role_slot_project_missing:${slot.projectId}:${slot.role}`);
   }
   for (const project of company.projects) {
     const resourceIds = new Set<string>();
     const resources = project.resources ?? [];
     for (const resource of resources) {
-      if (resourceIds.has(resource.id)) issues.push(`duplicate_project_resource_id:${project.id}:${resource.id}`);
+      if (resourceIds.has(resource.id))
+        issues.push(`duplicate_project_resource_id:${project.id}:${resource.id}`);
       resourceIds.add(resource.id);
-      if (!resource.trackerSkillId.trim()) issues.push(`resource_tracker_missing:${project.id}:${resource.id}`);
-      if (resource.limit < 0) issues.push(`resource_limit_negative:${project.id}:${resource.id}:${resource.limit}`);
+      if (!resource.trackerSkillId.trim())
+        issues.push(`resource_tracker_missing:${project.id}:${resource.id}`);
+      if (resource.limit < 0)
+        issues.push(`resource_limit_negative:${project.id}:${resource.id}:${resource.limit}`);
       if (resource.remaining > resource.limit) {
-        issues.push(`resource_remaining_over_limit:${project.id}:${resource.id}:${resource.remaining}:${resource.limit}`);
+        issues.push(
+          `resource_remaining_over_limit:${project.id}:${resource.id}:${resource.remaining}:${resource.limit}`,
+        );
       }
     }
     for (const event of project.resourceEvents ?? []) {
       if (!resourceIds.has(event.resourceId)) {
-        issues.push(`resource_event_missing_resource:${project.id}:${event.id}:${event.resourceId}`);
+        issues.push(
+          `resource_event_missing_resource:${project.id}:${event.id}:${event.resourceId}`,
+        );
       }
     }
   }
   return issues;
 }
 
-export function resourceAdvisories(resources: CompanyModel["projects"][number]["resources"]): string {
+export function resourceAdvisories(
+  resources: CompanyModel["projects"][number]["resources"],
+): string {
   if (!resources || resources.length === 0) return "none";
   const notes: string[] = [];
   for (const resource of resources) {
@@ -1113,7 +1198,9 @@ export function resourceAdvisories(resources: CompanyModel["projects"][number]["
   return notes.length > 0 ? notes.join("; ") : "none";
 }
 
-export function resourcesSnapshot(resources: CompanyModel["projects"][number]["resources"]): string {
+export function resourcesSnapshot(
+  resources: CompanyModel["projects"][number]["resources"],
+): string {
   if (!resources || resources.length === 0) return "none";
   return resources
     .map((resource) => `${resource.name}=${resource.remaining}/${resource.limit} ${resource.unit}`)

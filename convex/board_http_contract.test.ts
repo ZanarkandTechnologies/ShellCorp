@@ -10,6 +10,9 @@ describe("board_http_contract", () => {
       title: "Draft hook",
       priority: "high",
       beatId: "beat-42",
+      taskType: "team_proposal",
+      approvalState: "pending_review",
+      linkedSessionKey: "agent:main:main",
     });
     expect(parsed?.teamId).toBe("team-proj-affiliate");
     expect(parsed?.projectId).toBe("proj-affiliate");
@@ -17,6 +20,9 @@ describe("board_http_contract", () => {
     expect(parsed?.title).toBe("Draft hook");
     expect(parsed?.priority).toBe("high");
     expect(parsed?.beatId).toBe("beat-42");
+    expect(parsed?.taskType).toBe("team_proposal");
+    expect(parsed?.approvalState).toBe("pending_review");
+    expect(parsed?.linkedSessionKey).toBe("agent:main:main");
   });
 
   it("rejects invalid board command payload", () => {
@@ -42,4 +48,3 @@ describe("board_http_contract", () => {
     expect(parseBoardQueryPayload({ projectId: "proj-affiliate", query: "unknown" })).toBeNull();
   });
 });
-

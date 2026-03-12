@@ -65,11 +65,18 @@ import type {
   CapabilitySlotModel,
   BusinessConfigModel,
   TeamBusinessSkillSyncResult,
+  TeamProposalModel,
+  TeamProposalIdeaBrief,
+  TeamProposalApprovalStatus,
 } from "./openclaw-types";
 import { buildGatewayHeaders } from "./gateway-config";
 import type { GatewayWsClient } from "./gateway-ws-client";
 import type { BusinessBuilderResourceDraft } from "./business-builder";
-import { toProjectResources } from "./business-builder";
+import { createBusinessBuilderDraft, toProjectResources } from "./business-builder";
+import {
+  canExecuteProposalRoles,
+  createTeamProposal as createTeamProposalModel,
+} from "./team-proposal";
 
 import {
   normalizeArray,
@@ -209,9 +216,10 @@ export class OpenClawAdapter {
     runtimeAgents: AgentCardModel[],
   ): AgentsListResult {
     const configRoot = configSnapshot?.config ?? {};
-    const agentsNode = configRoot.agents && typeof configRoot.agents === "object"
-      ? (configRoot.agents as Record<string, unknown>)
-      : {};
+    const agentsNode =
+      configRoot.agents && typeof configRoot.agents === "object"
+        ? (configRoot.agents as Record<string, unknown>)
+        : {};
     const configList = Array.isArray(agentsNode.list) ? agentsNode.list : [];
     const configAgents = configList
       .map((entry) => {
@@ -225,21 +233,26 @@ export class OpenClawAdapter {
           identity:
             row.identity && typeof row.identity === "object"
               ? {
-                  name: typeof (row.identity as Record<string, unknown>).name === "string"
-                    ? String((row.identity as Record<string, unknown>).name)
-                    : undefined,
-                  theme: typeof (row.identity as Record<string, unknown>).theme === "string"
-                    ? String((row.identity as Record<string, unknown>).theme)
-                    : undefined,
-                  emoji: typeof (row.identity as Record<string, unknown>).emoji === "string"
-                    ? String((row.identity as Record<string, unknown>).emoji)
-                    : undefined,
-                  avatar: typeof (row.identity as Record<string, unknown>).avatar === "string"
-                    ? String((row.identity as Record<string, unknown>).avatar)
-                    : undefined,
-                  avatarUrl: typeof (row.identity as Record<string, unknown>).avatarUrl === "string"
-                    ? String((row.identity as Record<string, unknown>).avatarUrl)
-                    : undefined,
+                  name:
+                    typeof (row.identity as Record<string, unknown>).name === "string"
+                      ? String((row.identity as Record<string, unknown>).name)
+                      : undefined,
+                  theme:
+                    typeof (row.identity as Record<string, unknown>).theme === "string"
+                      ? String((row.identity as Record<string, unknown>).theme)
+                      : undefined,
+                  emoji:
+                    typeof (row.identity as Record<string, unknown>).emoji === "string"
+                      ? String((row.identity as Record<string, unknown>).emoji)
+                      : undefined,
+                  avatar:
+                    typeof (row.identity as Record<string, unknown>).avatar === "string"
+                      ? String((row.identity as Record<string, unknown>).avatar)
+                      : undefined,
+                  avatarUrl:
+                    typeof (row.identity as Record<string, unknown>).avatarUrl === "string"
+                      ? String((row.identity as Record<string, unknown>).avatarUrl)
+                      : undefined,
                 }
               : undefined,
         };
@@ -251,12 +264,17 @@ export class OpenClawAdapter {
     }));
     const deduped = new Map<string, AgentsListResult["agents"][number]>();
     for (const row of [...configAgents, ...runtimeRows]) {
-      deduped.set(row.id, { ...(deduped.get(row.id) ?? {}), ...row } as AgentsListResult["agents"][number]);
+      deduped.set(row.id, {
+        ...(deduped.get(row.id) ?? {}),
+        ...row,
+      } as AgentsListResult["agents"][number]);
     }
     const defaultIdRaw = agentsNode.default;
-    const defaultId = typeof defaultIdRaw === "string" && defaultIdRaw.trim() ? defaultIdRaw.trim() : "main";
+    const defaultId =
+      typeof defaultIdRaw === "string" && defaultIdRaw.trim() ? defaultIdRaw.trim() : "main";
     const mainKeyRaw = agentsNode.mainKey;
-    const mainKey = typeof mainKeyRaw === "string" && mainKeyRaw.trim() ? mainKeyRaw.trim() : "main";
+    const mainKey =
+      typeof mainKeyRaw === "string" && mainKeyRaw.trim() ? mainKeyRaw.trim() : "main";
     const scopeRaw = agentsNode.scope;
     const scope = typeof scopeRaw === "string" && scopeRaw.trim() ? scopeRaw.trim() : "workspace";
     return {
@@ -278,7 +296,8 @@ export class OpenClawAdapter {
             const row = entry as Json;
             const id = String(row.id ?? "").trim();
             if (!id) return null;
-            const identity = row.identity && typeof row.identity === "object" ? (row.identity as Json) : {};
+            const identity =
+              row.identity && typeof row.identity === "object" ? (row.identity as Json) : {};
             return {
               id,
               name: typeof row.name === "string" ? row.name : undefined,
@@ -361,7 +380,11 @@ export class OpenClawAdapter {
     throw new Error("agents_files_get_invalid");
   }
 
-  async saveAgentFile(agentId: string, name: string, content: string): Promise<AgentsFilesSetResult> {
+  async saveAgentFile(
+    agentId: string,
+    name: string,
+    content: string,
+  ): Promise<AgentsFilesSetResult> {
     const result = await this.invokeGatewayMethod("agents.files.set", { agentId, name, content });
     if (!result.ok) throw new Error(result.error ?? "agents_files_set_failed");
     const parsed = toAgentsFilesSetResult(result.payload);
@@ -369,7 +392,10 @@ export class OpenClawAdapter {
     return parsed;
   }
 
-  async listProjectArtefacts(projectId: string, agentIds: string[]): Promise<ProjectArtefactIndexResult> {
+  async listProjectArtefacts(
+    projectId: string,
+    agentIds: string[],
+  ): Promise<ProjectArtefactIndexResult> {
     const dedupedAgentIds = [...new Set(agentIds.map((entry) => entry.trim()).filter(Boolean))];
     if (!projectId.trim() || dedupedAgentIds.length === 0) {
       return toProjectArtefactIndex(projectId.trim(), [], Date.now());
@@ -379,7 +405,11 @@ export class OpenClawAdapter {
       const normalized = filePath.replace(/\\/g, "/").toLowerCase();
       const projectNeedle = `/projects/${normalizedProjectId.toLowerCase()}/`;
       const legacyArtefactNeedle = "/artifacts/";
-      return normalized.includes(projectNeedle) || normalized.startsWith(`projects/${normalizedProjectId.toLowerCase()}/`) || normalized.includes(legacyArtefactNeedle);
+      return (
+        normalized.includes(projectNeedle) ||
+        normalized.startsWith(`projects/${normalizedProjectId.toLowerCase()}/`) ||
+        normalized.includes(legacyArtefactNeedle)
+      );
     };
     const groups = await Promise.all(
       dedupedAgentIds.map(async (agentId): Promise<ProjectArtefactGroup> => {
@@ -389,11 +419,16 @@ export class OpenClawAdapter {
           const baseHasProjectFiles = list.files.some((file) => hasProjectPath(file.path));
           if (!baseHasProjectFiles) {
             try {
-              const fallbackPayload = await this.readJson(`/openclaw/agents/${encodeURIComponent(agentId)}/files`);
+              const fallbackPayload = await this.readJson(
+                `/openclaw/agents/${encodeURIComponent(agentId)}/files`,
+              );
               const fallbackParsed = toAgentsFilesListResult(fallbackPayload);
               if (fallbackParsed && fallbackParsed.files.length > list.files.length) {
                 sourceList = fallbackParsed;
-              } else if (fallbackParsed && fallbackParsed.files.some((file) => hasProjectPath(file.path))) {
+              } else if (
+                fallbackParsed &&
+                fallbackParsed.files.some((file) => hasProjectPath(file.path))
+              ) {
                 sourceList = fallbackParsed;
               }
             } catch {
@@ -471,7 +506,11 @@ export class OpenClawAdapter {
     return normalizeArray(payload.sessions, (entry) => toSession(agentId, entry));
   }
 
-  async getSessionTimeline(agentId: string, sessionKey: string, limit = 200): Promise<SessionTimelineModel> {
+  async getSessionTimeline(
+    agentId: string,
+    sessionKey: string,
+    limit = 200,
+  ): Promise<SessionTimelineModel> {
     const payload = await this.readJson(
       `/openclaw/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(sessionKey)}/events?limit=${limit}`,
     );
@@ -522,7 +561,9 @@ export class OpenClawAdapter {
     return Object.fromEntries(rows);
   }
 
-  async sendMessage(input: ChatSendRequest): Promise<{ ok: boolean; eventId?: string; error?: string }> {
+  async sendMessage(
+    input: ChatSendRequest,
+  ): Promise<{ ok: boolean; eventId?: string; error?: string }> {
     let response: Response;
     try {
       response = await fetch(`${this.stateUrl}/openclaw/chat/send`, {
@@ -555,13 +596,18 @@ export class OpenClawAdapter {
   }
 
   async listAgentMemoryEntries(agentId: string): Promise<AgentMemoryEntry[]> {
-    const payload = await this.readJson(`/openclaw/agents/${encodeURIComponent(agentId)}/memory-entries`);
+    const payload = await this.readJson(
+      `/openclaw/agents/${encodeURIComponent(agentId)}/memory-entries`,
+    );
     return normalizeArray(payload.entries, (entry) => toAgentMemoryEntry(agentId, entry));
   }
 
   async getConfigSnapshot(): Promise<OpenClawConfigSnapshot> {
     const payload = await this.readJson("/openclaw/config");
-    const config = payload.config && typeof payload.config === "object" ? (payload.config as Record<string, unknown>) : {};
+    const config =
+      payload.config && typeof payload.config === "object"
+        ? (payload.config as Record<string, unknown>)
+        : {};
     return {
       stateVersion: typeof payload.stateVersion === "number" ? payload.stateVersion : undefined,
       config,
@@ -575,7 +621,10 @@ export class OpenClawAdapter {
       body: JSON.stringify({ nextConfig }),
     });
     if (!response.ok) {
-      return { summary: "preview endpoint unavailable", diffText: JSON.stringify(nextConfig, null, 2) };
+      return {
+        summary: "preview endpoint unavailable",
+        diffText: JSON.stringify(nextConfig, null, 2),
+      };
     }
     const payload = (await response.json()) as Json;
     return {
@@ -584,7 +633,10 @@ export class OpenClawAdapter {
     };
   }
 
-  async applyConfig(nextConfig: Record<string, unknown>, confirm: boolean): Promise<{ ok: boolean; error?: string }> {
+  async applyConfig(
+    nextConfig: Record<string, unknown>,
+    confirm: boolean,
+  ): Promise<{ ok: boolean; error?: string }> {
     const response = await fetch(`${this.stateUrl}/openclaw/config/apply`, {
       method: "POST",
       headers: buildGatewayHeaders({ "content-type": "application/json" }),
@@ -615,7 +667,10 @@ export class OpenClawAdapter {
     };
   }
 
-  private async getCompanyModelWithSource(): Promise<{ company: CompanyModel; source: "gateway" | "localStorage" | "default" }> {
+  private async getCompanyModelWithSource(): Promise<{
+    company: CompanyModel;
+    source: "gateway" | "localStorage" | "default";
+  }> {
     try {
       const payload = await this.readJson("/openclaw/company-model");
       return { company: normalizeCompanyModel(payload.company ?? payload), source: "gateway" };
@@ -642,7 +697,9 @@ export class OpenClawAdapter {
     return result.company;
   }
 
-  async saveCompanyModel(input: CompanyModel): Promise<{ ok: boolean; company: CompanyModel; error?: string }> {
+  async saveCompanyModel(
+    input: CompanyModel,
+  ): Promise<{ ok: boolean; company: CompanyModel; error?: string }> {
     const company = normalizeCompanyModel(input);
     let ok = false;
     let error: string | undefined;
@@ -762,7 +819,13 @@ export class OpenClawAdapter {
       execute: string;
       distribute: string;
     };
-  }): Promise<{ ok: boolean; teamId?: string; projectId?: string; createdAgents?: string[]; error?: string }> {
+  }): Promise<{
+    ok: boolean;
+    teamId?: string;
+    projectId?: string;
+    createdAgents?: string[];
+    error?: string;
+  }> {
     try {
       const response = await fetch(`${this.stateUrl}/openclaw/team/create`, {
         method: "POST",
@@ -773,7 +836,10 @@ export class OpenClawAdapter {
       if (!response.ok || payload.ok === false) {
         return {
           ok: false,
-          error: typeof payload.error === "string" ? payload.error : `team_create_failed:${response.status}`,
+          error:
+            typeof payload.error === "string"
+              ? payload.error
+              : `team_create_failed:${response.status}`,
         };
       }
       return {
@@ -787,6 +853,178 @@ export class OpenClawAdapter {
     } catch {
       return { ok: false, error: "team_create_unavailable" };
     }
+  }
+
+  async listTeamProposals(): Promise<TeamProposalModel[]> {
+    const company = await this.getCompanyModel();
+    return [...(company.teamProposals ?? [])].sort(
+      (left, right) => right.updatedAt - left.updatedAt,
+    );
+  }
+
+  async createTeamProposal(input: {
+    businessType: "affiliate_marketing" | "content_creator" | "saas" | "custom";
+    ideaBrief: TeamProposalIdeaBrief;
+    requestedBy?: string;
+    sourceAgentId?: string;
+  }): Promise<{ ok: boolean; proposal?: TeamProposalModel; error?: string }> {
+    const proposal = createTeamProposalModel(input);
+    const company = await this.getCompanyModel();
+    const nextCompany: CompanyModel = {
+      ...company,
+      teamProposals: [proposal, ...(company.teamProposals ?? [])],
+    };
+    const saved = await this.saveCompanyModel(nextCompany);
+    return saved.ok ? { ok: true, proposal } : { ok: false, error: saved.error };
+  }
+
+  async setTeamProposalApproval(
+    proposalId: string,
+    approvalStatus: TeamProposalApprovalStatus,
+    approvalNote?: string,
+  ): Promise<{ ok: boolean; proposal?: TeamProposalModel; error?: string }> {
+    const company = await this.getCompanyModel();
+    const existing = (company.teamProposals ?? []).find((entry) => entry.id === proposalId);
+    if (!existing) return { ok: false, error: "proposal_not_found" };
+    const updated: TeamProposalModel = {
+      ...existing,
+      approvalStatus,
+      approvalNote: approvalNote?.trim() || undefined,
+      updatedAt: Date.now(),
+    };
+    const nextCompany: CompanyModel = {
+      ...company,
+      teamProposals: (company.teamProposals ?? []).map((entry) =>
+        entry.id === proposalId ? updated : entry,
+      ),
+    };
+    const saved = await this.saveCompanyModel(nextCompany);
+    return saved.ok ? { ok: true, proposal: updated } : { ok: false, error: saved.error };
+  }
+
+  async executeTeamProposal(proposalId: string): Promise<{
+    ok: boolean;
+    proposal?: TeamProposalModel;
+    teamId?: string;
+    projectId?: string;
+    error?: string;
+  }> {
+    const company = await this.getCompanyModel();
+    const existing = (company.teamProposals ?? []).find((entry) => entry.id === proposalId);
+    if (!existing) return { ok: false, error: "proposal_not_found" };
+    if (existing.ideaGateStatus !== "passed") return { ok: false, error: "proposal_not_ready" };
+    if (
+      !canExecuteProposalRoles(existing.proposedRoles, existing.proposedBusinessConfig.businessType)
+    ) {
+      return { ok: false, error: "proposal_contains_unsupported_roles" };
+    }
+
+    const creatingProposal: TeamProposalModel = {
+      ...existing,
+      approvalStatus: existing.approvalStatus === "pending" ? "approved" : existing.approvalStatus,
+      executionStatus: "creating",
+      executionError: undefined,
+      updatedAt: Date.now(),
+    };
+    const markedCreating = await this.saveCompanyModel({
+      ...company,
+      teamProposals: (company.teamProposals ?? []).map((entry) =>
+        entry.id === proposalId ? creatingProposal : entry,
+      ),
+    });
+    if (!markedCreating.ok) return { ok: false, error: markedCreating.error };
+
+    const businessType = existing.proposedBusinessConfig.businessType;
+    const genericRoles = existing.proposedRoles
+      .map((role) => role.mappedRuntimeRole)
+      .filter(
+        (role): role is "builder" | "growth_marketer" | "pm" =>
+          role === "builder" || role === "growth_marketer" || role === "pm",
+      );
+
+    const teamResult = await this.createTeam({
+      name: existing.proposedTeamName,
+      description: existing.proposedDescription,
+      goal: existing.ideaBrief.primaryGoal,
+      kpis: ["proposal_approved", "heartbeat_progress"],
+      autoRoles: genericRoles,
+      registerOpenclawAgents: true,
+      withCluster: true,
+      ...(businessType !== "custom"
+        ? {
+            businessType,
+            capabilitySkills: existing.proposedBusinessConfig.capabilitySkills,
+          }
+        : {}),
+    });
+    if (!teamResult.ok || !teamResult.projectId || !teamResult.teamId) {
+      const failedProposal: TeamProposalModel = {
+        ...creatingProposal,
+        executionStatus: "failed",
+        executionError: teamResult.error ?? "team_create_failed",
+        updatedAt: Date.now(),
+      };
+      const failedSave = await this.saveCompanyModel({
+        ...(await this.getCompanyModel()),
+        teamProposals: ((await this.getCompanyModel()).teamProposals ?? []).map((entry) =>
+          entry.id === proposalId ? failedProposal : entry,
+        ),
+      });
+      return {
+        ok: false,
+        error: failedSave.error ?? failedProposal.executionError,
+        proposal: failedProposal,
+      };
+    }
+
+    const saveBusiness =
+      businessType !== "custom"
+        ? await this.saveBusinessBuilderConfig({
+            projectId: teamResult.projectId,
+            businessType,
+            capabilitySkills: existing.proposedBusinessConfig.capabilitySkills,
+            resources: createBusinessBuilderDraft(businessType).resources,
+          })
+        : { ok: true as const };
+    let businessSaveError: string | undefined;
+    if (!saveBusiness.ok) {
+      businessSaveError = saveBusiness.error ?? "business_builder_save_failed";
+    }
+    if (businessType !== "custom") {
+      const sync = await this.syncTeamBusinessSkillsToAgents({
+        teamId: teamResult.teamId,
+        mode: "replace_minimum",
+      });
+      if (!sync.ok && !businessSaveError) {
+        businessSaveError = sync.error ?? "team_business_skill_sync_failed";
+      }
+    }
+
+    const latestCompany = await this.getCompanyModel();
+    const finalProposal: TeamProposalModel = {
+      ...creatingProposal,
+      approvalStatus: "approved",
+      executionStatus: businessSaveError ? "failed" : "created",
+      executionError: businessSaveError,
+      createdTeamId: teamResult.teamId,
+      createdProjectId: teamResult.projectId,
+      updatedAt: Date.now(),
+    };
+    const saved = await this.saveCompanyModel({
+      ...latestCompany,
+      teamProposals: (latestCompany.teamProposals ?? []).map((entry) =>
+        entry.id === proposalId ? finalProposal : entry,
+      ),
+    });
+    return saved.ok
+      ? {
+          ok: !businessSaveError,
+          proposal: finalProposal,
+          teamId: teamResult.teamId,
+          projectId: teamResult.projectId,
+          error: businessSaveError,
+        }
+      : { ok: false, error: saved.error };
   }
 
   async saveBusinessBuilderConfig(input: {
@@ -811,7 +1049,11 @@ export class OpenClawAdapter {
     for (const resource of nextResources) {
       const previous = priorById.get(resource.id);
       if (!previous) continue;
-      if (previous.remaining !== resource.remaining || previous.limit !== resource.limit || previous.reserved !== resource.reserved) {
+      if (
+        previous.remaining !== resource.remaining ||
+        previous.limit !== resource.limit ||
+        previous.reserved !== resource.reserved
+      ) {
         nextEvents.push({
           id: `resource-event-${input.projectId}-${resource.id}-${Date.now()}`,
           projectId: input.projectId,
@@ -878,8 +1120,10 @@ export class OpenClawAdapter {
     const nowIso = new Date().toISOString();
     const accountId = project.account?.id ?? `${project.id}:account`;
     const currentBalance = project.account?.balanceCents ?? 0;
-    const nextBalance = input.type === "credit" ? currentBalance + amountCents : currentBalance - amountCents;
-    if (input.type === "debit" && nextBalance < 0) return { ok: false, error: "insufficient_balance" };
+    const nextBalance =
+      input.type === "credit" ? currentBalance + amountCents : currentBalance - amountCents;
+    if (input.type === "debit" && nextBalance < 0)
+      return { ok: false, error: "insufficient_balance" };
 
     const accountEvent = {
       id: `acct-event-${project.id}-${Date.now()}`,
@@ -900,7 +1144,8 @@ export class OpenClawAdapter {
       amount: amountCents,
       currency: input.currency?.trim() || project.account?.currency || "USD",
       source: input.source.trim() || "ui.ledger",
-      description: input.note?.trim() || (input.type === "credit" ? "Account funding" : "Account spend"),
+      description:
+        input.note?.trim() || (input.type === "credit" ? "Account funding" : "Account spend"),
     };
 
     const nextCompany: CompanyModel = {
@@ -940,7 +1185,10 @@ export class OpenClawAdapter {
       if (!response.ok || payload.ok === false) {
         return {
           ok: false,
-          error: typeof payload.error === "string" ? payload.error : `heartbeat_render_failed:${response.status}`,
+          error:
+            typeof payload.error === "string"
+              ? payload.error
+              : `heartbeat_render_failed:${response.status}`,
         };
       }
       return {
@@ -979,7 +1227,10 @@ export class OpenClawAdapter {
           touchedAgents: [],
           missingAgents: [],
           preview: [],
-          error: typeof body.error === "string" ? body.error : `team_business_skill_sync_failed:${response.status}`,
+          error:
+            typeof body.error === "string"
+              ? body.error
+              : `team_business_skill_sync_failed:${response.status}`,
         };
       }
       return {
@@ -988,8 +1239,12 @@ export class OpenClawAdapter {
         projectId: typeof body.projectId === "string" ? body.projectId : "",
         mode: body.mode === "append_only" ? "append_only" : "replace_minimum",
         dryRun: body.dryRun === true,
-        touchedAgents: Array.isArray(body.touchedAgents) ? body.touchedAgents.filter((entry): entry is string => typeof entry === "string") : [],
-        missingAgents: Array.isArray(body.missingAgents) ? body.missingAgents.filter((entry): entry is string => typeof entry === "string") : [],
+        touchedAgents: Array.isArray(body.touchedAgents)
+          ? body.touchedAgents.filter((entry): entry is string => typeof entry === "string")
+          : [],
+        missingAgents: Array.isArray(body.missingAgents)
+          ? body.missingAgents.filter((entry): entry is string => typeof entry === "string")
+          : [],
         preview: Array.isArray(body.preview)
           ? body.preview
               .map((entry) => {
@@ -1001,11 +1256,17 @@ export class OpenClawAdapter {
                   agentId,
                   role: row.role === "biz_executor" ? "biz_executor" : "biz_pm",
                   mode: row.mode === "append_only" ? "append_only" : "replace_minimum",
-                  beforeSkills: Array.isArray(row.beforeSkills) ? row.beforeSkills.filter((item): item is string => typeof item === "string") : [],
-                  afterSkills: Array.isArray(row.afterSkills) ? row.afterSkills.filter((item): item is string => typeof item === "string") : [],
+                  beforeSkills: Array.isArray(row.beforeSkills)
+                    ? row.beforeSkills.filter((item): item is string => typeof item === "string")
+                    : [],
+                  afterSkills: Array.isArray(row.afterSkills)
+                    ? row.afterSkills.filter((item): item is string => typeof item === "string")
+                    : [],
                 };
               })
-              .filter((entry): entry is TeamBusinessSkillSyncResult["preview"][number] => entry !== null)
+              .filter(
+                (entry): entry is TeamBusinessSkillSyncResult["preview"][number] => entry !== null,
+              )
           : [],
       };
     } catch {
@@ -1023,16 +1284,24 @@ export class OpenClawAdapter {
     }
   }
 
-  async upsertChannelBinding(input: ChannelBindingModel): Promise<{ ok: boolean; company: CompanyModel; error?: string }> {
+  async upsertChannelBinding(
+    input: ChannelBindingModel,
+  ): Promise<{ ok: boolean; company: CompanyModel; error?: string }> {
     const company = await this.getCompanyModel();
     const nextBindings = company.channelBindings.filter(
-      (binding) => !(binding.platform === input.platform && binding.externalChannelId === input.externalChannelId),
+      (binding) =>
+        !(
+          binding.platform === input.platform &&
+          binding.externalChannelId === input.externalChannelId
+        ),
     );
     nextBindings.push(input);
     return this.saveCompanyModel({ ...company, channelBindings: nextBindings });
   }
 
-  async listFederatedTasks(input: { projectId?: string; provider?: FederatedTaskModel["provider"] } = {}): Promise<FederatedTaskModel[]> {
+  async listFederatedTasks(
+    input: { projectId?: string; provider?: FederatedTaskModel["provider"] } = {},
+  ): Promise<FederatedTaskModel[]> {
     const company = await this.getCompanyModel();
     return company.tasks.filter((task) => {
       if (input.projectId && task.projectId !== input.projectId) return false;
@@ -1058,7 +1327,9 @@ export class OpenClawAdapter {
     input: FederationProjectPolicy,
   ): Promise<{ ok: boolean; company: CompanyModel; error?: string }> {
     const company = await this.getCompanyModel();
-    const nextPolicies = company.federationPolicies.filter((policy) => policy.projectId !== input.projectId);
+    const nextPolicies = company.federationPolicies.filter(
+      (policy) => policy.projectId !== input.projectId,
+    );
     nextPolicies.push(input);
     return this.saveCompanyModel({ ...company, federationPolicies: nextPolicies });
   }
@@ -1067,7 +1338,9 @@ export class OpenClawAdapter {
     input: ProviderIndexProfile,
   ): Promise<{ ok: boolean; company: CompanyModel; error?: string }> {
     const company = await this.getCompanyModel();
-    const nextProfiles = company.providerIndexProfiles.filter((profile) => profile.profileId !== input.profileId);
+    const nextProfiles = company.providerIndexProfiles.filter(
+      (profile) => profile.profileId !== input.profileId,
+    );
     nextProfiles.push(input);
     return this.saveCompanyModel({ ...company, providerIndexProfiles: nextProfiles });
   }
@@ -1095,12 +1368,20 @@ export class OpenClawAdapter {
     return { ok: saved.ok, task: nextTask, error: saved.error };
   }
 
-  async manualResync(projectId: string, provider?: FederatedTaskModel["provider"]): Promise<{ ok: boolean; error?: string }> {
+  async manualResync(
+    projectId: string,
+    provider?: FederatedTaskModel["provider"],
+  ): Promise<{ ok: boolean; error?: string }> {
     const company = await this.getCompanyModel();
     const nextTasks = company.tasks.map((task) => {
       if (task.projectId !== projectId) return task;
       if (provider && task.provider !== provider) return task;
-      return { ...task, syncState: "pending" as const, syncError: undefined, updatedAt: Date.now() };
+      return {
+        ...task,
+        syncState: "pending" as const,
+        syncError: undefined,
+        updatedAt: Date.now(),
+      };
     });
     const initialSave = await this.saveCompanyModel({ ...company, tasks: nextTasks });
     if (!initialSave.ok) return { ok: false, error: initialSave.error };
@@ -1108,7 +1389,12 @@ export class OpenClawAdapter {
     const reconciledTasks = nextTasks.map((task) => {
       if (task.projectId !== projectId) return task;
       if (provider && task.provider !== provider) return task;
-      return { ...task, syncState: "healthy" as const, syncError: undefined, updatedAt: Date.now() };
+      return {
+        ...task,
+        syncState: "healthy" as const,
+        syncError: undefined,
+        updatedAt: Date.now(),
+      };
     });
     const finalSave = await this.saveCompanyModel({ ...company, tasks: reconciledTasks });
     return { ok: finalSave.ok, error: finalSave.error };
@@ -1117,7 +1403,10 @@ export class OpenClawAdapter {
   async getOfficeObjects(): Promise<OfficeObjectSidecarModel[]> {
     try {
       const payload = await this.readJson("/openclaw/office-objects");
-      const objects = normalizeArray(payload.objects ?? payload.officeObjects ?? payload, toOfficeObjectSidecar);
+      const objects = normalizeArray(
+        payload.objects ?? payload.officeObjects ?? payload,
+        toOfficeObjectSidecar,
+      );
       if (typeof window !== "undefined") {
         window.localStorage.setItem(OFFICE_OBJECTS_STORAGE_KEY, JSON.stringify(objects));
       }
@@ -1146,7 +1435,9 @@ export class OpenClawAdapter {
     }
   }
 
-  async saveOfficeSettings(settings: OfficeSettingsModel): Promise<{ ok: boolean; settings: OfficeSettingsModel; error?: string }> {
+  async saveOfficeSettings(
+    settings: OfficeSettingsModel,
+  ): Promise<{ ok: boolean; settings: OfficeSettingsModel; error?: string }> {
     const normalized = toOfficeSettings(settings);
     try {
       const response = await fetch(`${this.stateUrl}/openclaw/office-settings`, {
@@ -1155,7 +1446,11 @@ export class OpenClawAdapter {
         body: JSON.stringify({ settings: normalized }),
       });
       if (!response.ok) {
-        return { ok: false, settings: normalized, error: `office_settings_save_failed:${response.status}` };
+        return {
+          ok: false,
+          settings: normalized,
+          error: `office_settings_save_failed:${response.status}`,
+        };
       }
       const payload = (await response.json()) as Json;
       return { ok: true, settings: toOfficeSettings(payload.settings ?? normalized) };
@@ -1176,7 +1471,10 @@ export class OpenClawAdapter {
     }
   }
 
-  async downloadMeshAsset(input: { url: string; label?: string }): Promise<{ ok: boolean; asset?: MeshAssetModel; error?: string }> {
+  async downloadMeshAsset(input: {
+    url: string;
+    label?: string;
+  }): Promise<{ ok: boolean; asset?: MeshAssetModel; error?: string }> {
     try {
       const response = await fetch(`${this.stateUrl}/openclaw/mesh-assets/download`, {
         method: "POST",
@@ -1188,7 +1486,10 @@ export class OpenClawAdapter {
       }
       const payload = (await response.json()) as Json;
       if (payload.ok === false) {
-        return { ok: false, error: typeof payload.error === "string" ? payload.error : "mesh_download_failed" };
+        return {
+          ok: false,
+          error: typeof payload.error === "string" ? payload.error : "mesh_download_failed",
+        };
       }
       const asset = toMeshAsset(payload.asset);
       if (!asset) return { ok: false, error: "mesh_asset_invalid" };
@@ -1198,7 +1499,9 @@ export class OpenClawAdapter {
     }
   }
 
-  async saveOfficeObjects(objects: OfficeObjectSidecarModel[]): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
+  async saveOfficeObjects(
+    objects: OfficeObjectSidecarModel[],
+  ): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
     const cleaned = normalizeArray(objects, toOfficeObjectSidecar);
     let ok = false;
     let error: string | undefined;
@@ -1240,7 +1543,7 @@ export class OpenClawAdapter {
     object: OfficeObjectSidecarModel,
     options?: { currentObjects?: OfficeObjectSidecarModel[] },
   ): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
-    const current = options?.currentObjects ?? await this.getOfficeObjects();
+    const current = options?.currentObjects ?? (await this.getOfficeObjects());
     const canonicalId = toCanonicalOfficeObjectId(object.id);
     const next = current.filter((item) => toCanonicalOfficeObjectId(item.id) !== canonicalId);
     next.push(object);
@@ -1251,21 +1554,25 @@ export class OpenClawAdapter {
     objectId: string,
     options?: { currentObjects?: OfficeObjectSidecarModel[] },
   ): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {
-    const current = options?.currentObjects ?? await this.getOfficeObjects();
+    const current = options?.currentObjects ?? (await this.getOfficeObjects());
     const canonicalId = toCanonicalOfficeObjectId(objectId);
     const next = current.filter((item) => toCanonicalOfficeObjectId(item.id) !== canonicalId);
     return this.saveOfficeObjects(next);
   }
 
   async getUnifiedOfficeModel(): Promise<UnifiedOfficeModel> {
-    const [runtimeAgents, memory, skills, companyResult, configSnapshot, officeObjects] = await Promise.all([
-      this.listAgents().catch(() => []),
-      this.listMemory().catch(() => []),
-      this.listSkills().catch(() => []),
-      this.getCompanyModelWithSource().catch(() => ({ company: DEFAULT_COMPANY_MODEL, source: "default" as const })),
-      this.getConfigSnapshot().catch(() => null),
-      this.getOfficeObjects().catch(() => []),
-    ]);
+    const [runtimeAgents, memory, skills, companyResult, configSnapshot, officeObjects] =
+      await Promise.all([
+        this.listAgents().catch(() => []),
+        this.listMemory().catch(() => []),
+        this.listSkills().catch(() => []),
+        this.getCompanyModelWithSource().catch(() => ({
+          company: DEFAULT_COMPANY_MODEL,
+          source: "default" as const,
+        })),
+        this.getConfigSnapshot().catch(() => null),
+        this.getOfficeObjects().catch(() => []),
+      ]);
     const company = companyResult.company;
     const configuredAgents = parseConfiguredAgentsFromConfig(configSnapshot);
     const warnings = buildReconciliationWarnings(company, runtimeAgents, configuredAgents);
@@ -1282,7 +1589,9 @@ export class OpenClawAdapter {
       }
       if (
         object.meshType === "team-cluster" &&
-        (!object.metadata || typeof object.metadata.teamId !== "string" || !String(object.metadata.teamId).trim())
+        (!object.metadata ||
+          typeof object.metadata.teamId !== "string" ||
+          !String(object.metadata.teamId).trim())
       ) {
         invalidOfficeObjects.push(`${object.id}:missing_team_cluster_metadata`);
       }
@@ -1297,7 +1606,9 @@ export class OpenClawAdapter {
           object.position[2] > CLUSTER_BOUNDARY_LIMIT,
       )
       .map((object) => object.id);
-    const ceoAnchorMode = officeObjects.some((object) => object.meshType === "glass-wall") ? "glass-derived" : "fallback";
+    const ceoAnchorMode = officeObjects.some((object) => object.meshType === "glass-wall")
+      ? "glass-derived"
+      : "fallback";
     const missingRuntimeAgentIds = configuredAgents
       .map((agent) => agent.agentId)
       .filter((agentId) => !runtimeAgents.some((runtimeAgent) => runtimeAgent.agentId === agentId));
@@ -1339,7 +1650,10 @@ export class OpenClawAdapter {
     }
   }
 
-  async resolveApproval(id: string, decision: "approved" | "rejected"): Promise<{ ok: boolean; error?: string }> {
+  async resolveApproval(
+    id: string,
+    decision: "approved" | "rejected",
+  ): Promise<{ ok: boolean; error?: string }> {
     try {
       const response = await fetch(`${this.stateUrl}/openclaw/pending-approvals/resolve`, {
         method: "POST",
@@ -1347,7 +1661,10 @@ export class OpenClawAdapter {
         body: JSON.stringify({ id, decision }),
       });
       const payload = (await response.json()) as Json;
-      return { ok: payload.ok === true, error: typeof payload.error === "string" ? payload.error : undefined };
+      return {
+        ok: payload.ok === true,
+        error: typeof payload.error === "string" ? payload.error : undefined,
+      };
     } catch {
       return { ok: false, error: "resolve_request_failed" };
     }

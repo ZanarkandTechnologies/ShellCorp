@@ -19,12 +19,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { UI_Z } from "@/lib/z-index";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -35,6 +30,7 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "./team-panel-types";
+import { useAppStore } from "@/lib/app-store";
 
 type EmployeeOption = {
   id: string;
@@ -73,6 +69,13 @@ function formatDate(ts: number | undefined): string {
   return new Date(ts).toLocaleString();
 }
 
+function parseAgentIdFromSessionKey(sessionKey: string | undefined): string | null {
+  const value = sessionKey?.trim() ?? "";
+  if (!value) return null;
+  const parts = value.split(":");
+  return parts[1]?.trim() || null;
+}
+
 export function TaskDetailModal({
   task,
   isOpen,
@@ -82,6 +85,9 @@ export function TaskDetailModal({
   isPending,
   onCommand,
 }: TaskDetailModalProps): JSX.Element {
+  const setSelectedAgentId = useAppStore((state) => state.setSelectedAgentId);
+  const setSelectedSessionKey = useAppStore((state) => state.setSelectedSessionKey);
+  const setIsAgentSessionPanelOpen = useAppStore((state) => state.setIsAgentSessionPanelOpen);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [notesDraft, setNotesDraft] = useState("");
@@ -114,17 +120,15 @@ export function TaskDetailModal({
       setEditingTitle(false);
       return;
     }
-    void onCommand("task_update", { taskId: task?.id, title: trimmed }, "Title updated.").then(
-      () => setEditingTitle(false),
+    void onCommand("task_update", { taskId: task?.id, title: trimmed }, "Title updated.").then(() =>
+      setEditingTitle(false),
     );
   }
 
   function handleSaveNotes(): void {
-    void onCommand(
-      "task_update",
-      { taskId: task?.id, detail: notesDraft },
-      "Notes saved.",
-    ).then(() => setNotesChanged(false));
+    void onCommand("task_update", { taskId: task?.id, detail: notesDraft }, "Notes saved.").then(
+      () => setNotesChanged(false),
+    );
   }
 
   function handleStatusChange(value: string): void {
@@ -155,17 +159,21 @@ export function TaskDetailModal({
   }
 
   function handleDelete(): void {
-    void onCommand("task_delete", { taskId: task?.id }, "Task deleted.").then(
-      onClose,
-    );
+    void onCommand("task_delete", { taskId: task?.id }, "Task deleted.").then(onClose);
   }
 
   const currentOwnerLabel = task.ownerAgentId
     ? (ownerLabelById.get(task.ownerAgentId) ?? task.ownerAgentId)
     : "unassigned";
+  const linkedAgentId = parseAgentIdFromSessionKey(task.linkedSessionKey);
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <DialogContent
         className="max-w-lg"
         style={{ zIndex: UI_Z.panelModal }}
@@ -202,17 +210,13 @@ export function TaskDetailModal({
                 {task.title}
               </button>
             )}
-            <p className="mt-0.5 pl-1 text-[11px] text-muted-foreground">
-              Click title to edit
-            </p>
+            <p className="mt-0.5 pl-1 text-[11px] text-muted-foreground">Click title to edit</p>
           </div>
 
           {/* Status + Priority + Assignee grid */}
           <div className="grid grid-cols-3 gap-3 text-sm">
             <div className="space-y-1">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Status
-              </p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Status</p>
               <div className="flex items-center gap-1.5">
                 <span
                   className={`inline-block h-2 w-2 rounded-full ${STATUS_COLORS[task.status]}`}
@@ -233,9 +237,7 @@ export function TaskDetailModal({
             </div>
 
             <div className="space-y-1">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Priority
-              </p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Priority</p>
               <select
                 className="rounded-md border bg-background px-2 py-1 text-xs"
                 value={task.priority}
@@ -251,9 +253,7 @@ export function TaskDetailModal({
             </div>
 
             <div className="space-y-1">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Assignee
-              </p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Assignee</p>
               <select
                 className="rounded-md border bg-background px-2 py-1 text-xs"
                 value={task.ownerAgentId ?? ""}
@@ -272,44 +272,78 @@ export function TaskDetailModal({
 
           {/* Metadata badges */}
           <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant="outline"
-              className={`text-[10px] ${PRIORITY_COLORS[task.priority]}`}
-            >
+            <Badge variant="outline" className={`text-[10px] ${PRIORITY_COLORS[task.priority]}`}>
               {task.priority}
             </Badge>
-            <span className="text-xs text-muted-foreground">
-              Assigned to: {currentOwnerLabel}
-            </span>
+            <span className="text-xs text-muted-foreground">Assigned to: {currentOwnerLabel}</span>
             {task.dueAt ? (
-              <span className="text-xs text-muted-foreground">
-                Due: {formatDate(task.dueAt)}
-              </span>
+              <span className="text-xs text-muted-foreground">Due: {formatDate(task.dueAt)}</span>
+            ) : null}
+            {task.taskType ? (
+              <Badge variant="outline" className="text-[10px]">
+                {task.taskType.replace(/_/g, " ")}
+              </Badge>
+            ) : null}
+            {task.approvalState ? (
+              <Badge variant="outline" className="text-[10px]">
+                approval: {task.approvalState.replace(/_/g, " ")}
+              </Badge>
             ) : null}
           </div>
 
+          {task.linkedSessionKey || task.createdTeamId || task.createdProjectId ? (
+            <div className="space-y-2 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+              {task.linkedSessionKey ? (
+                <div className="space-y-2">
+                  <p>
+                    <span className="font-medium text-foreground">Linked session:</span>{" "}
+                    {task.linkedSessionKey}
+                  </p>
+                  {linkedAgentId ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedAgentId(linkedAgentId);
+                        setSelectedSessionKey(task.linkedSessionKey ?? null);
+                        setIsAgentSessionPanelOpen(true);
+                      }}
+                    >
+                      Open linked session
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+              {task.createdTeamId ? (
+                <p>
+                  <span className="font-medium text-foreground">Created team:</span>{" "}
+                  {task.createdTeamId}
+                </p>
+              ) : null}
+              {task.createdProjectId ? (
+                <p>
+                  <span className="font-medium text-foreground">Created project:</span>{" "}
+                  {task.createdProjectId}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* Notes */}
           <div className="space-y-2">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              Notes
-            </p>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Task Memory</p>
             <Textarea
               value={notesDraft}
               onChange={(e) => {
                 setNotesDraft(e.target.value);
                 setNotesChanged(true);
               }}
-              placeholder="Add notes or context about this task..."
+              placeholder="Add current state, blockers, next step, links, or other working memory..."
               className="min-h-24 text-sm"
             />
             {notesChanged ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={handleSaveNotes}
-                disabled={isPending}
-              >
-                {isPending ? "Saving..." : "Save Notes"}
+              <Button size="sm" variant="secondary" onClick={handleSaveNotes} disabled={isPending}>
+                {isPending ? "Saving..." : "Save Task Memory"}
               </Button>
             ) : null}
           </div>
@@ -378,11 +412,7 @@ export function TaskDetailModal({
                   >
                     Confirm
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setConfirmDelete(false)}
-                  >
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
                     Cancel
                   </Button>
                 </div>

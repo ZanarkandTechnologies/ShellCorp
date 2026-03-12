@@ -6,6 +6,7 @@ import { LogsDrawer } from './hud/logs-drawer';
 import { LogsToggleButton } from './hud/logs-toggle-button';
 import { GatewayStatusPill } from './hud/gateway-status-pill';
 import { OfficeMenu } from './hud/office-menu';
+import { CeoWorkbenchPanel } from './hud/ceo-workbench-panel';
 import { useOfficeDataContext } from '@/providers/office-data-provider';
 import { useAppStore } from '@/lib/app-store';
 import { gatewayBase } from '@/lib/gateway-config';
@@ -156,6 +157,7 @@ export default function OfficeSimulation() {
                     <SkillsPanel />
                     <ObjectConfigPanel />
                     <ObjectInteractionPanel />
+                    <CeoWorkbenchPanel />
                     <SettingsDialog open={isSettingsModalOpen} onOpenChange={setIsSettingsModalOpen} />
 
                     <div className="pointer-events-none absolute top-4 left-4 z-[70]">

@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as _utils from "../_utils.js";
 import type * as board from "../board.js";
 import type * as board_contract from "../board_contract.js";
 import type * as board_http_contract from "../board_http_contract.js";
@@ -25,6 +26,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  _utils: typeof _utils;
   board: typeof board;
   board_contract: typeof board_contract;
   board_http_contract: typeof board_http_contract;
