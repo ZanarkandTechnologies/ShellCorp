@@ -50,6 +50,22 @@ export interface SessionTimelineEvent {
   raw?: Record<string, unknown>;
 }
 
+export interface SessionUsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+  responseCount: number;
+}
+
+export interface SessionUsageSnapshot extends SessionUsageTotals {
+  provider?: string;
+  model?: string;
+  timestamp?: number;
+}
+
 export interface SessionTimelineModel {
   agentId: string;
   sessionKey: string;
@@ -58,6 +74,15 @@ export interface SessionTimelineModel {
     outputTokens?: number;
     totalTokens?: number;
     contextTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    estimatedCostUsd?: number;
+  };
+  usageSummary?: {
+    lastResponse?: SessionUsageSnapshot;
+    sessionTotals: SessionUsageTotals;
+    last24Hours?: SessionUsageTotals;
+    last7Days?: SessionUsageTotals;
   };
   events: SessionTimelineEvent[];
 }

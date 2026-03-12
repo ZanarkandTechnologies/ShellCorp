@@ -31,7 +31,8 @@ import {
   projectToBusinessBuilderDraft,
 } from "@/lib/business-builder";
 import { useAppStore } from "@/lib/app-store";
-import type { ProjectAccountEventModel } from "@/lib/openclaw-types";
+import type { ProjectAccountEventModel, SessionTimelineModel } from "@/lib/openclaw-types";
+import { buildTeamAiUsageSummary } from "@/lib/session-usage";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { UI_Z } from "@/lib/z-index";
@@ -99,6 +100,14 @@ export function TeamPanel({
   }>({ pending: false });
   const [trackingContext, setTrackingContext] = useState("");
   const [agentConfiguredSkills, setAgentConfiguredSkills] = useState<Record<string, string[]>>({});
+  const [teamUsageRows, setTeamUsageRows] = useState<
+    Array<{
+      agentId: string;
+      occurredAt?: number;
+      usageSummary?: SessionTimelineModel["usageSummary"];
+    }>
+  >([]);
+  const [teamUsageError, setTeamUsageError] = useState<string | null>(null);
 
   const team = useMemo(() => {
     if (!teamId || globalMode) return null;
@@ -115,9 +124,19 @@ export function TeamPanel({
     if (!companyModel) return null;
     if (!projectId) return companyModel.projects[0] ?? null;
     return (
-      companyModel.projects.find((e) => e.id === projectId) ?? companyModel.projects[0] ?? null
+        companyModel.projects.find((e) => e.id === projectId) ?? companyModel.projects[0] ?? null
     );
   }, [companyModel, projectId]);
+  const usageEmployees = useMemo(() => {
+    if (globalMode) {
+      const scopedTeamId = project?.id ? `team-${project.id}`.toLowerCase() : null;
+      if (!scopedTeamId) return [];
+      return employees.filter(
+        (employee) => String(employee.teamId ?? "").trim().toLowerCase() === scopedTeamId,
+      );
+    }
+    return teamEmployees;
+  }, [employees, globalMode, project?.id, teamEmployees]);
 
   const convexEnabled = isConvexEnabled();
   // Closed panels should not keep the board/activity subscriptions hot.
@@ -341,6 +360,7 @@ export function TeamPanel({
       updatedAt: latest?.timestamp ?? new Date().toISOString(),
     };
   }, [accountEvents, project?.account, project?.id]);
+  const teamAiUsageSummary = useMemo(() => buildTeamAiUsageSummary(teamUsageRows), [teamUsageRows]);
 
   const panelTitle = globalMode ? "All Teams" : (team?.name ?? "Team");
 
@@ -401,6 +421,65 @@ export function TeamPanel({
       cancelled = true;
     };
   }, [adapter, isOpen, project?.id]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setTeamUsageRows([]);
+      setTeamUsageError(null);
+      return;
+    }
+    const agentIds = usageEmployees
+      .map((employee) => {
+        const rawId = String(employee._id ?? "");
+        return rawId.startsWith("employee-") ? rawId.replace(/^employee-/, "") : rawId;
+      })
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+    if (agentIds.length === 0) {
+      setTeamUsageRows([]);
+      setTeamUsageError(null);
+      return;
+    }
+    let cancelled = false;
+    async function loadTeamUsageRows(): Promise<void> {
+      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      let failedAgentCount = 0;
+      const rows = await Promise.all(
+        agentIds.map(async (agentId) => {
+          try {
+            const sessions = await adapter.listSessions(agentId);
+            const recentSessions = sessions
+              .filter((session) => (session.updatedAt ?? 0) >= weekAgo)
+              .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+            const timelines = await Promise.all(
+              recentSessions.map(async (session) => {
+                const timeline = await adapter.getSessionTimeline(agentId, session.sessionKey, 120);
+                return {
+                  agentId,
+                  occurredAt: timeline.usageSummary?.lastResponse?.timestamp ?? session.updatedAt,
+                  usageSummary: timeline.usageSummary,
+                };
+              }),
+            );
+            return timelines.filter((timeline) => timeline.usageSummary);
+          } catch {
+            failedAgentCount += 1;
+            return [];
+          }
+        }),
+      );
+      if (!cancelled) {
+        setTeamUsageRows(rows.flat());
+        setTeamUsageError(
+          failedAgentCount > 0 ? `usage unavailable for ${failedAgentCount} agent(s)` : null,
+        );
+      }
+    }
+    void loadTeamUsageRows();
+    return () => {
+      cancelled = true;
+    };
+  }, [adapter, isOpen, usageEmployees]);
 
   if (!globalMode && !team) return null;
 
@@ -555,6 +634,8 @@ export function TeamPanel({
               globalMode={globalMode}
               hasBusinessConfig={hasBusinessConfig}
               currencyFormatter={currencyFormatter}
+              aiBurn24hUsd={teamAiUsageSummary.cost24hUsd}
+              aiUsageUnavailableText={teamUsageError}
             />
           </TabsContent>
 
@@ -624,6 +705,8 @@ export function TeamPanel({
             <LedgerTabPanel
               account={teamAccount}
               events={accountEvents}
+              aiUsageSummary={teamAiUsageSummary}
+              aiUsageUnavailableText={teamUsageError}
               onRecordEvent={handleRecordAccountEvent}
             />
             {ledgerActionState.error ? (

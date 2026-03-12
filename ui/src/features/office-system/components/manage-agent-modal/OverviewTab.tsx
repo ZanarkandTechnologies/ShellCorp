@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import type { AgentsListResult, AgentIdentityResult } from "@/lib/openclaw-types";
 import type { EmployeeData } from "@/lib/types";
-import type { AgentConfigDraft } from "./_types";
+import type { AgentConfigDraft, AgentUsageOverview } from "./_types";
 
 type OverviewPanelProps = {
   employee: EmployeeData | null;
@@ -15,10 +15,13 @@ type OverviewPanelProps = {
   draft: AgentConfigDraft;
   setDraft: (next: AgentConfigDraft) => void;
   isLoading: boolean;
+  usageOverview: AgentUsageOverview | null;
 };
 
 export function OverviewPanel(props: OverviewPanelProps): JSX.Element {
   const selectedAgent = props.agentsList?.agents.find((agent) => agent.id === props.selectedAgentId) ?? null;
+  const usdFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+  const tokenFormatter = new Intl.NumberFormat("en-US");
   return (
     <div className="space-y-4 rounded-md border p-4">
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -72,6 +75,40 @@ export function OverviewPanel(props: OverviewPanelProps): JSX.Element {
           />
         </label>
       </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-md border bg-muted/20 p-3 text-sm">
+          <p className="text-muted-foreground">Latest Session Cost</p>
+          <p className="text-lg font-semibold">
+            {props.usageOverview?.latestSession
+              ? usdFormatter.format(props.usageOverview.latestSession.sessionTotals.estimatedCostUsd)
+              : "Unavailable"}
+          </p>
+        </div>
+        <div className="rounded-md border bg-muted/20 p-3 text-sm">
+          <p className="text-muted-foreground">AI Burn 24h</p>
+          <p className="text-lg font-semibold">
+            {usdFormatter.format(props.usageOverview?.cost24hUsd ?? 0)}
+          </p>
+        </div>
+        <div className="rounded-md border bg-muted/20 p-3 text-sm">
+          <p className="text-muted-foreground">Tracked Total Cost</p>
+          <p className="text-lg font-semibold">
+            {usdFormatter.format(props.usageOverview?.totalTrackedCostUsd ?? 0)}
+          </p>
+        </div>
+        <div className="rounded-md border bg-muted/20 p-3 text-sm">
+          <p className="text-muted-foreground">Tracked Tokens</p>
+          <p className="text-lg font-semibold">
+            {tokenFormatter.format(props.usageOverview?.totalTokens ?? 0)}
+          </p>
+        </div>
+      </div>
+      {props.usageOverview ? (
+        <div className="text-xs text-muted-foreground">
+          Tracked sessions: {props.usageOverview.trackedSessions}
+          {props.usageOverview.unavailableText ? ` | ${props.usageOverview.unavailableText}` : ""}
+        </div>
+      ) : null}
     </div>
   );
 }

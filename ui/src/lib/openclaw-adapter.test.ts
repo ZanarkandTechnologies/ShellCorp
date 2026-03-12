@@ -10,6 +10,7 @@ import {
   toFederationPolicy,
   toProviderIndexProfile,
   toTask,
+  toTimeline,
 } from "./openclaw-adapter";
 
 afterEach(() => {
@@ -224,6 +225,73 @@ describe("heartbeat parsing", () => {
     );
     expect(windows).toHaveLength(1);
     expect(windows[0].status).toBe("no_work");
+  });
+});
+
+describe("timeline usage normalization", () => {
+  it("normalizes usage summaries and backfills tokenUsage", () => {
+    const timeline = toTimeline("builder", "agent:builder:main", {
+      events: [
+        {
+          ts: 1000,
+          type: "message",
+          role: "assistant",
+          text: "Done",
+        },
+      ],
+      usageSummary: {
+        lastResponse: {
+          inputTokens: 100,
+          outputTokens: 20,
+          cacheReadTokens: 5,
+          cacheWriteTokens: 0,
+          totalTokens: 125,
+          estimatedCostUsd: 0.12,
+          responseCount: 1,
+          provider: "openrouter",
+          model: "moonshotai/kimi-k2.5",
+          timestamp: 1000,
+        },
+        sessionTotals: {
+          inputTokens: 120,
+          outputTokens: 25,
+          cacheReadTokens: 5,
+          cacheWriteTokens: 0,
+          totalTokens: 150,
+          estimatedCostUsd: 0.14,
+          responseCount: 2,
+        },
+        last24Hours: {
+          inputTokens: 20,
+          outputTokens: 5,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          totalTokens: 25,
+          estimatedCostUsd: 0.04,
+          responseCount: 1,
+        },
+        last7Days: {
+          inputTokens: 120,
+          outputTokens: 25,
+          cacheReadTokens: 5,
+          cacheWriteTokens: 0,
+          totalTokens: 150,
+          estimatedCostUsd: 0.14,
+          responseCount: 2,
+        },
+      },
+    });
+    expect(timeline.usageSummary?.sessionTotals.totalTokens).toBe(150);
+    expect(timeline.usageSummary?.lastResponse?.model).toBe("moonshotai/kimi-k2.5");
+    expect(timeline.usageSummary?.last24Hours?.estimatedCostUsd).toBe(0.04);
+    expect(timeline.tokenUsage).toEqual({
+      inputTokens: 120,
+      outputTokens: 25,
+      totalTokens: 150,
+      cacheReadTokens: 5,
+      cacheWriteTokens: 0,
+      estimatedCostUsd: 0.14,
+    });
   });
 });
 

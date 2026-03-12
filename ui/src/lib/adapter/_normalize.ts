@@ -50,6 +50,8 @@ import type {
   SessionRowModel,
   SessionTimelineEvent,
   SessionTimelineModel,
+  SessionUsageSnapshot,
+  SessionUsageTotals,
   HeartbeatWindow,
   SkillItemModel,
   CompanyAgentModel,
@@ -166,14 +168,80 @@ export function toTimeline(
     })
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
+  const usageSummary =
+    row.usageSummary && typeof row.usageSummary === "object"
+      ? normalizeUsageSummary(row.usageSummary as Json)
+      : undefined;
+
   return {
     agentId,
     sessionKey,
     tokenUsage:
       row.tokenUsage && typeof row.tokenUsage === "object"
         ? (row.tokenUsage as SessionTimelineModel["tokenUsage"])
+        : usageSummary
+          ? {
+              inputTokens: usageSummary.sessionTotals.inputTokens,
+              outputTokens: usageSummary.sessionTotals.outputTokens,
+              totalTokens: usageSummary.sessionTotals.totalTokens,
+              cacheReadTokens: usageSummary.sessionTotals.cacheReadTokens,
+              cacheWriteTokens: usageSummary.sessionTotals.cacheWriteTokens,
+              estimatedCostUsd: usageSummary.sessionTotals.estimatedCostUsd,
+            }
         : undefined,
+    usageSummary,
     events,
+  };
+}
+
+function normalizeUsageNumber(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeUsageTotals(entry: Json): SessionUsageTotals {
+  return {
+    inputTokens: Math.max(0, Math.round(normalizeUsageNumber(entry.inputTokens))),
+    outputTokens: Math.max(0, Math.round(normalizeUsageNumber(entry.outputTokens))),
+    cacheReadTokens: Math.max(0, Math.round(normalizeUsageNumber(entry.cacheReadTokens))),
+    cacheWriteTokens: Math.max(0, Math.round(normalizeUsageNumber(entry.cacheWriteTokens))),
+    totalTokens: Math.max(0, Math.round(normalizeUsageNumber(entry.totalTokens))),
+    estimatedCostUsd: Math.max(0, normalizeUsageNumber(entry.estimatedCostUsd)),
+    responseCount: Math.max(0, Math.round(normalizeUsageNumber(entry.responseCount))),
+  };
+}
+
+function normalizeUsageSnapshot(entry: Json): SessionUsageSnapshot {
+  return {
+    ...normalizeUsageTotals(entry),
+    provider: typeof entry.provider === "string" ? entry.provider : undefined,
+    model: typeof entry.model === "string" ? entry.model : undefined,
+    timestamp: typeof entry.timestamp === "number" ? entry.timestamp : undefined,
+  };
+}
+
+function normalizeUsageSummary(entry: Json): SessionTimelineModel["usageSummary"] {
+  const totalsRaw =
+    entry.sessionTotals && typeof entry.sessionTotals === "object"
+      ? (entry.sessionTotals as Json)
+      : entry;
+  const lastResponseRaw =
+    entry.lastResponse && typeof entry.lastResponse === "object"
+      ? (entry.lastResponse as Json)
+      : null;
+  const last24HoursRaw =
+    entry.last24Hours && typeof entry.last24Hours === "object"
+      ? (entry.last24Hours as Json)
+      : null;
+  const last7DaysRaw =
+    entry.last7Days && typeof entry.last7Days === "object"
+      ? (entry.last7Days as Json)
+      : null;
+  return {
+    sessionTotals: normalizeUsageTotals(totalsRaw),
+    ...(lastResponseRaw ? { lastResponse: normalizeUsageSnapshot(lastResponseRaw) } : {}),
+    ...(last24HoursRaw ? { last24Hours: normalizeUsageTotals(last24HoursRaw) } : {}),
+    ...(last7DaysRaw ? { last7Days: normalizeUsageTotals(last7DaysRaw) } : {}),
   };
 }
 

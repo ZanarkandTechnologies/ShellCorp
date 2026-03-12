@@ -32,6 +32,27 @@ interface OfficeSettings {
   meshAssetDir?: string;
 }
 
+interface SessionUsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+  responseCount: number;
+}
+
+interface SessionUsageSummary {
+  lastResponse?: SessionUsageTotals & {
+    provider?: string;
+    model?: string;
+    timestamp?: number;
+  };
+  sessionTotals: SessionUsageTotals;
+  last24Hours?: SessionUsageTotals;
+  last7Days?: SessionUsageTotals;
+}
+
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
   try {
     const raw = await readFile(filePath, "utf-8");
@@ -430,28 +451,118 @@ function extractTextFromTranscriptRow(row: JsonObject): string {
   return "";
 }
 
-async function readSessionTimelineEvents(agentId: string, sessionKey: string, limit: number): Promise<JsonObject[]> {
+function getUsageNumber(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function emptySessionUsageTotals(): SessionUsageTotals {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 0,
+    estimatedCostUsd: 0,
+    responseCount: 0,
+  };
+}
+
+function buildSessionUsageSummary(rows: JsonObject[]): SessionUsageSummary | undefined {
+  const now = Date.now();
+  const dayAgo = now - 24 * 60 * 60 * 1000;
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const totals = emptySessionUsageTotals();
+  const last24Hours = emptySessionUsageTotals();
+  const last7Days = emptySessionUsageTotals();
+  let lastResponse: SessionUsageSummary["lastResponse"];
+  for (const row of rows) {
+    if (String(row.type ?? "") !== "message") continue;
+    const message = row.message && typeof row.message === "object" ? (row.message as JsonObject) : null;
+    if (!message || String(message.role ?? "") !== "assistant") continue;
+    const usage = message.usage && typeof message.usage === "object" ? (message.usage as JsonObject) : null;
+    if (!usage) continue;
+    const usageSnapshot = {
+      inputTokens: Math.max(0, Math.round(getUsageNumber(usage.input))),
+      outputTokens: Math.max(0, Math.round(getUsageNumber(usage.output))),
+      cacheReadTokens: Math.max(0, Math.round(getUsageNumber(usage.cacheRead))),
+      cacheWriteTokens: Math.max(0, Math.round(getUsageNumber(usage.cacheWrite))),
+      totalTokens: Math.max(0, Math.round(getUsageNumber(usage.totalTokens))),
+      estimatedCostUsd: Math.max(
+        0,
+        getUsageNumber(
+          usage.cost && typeof usage.cost === "object" ? (usage.cost as JsonObject).total : 0,
+        ),
+      ),
+      responseCount: 1,
+      provider: typeof message.provider === "string" ? message.provider : undefined,
+      model: typeof message.model === "string" ? message.model : undefined,
+      timestamp: typeof row.timestamp === "string" ? Date.parse(row.timestamp) : undefined,
+    };
+    totals.inputTokens += usageSnapshot.inputTokens;
+    totals.outputTokens += usageSnapshot.outputTokens;
+    totals.cacheReadTokens += usageSnapshot.cacheReadTokens;
+    totals.cacheWriteTokens += usageSnapshot.cacheWriteTokens;
+    totals.totalTokens += usageSnapshot.totalTokens;
+    totals.estimatedCostUsd += usageSnapshot.estimatedCostUsd;
+    totals.responseCount += 1;
+    if ((usageSnapshot.timestamp ?? 0) >= dayAgo) {
+      last24Hours.inputTokens += usageSnapshot.inputTokens;
+      last24Hours.outputTokens += usageSnapshot.outputTokens;
+      last24Hours.cacheReadTokens += usageSnapshot.cacheReadTokens;
+      last24Hours.cacheWriteTokens += usageSnapshot.cacheWriteTokens;
+      last24Hours.totalTokens += usageSnapshot.totalTokens;
+      last24Hours.estimatedCostUsd += usageSnapshot.estimatedCostUsd;
+      last24Hours.responseCount += 1;
+    }
+    if ((usageSnapshot.timestamp ?? 0) >= weekAgo) {
+      last7Days.inputTokens += usageSnapshot.inputTokens;
+      last7Days.outputTokens += usageSnapshot.outputTokens;
+      last7Days.cacheReadTokens += usageSnapshot.cacheReadTokens;
+      last7Days.cacheWriteTokens += usageSnapshot.cacheWriteTokens;
+      last7Days.totalTokens += usageSnapshot.totalTokens;
+      last7Days.estimatedCostUsd += usageSnapshot.estimatedCostUsd;
+      last7Days.responseCount += 1;
+    }
+    lastResponse = usageSnapshot;
+  }
+  if (totals.responseCount === 0) return undefined;
+  return {
+    ...(lastResponse ? { lastResponse } : {}),
+    sessionTotals: totals,
+    last24Hours,
+    last7Days,
+  };
+}
+
+async function readSessionTimelineData(
+  agentId: string,
+  sessionKey: string,
+  limit: number,
+): Promise<{ events: JsonObject[]; usageSummary?: SessionUsageSummary }> {
   const sessions = await readAgentSessionsIndex(agentId);
   const sessionRow = sessions[sessionKey];
-  if (!sessionRow) return [];
+  if (!sessionRow) return { events: [] };
   const transcriptPath = resolveSessionTranscriptPath(agentId, sessionRow);
-  if (!transcriptPath || !existsSync(transcriptPath)) return [];
+  if (!transcriptPath || !existsSync(transcriptPath)) return { events: [] };
   let raw = "";
   try {
     raw = await readFile(transcriptPath, "utf-8");
   } catch {
-    return [];
+    return { events: [] };
   }
   const lines = raw
     .split(/\r?\n/g)
     .map((line) => line.trim())
     .filter(Boolean);
   const events: JsonObject[] = [];
+  const transcriptRows: JsonObject[] = [];
   const fallbackBaseTs = typeof sessionRow.updatedAt === "number" ? sessionRow.updatedAt : 0;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     try {
       const row = JSON.parse(line) as JsonObject;
+      transcriptRows.push(row);
       const rowType = String(row.type ?? "status");
       const text = extractTextFromTranscriptRow(row);
       if (!text) continue;
@@ -475,7 +586,10 @@ async function readSessionTimelineEvents(agentId: string, sessionKey: string, li
       // Skip malformed transcript lines.
     }
   }
-  return events.slice(Math.max(0, events.length - Math.max(1, limit)));
+  return {
+    events: events.slice(Math.max(0, events.length - Math.max(1, limit))),
+    usageSummary: buildSessionUsageSummary(transcriptRows),
+  };
 }
 
 function normalizeOfficeObjects(objects: unknown[]): JsonObject[] {
@@ -1094,12 +1208,23 @@ function shellcorpStateBridge() {
           const sessionKey = decodeURIComponent(eventsMatch[2]);
           const requestedLimit = Number(url.searchParams.get("limit") ?? "200");
           const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(500, Math.floor(requestedLimit))) : 200;
-          const events = await readSessionTimelineEvents(agentId, sessionKey, limit);
+          const timelineData = await readSessionTimelineData(agentId, sessionKey, limit);
           writeJson(res, 200, {
             timeline: {
               agentId,
               sessionKey,
-              events,
+              events: timelineData.events,
+              usageSummary: timelineData.usageSummary,
+              tokenUsage: timelineData.usageSummary
+                ? {
+                    inputTokens: timelineData.usageSummary.sessionTotals.inputTokens,
+                    outputTokens: timelineData.usageSummary.sessionTotals.outputTokens,
+                    totalTokens: timelineData.usageSummary.sessionTotals.totalTokens,
+                    cacheReadTokens: timelineData.usageSummary.sessionTotals.cacheReadTokens,
+                    cacheWriteTokens: timelineData.usageSummary.sessionTotals.cacheWriteTokens,
+                    estimatedCostUsd: timelineData.usageSummary.sessionTotals.estimatedCostUsd,
+                  }
+                : undefined,
             },
           });
           return;

@@ -29,10 +29,16 @@ export function AgentSessionPanel() {
   const [errorText, setErrorText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [timelineMode, setTimelineMode] = useState<"heartbeat" | "raw">("heartbeat");
+  const currencyFormatter = useMemo(
+    () => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }),
+    [],
+  );
+  const tokenFormatter = useMemo(() => new Intl.NumberFormat("en-US"), []);
   const heartbeatWindows: HeartbeatWindow[] = useMemo(() => {
     if (!timeline) return [];
     return adapter.parseHeartbeatWindows(timeline);
   }, [adapter, timeline]);
+  const usageSummary = timeline?.usageSummary;
 
   usePollWithInterval(
     async (signal) => {
@@ -181,6 +187,49 @@ export function AgentSessionPanel() {
                 </div>
               </CardHeader>
               <CardContent>
+                <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-md border bg-muted/20 p-2 text-sm">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Last Response
+                    </p>
+                    <p className="font-semibold">
+                      {usageSummary?.lastResponse
+                        ? currencyFormatter.format(usageSummary.lastResponse.estimatedCostUsd)
+                        : "Unavailable"}
+                    </p>
+                  </div>
+                  <div className="rounded-md border bg-muted/20 p-2 text-sm">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Session Total
+                    </p>
+                    <p className="font-semibold">
+                      {usageSummary
+                        ? currencyFormatter.format(usageSummary.sessionTotals.estimatedCostUsd)
+                        : "Unavailable"}
+                    </p>
+                  </div>
+                  <div className="rounded-md border bg-muted/20 p-2 text-sm">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Tokens
+                    </p>
+                    <p className="font-semibold">
+                      {usageSummary
+                        ? tokenFormatter.format(usageSummary.sessionTotals.totalTokens)
+                        : "--"}
+                    </p>
+                  </div>
+                  <div className="rounded-md border bg-muted/20 p-2 text-sm">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Model
+                    </p>
+                    <p className="truncate font-semibold">
+                      {usageSummary?.lastResponse?.model ?? "Unavailable"}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {usageSummary?.lastResponse?.provider ?? ""}
+                    </p>
+                  </div>
+                </div>
                 <ScrollArea className="h-[58vh] rounded-md border p-2">
                   {timelineMode === "heartbeat" ? (
                     <ul className="space-y-2 text-sm">
@@ -254,4 +303,3 @@ export function AgentSessionPanel() {
     </Dialog>
   );
 }
-

@@ -39,7 +39,8 @@ import { useGateway } from "@/providers/gateway-provider";
 import type { EmployeeData } from "@/lib/types";
 import { UI_Z } from "@/lib/z-index";
 import { extractAgentId } from "@/lib/entity-utils";
-import type { AgentConfigDraft, TabId } from "./_types";
+import { buildTeamAiUsageSummary } from "@/lib/session-usage";
+import type { AgentConfigDraft, AgentUsageOverview, TabId } from "./_types";
 import { OverviewPanel } from "./OverviewTab";
 import { FilesPanel } from "./FilesTab";
 import { ToolsPanel } from "./ToolsTab";
@@ -202,6 +203,7 @@ export function ManageAgentModal(): JSX.Element {
   const [config, setConfig] = useState<Record<string, unknown> | null>(null);
   const [draft, setDraft] = useState<AgentConfigDraft>(EMPTY_DRAFT);
   const [baseDraft, setBaseDraft] = useState<AgentConfigDraft>(EMPTY_DRAFT);
+  const [usageOverview, setUsageOverview] = useState<AgentUsageOverview | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [isSavingConfig, setIsSavingConfig] = useState(false);
@@ -289,6 +291,77 @@ export function ManageAgentModal(): JSX.Element {
       cancelled = true;
     };
   }, [adapter, isOpen, selectedAgentId, config]);
+
+  useEffect(() => {
+    if (!isOpen || !selectedAgentId) {
+      setUsageOverview(null);
+      return;
+    }
+    let cancelled = false;
+    async function loadUsageOverview(): Promise<void> {
+      let failedSessions = 0;
+      try {
+        const sessions = (await adapter.listSessions(selectedAgentId)).sort(
+          (a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
+        );
+        const usageRows = await Promise.all(
+          sessions.map(async (session) => {
+            try {
+              const timeline = await adapter.getSessionTimeline(selectedAgentId, session.sessionKey, 120);
+              return {
+                sessionKey: session.sessionKey,
+                updatedAt: session.updatedAt,
+                usageSummary: timeline.usageSummary,
+              };
+            } catch {
+              failedSessions += 1;
+              return {
+                sessionKey: session.sessionKey,
+                updatedAt: session.updatedAt,
+                usageSummary: undefined,
+              };
+            }
+          }),
+        );
+        if (cancelled) return;
+        const latestSessionWithUsage =
+          usageRows.find((row) => row.usageSummary)?.usageSummary ?? undefined;
+        const summary = buildTeamAiUsageSummary(
+          usageRows
+            .filter((row) => row.usageSummary)
+            .map((row) => ({
+              agentId: selectedAgentId,
+              occurredAt: row.updatedAt,
+              usageSummary: row.usageSummary,
+            })),
+        );
+        setUsageOverview({
+          latestSession: latestSessionWithUsage,
+          cost24hUsd: summary.cost24hUsd,
+          cost7dUsd: summary.cost7dUsd,
+          totalTrackedCostUsd: summary.totalTrackedCostUsd,
+          totalTokens: summary.totalTokens,
+          trackedSessions: summary.trackedSessions,
+          ...(failedSessions > 0 ? { unavailableText: `usage unavailable for ${failedSessions} session(s)` } : {}),
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setUsageOverview({
+            cost24hUsd: 0,
+            cost7dUsd: 0,
+            totalTrackedCostUsd: 0,
+            totalTokens: 0,
+            trackedSessions: 0,
+            unavailableText: error instanceof Error ? error.message : "usage_load_failed",
+          });
+        }
+      }
+    }
+    void loadUsageOverview();
+    return () => {
+      cancelled = true;
+    };
+  }, [adapter, isOpen, selectedAgentId]);
 
   useEffect(() => {
     if (!isOpen || !selectedAgentId || activeTab !== "files") return;
@@ -478,6 +551,7 @@ export function ManageAgentModal(): JSX.Element {
                 draft={draft}
                 setDraft={setDraft}
                 isLoading={isLoading}
+                usageOverview={usageOverview}
               />
             </TabsContent>
             <TabsContent value="files" className="space-y-4">
