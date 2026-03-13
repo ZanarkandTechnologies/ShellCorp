@@ -4,6 +4,15 @@ import { mkdir, readdir, readFile, writeFile, stat } from "node:fs/promises";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { buildNewTeamClusterObject } from "../cli/team-cluster-placement";
+import {
+  getSkillStudioDetail,
+  listSkillStudioCatalog,
+  readSkillStudioFile,
+  runSkillStudioDemo,
+  saveSkillStudioManifest,
+} from "./skill-studio-state";
+import { normalizeBridgeOfficeSettings, type BridgeOfficeSettings as OfficeSettings } from "./office-settings-bridge";
 
 type JsonObject = Record<string, unknown>;
 type MemoryEntryType = "discovery" | "decision" | "problem" | "solution" | "pattern" | "warning" | "success" | "refactor" | "bugfix" | "feature";
@@ -15,10 +24,15 @@ type BusinessEquipMode = "replace_minimum" | "append_only";
 
 const OPENCLAW_HOME = process.env.OPENCLAW_STATE_DIR || path.join(process.env.HOME || "", ".openclaw");
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || path.join(OPENCLAW_HOME, "openclaw.json");
+const REPO_ROOT = path.resolve(__dirname, "..");
+const SKILLS_ROOT = path.join(REPO_ROOT, "skills");
 const COMPANY_MODEL_PATH = path.join(OPENCLAW_HOME, "company.json");
 const OFFICE_OBJECTS_PATH = path.join(OPENCLAW_HOME, "office-objects.json");
 const OFFICE_SETTINGS_PATH = path.join(OPENCLAW_HOME, "office.json");
-const OFFICE_OBJECTS_TEMPLATE_PATH = path.resolve(__dirname, "../officeObjects.json");
+const OFFICE_OBJECTS_TEMPLATE_PATH = path.resolve(
+  __dirname,
+  "../templates/sidecar/office-objects.template.json",
+);
 const PENDING_APPROVALS_PATH = path.join(OPENCLAW_HOME, "pending-approvals.json");
 const PENDING_APPROVALS_TEMPLATE_PATH = path.resolve(__dirname, "../templates/sidecar/pending-approvals.template.json");
 const BIZ_PM_HEARTBEAT_TEMPLATE_PATH = path.resolve(__dirname, "../templates/workspace/HEARTBEAT-biz-pm.md");
@@ -28,8 +42,25 @@ const CRON_JOBS_PATH = path.join(OPENCLAW_HOME, "cron", "jobs.json");
 const MESH_EXTENSIONS = new Set([".glb", ".gltf"]);
 const MESH_PREVIEW_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
-interface OfficeSettings {
-  meshAssetDir?: string;
+interface SessionUsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+  responseCount: number;
+}
+
+interface SessionUsageSummary {
+  lastResponse?: SessionUsageTotals & {
+    provider?: string;
+    model?: string;
+    timestamp?: number;
+  };
+  sessionTotals: SessionUsageTotals;
+  last24Hours?: SessionUsageTotals;
+  last7Days?: SessionUsageTotals;
 }
 
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
@@ -84,17 +115,24 @@ async function readBody(req: { on: (name: string, cb: (chunk?: Buffer) => void) 
   }
 }
 
-function normalizeOfficeSettings(input: unknown): OfficeSettings {
-  const row = input && typeof input === "object" ? (input as JsonObject) : {};
-  const meshAssetDir =
-    typeof row.meshAssetDir === "string" && row.meshAssetDir.trim()
-      ? path.resolve(row.meshAssetDir.trim())
-      : DEFAULT_MESH_ASSET_DIR;
-  return { meshAssetDir };
+function normalizeOfficeSettings(input: unknown): Required<OfficeSettings> {
+  return normalizeBridgeOfficeSettings(input, DEFAULT_MESH_ASSET_DIR);
 }
 
 async function readOfficeSettings(): Promise<OfficeSettings> {
-  const raw = await readJsonFile<OfficeSettings>(OFFICE_SETTINGS_PATH, { meshAssetDir: DEFAULT_MESH_ASSET_DIR });
+  const raw = await readJsonFile<OfficeSettings>(OFFICE_SETTINGS_PATH, {
+    meshAssetDir: DEFAULT_MESH_ASSET_DIR,
+    officeFootprint: { width: 35, depth: 35 },
+    officeLayout: { version: 1, tileSize: 1, tiles: [] },
+    decor: {
+      floorPatternId: "sandstone_tiles",
+      wallColorId: "gallery_cream",
+      backgroundId: "shell_haze",
+    },
+    viewProfile: "free_orbit_3d",
+    orbitControlsEnabled: true,
+    cameraOrientation: "south_east",
+  });
   return normalizeOfficeSettings(raw);
 }
 
@@ -430,28 +468,118 @@ function extractTextFromTranscriptRow(row: JsonObject): string {
   return "";
 }
 
-async function readSessionTimelineEvents(agentId: string, sessionKey: string, limit: number): Promise<JsonObject[]> {
+function getUsageNumber(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function emptySessionUsageTotals(): SessionUsageTotals {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 0,
+    estimatedCostUsd: 0,
+    responseCount: 0,
+  };
+}
+
+function buildSessionUsageSummary(rows: JsonObject[]): SessionUsageSummary | undefined {
+  const now = Date.now();
+  const dayAgo = now - 24 * 60 * 60 * 1000;
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const totals = emptySessionUsageTotals();
+  const last24Hours = emptySessionUsageTotals();
+  const last7Days = emptySessionUsageTotals();
+  let lastResponse: SessionUsageSummary["lastResponse"];
+  for (const row of rows) {
+    if (String(row.type ?? "") !== "message") continue;
+    const message = row.message && typeof row.message === "object" ? (row.message as JsonObject) : null;
+    if (!message || String(message.role ?? "") !== "assistant") continue;
+    const usage = message.usage && typeof message.usage === "object" ? (message.usage as JsonObject) : null;
+    if (!usage) continue;
+    const usageSnapshot = {
+      inputTokens: Math.max(0, Math.round(getUsageNumber(usage.input))),
+      outputTokens: Math.max(0, Math.round(getUsageNumber(usage.output))),
+      cacheReadTokens: Math.max(0, Math.round(getUsageNumber(usage.cacheRead))),
+      cacheWriteTokens: Math.max(0, Math.round(getUsageNumber(usage.cacheWrite))),
+      totalTokens: Math.max(0, Math.round(getUsageNumber(usage.totalTokens))),
+      estimatedCostUsd: Math.max(
+        0,
+        getUsageNumber(
+          usage.cost && typeof usage.cost === "object" ? (usage.cost as JsonObject).total : 0,
+        ),
+      ),
+      responseCount: 1,
+      provider: typeof message.provider === "string" ? message.provider : undefined,
+      model: typeof message.model === "string" ? message.model : undefined,
+      timestamp: typeof row.timestamp === "string" ? Date.parse(row.timestamp) : undefined,
+    };
+    totals.inputTokens += usageSnapshot.inputTokens;
+    totals.outputTokens += usageSnapshot.outputTokens;
+    totals.cacheReadTokens += usageSnapshot.cacheReadTokens;
+    totals.cacheWriteTokens += usageSnapshot.cacheWriteTokens;
+    totals.totalTokens += usageSnapshot.totalTokens;
+    totals.estimatedCostUsd += usageSnapshot.estimatedCostUsd;
+    totals.responseCount += 1;
+    if ((usageSnapshot.timestamp ?? 0) >= dayAgo) {
+      last24Hours.inputTokens += usageSnapshot.inputTokens;
+      last24Hours.outputTokens += usageSnapshot.outputTokens;
+      last24Hours.cacheReadTokens += usageSnapshot.cacheReadTokens;
+      last24Hours.cacheWriteTokens += usageSnapshot.cacheWriteTokens;
+      last24Hours.totalTokens += usageSnapshot.totalTokens;
+      last24Hours.estimatedCostUsd += usageSnapshot.estimatedCostUsd;
+      last24Hours.responseCount += 1;
+    }
+    if ((usageSnapshot.timestamp ?? 0) >= weekAgo) {
+      last7Days.inputTokens += usageSnapshot.inputTokens;
+      last7Days.outputTokens += usageSnapshot.outputTokens;
+      last7Days.cacheReadTokens += usageSnapshot.cacheReadTokens;
+      last7Days.cacheWriteTokens += usageSnapshot.cacheWriteTokens;
+      last7Days.totalTokens += usageSnapshot.totalTokens;
+      last7Days.estimatedCostUsd += usageSnapshot.estimatedCostUsd;
+      last7Days.responseCount += 1;
+    }
+    lastResponse = usageSnapshot;
+  }
+  if (totals.responseCount === 0) return undefined;
+  return {
+    ...(lastResponse ? { lastResponse } : {}),
+    sessionTotals: totals,
+    last24Hours,
+    last7Days,
+  };
+}
+
+async function readSessionTimelineData(
+  agentId: string,
+  sessionKey: string,
+  limit: number,
+): Promise<{ events: JsonObject[]; usageSummary?: SessionUsageSummary }> {
   const sessions = await readAgentSessionsIndex(agentId);
   const sessionRow = sessions[sessionKey];
-  if (!sessionRow) return [];
+  if (!sessionRow) return { events: [] };
   const transcriptPath = resolveSessionTranscriptPath(agentId, sessionRow);
-  if (!transcriptPath || !existsSync(transcriptPath)) return [];
+  if (!transcriptPath || !existsSync(transcriptPath)) return { events: [] };
   let raw = "";
   try {
     raw = await readFile(transcriptPath, "utf-8");
   } catch {
-    return [];
+    return { events: [] };
   }
   const lines = raw
     .split(/\r?\n/g)
     .map((line) => line.trim())
     .filter(Boolean);
   const events: JsonObject[] = [];
+  const transcriptRows: JsonObject[] = [];
   const fallbackBaseTs = typeof sessionRow.updatedAt === "number" ? sessionRow.updatedAt : 0;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     try {
       const row = JSON.parse(line) as JsonObject;
+      transcriptRows.push(row);
       const rowType = String(row.type ?? "status");
       const text = extractTextFromTranscriptRow(row);
       if (!text) continue;
@@ -475,7 +603,10 @@ async function readSessionTimelineEvents(agentId: string, sessionKey: string, li
       // Skip malformed transcript lines.
     }
   }
-  return events.slice(Math.max(0, events.length - Math.max(1, limit)));
+  return {
+    events: events.slice(Math.max(0, events.length - Math.max(1, limit))),
+    usageSummary: buildSessionUsageSummary(transcriptRows),
+  };
 }
 
 function normalizeOfficeObjects(objects: unknown[]): JsonObject[] {
@@ -1094,12 +1225,23 @@ function shellcorpStateBridge() {
           const sessionKey = decodeURIComponent(eventsMatch[2]);
           const requestedLimit = Number(url.searchParams.get("limit") ?? "200");
           const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(500, Math.floor(requestedLimit))) : 200;
-          const events = await readSessionTimelineEvents(agentId, sessionKey, limit);
+          const timelineData = await readSessionTimelineData(agentId, sessionKey, limit);
           writeJson(res, 200, {
             timeline: {
               agentId,
               sessionKey,
-              events,
+              events: timelineData.events,
+              usageSummary: timelineData.usageSummary,
+              tokenUsage: timelineData.usageSummary
+                ? {
+                    inputTokens: timelineData.usageSummary.sessionTotals.inputTokens,
+                    outputTokens: timelineData.usageSummary.sessionTotals.outputTokens,
+                    totalTokens: timelineData.usageSummary.sessionTotals.totalTokens,
+                    cacheReadTokens: timelineData.usageSummary.sessionTotals.cacheReadTokens,
+                    cacheWriteTokens: timelineData.usageSummary.sessionTotals.cacheWriteTokens,
+                    estimatedCostUsd: timelineData.usageSummary.sessionTotals.estimatedCostUsd,
+                  }
+                : undefined,
             },
           });
           return;
@@ -1155,12 +1297,97 @@ function shellcorpStateBridge() {
         }
 
         if (method === "GET" && pathname === "/openclaw/skills") {
-          writeJson(res, 200, { skills: [] });
+          const catalog = await listSkillStudioCatalog(SKILLS_ROOT, REPO_ROOT);
+          writeJson(res, 200, {
+            skills: catalog.map((entry) => ({
+              name: entry.skillId,
+              category: entry.category,
+              scope: entry.scope,
+              sourcePath: entry.sourcePath,
+              updatedAt: entry.updatedAt,
+            })),
+          });
+          return;
+        }
+
+        if (method === "GET" && pathname === "/openclaw/skills/catalog") {
+          const skills = await listSkillStudioCatalog(SKILLS_ROOT, REPO_ROOT);
+          writeJson(res, 200, { skills });
           return;
         }
 
         if (method === "GET" && pathname === "/openclaw/memory") {
           writeJson(res, 200, { memory: [] });
+          return;
+        }
+
+        const skillDetailMatch = pathname.match(/^\/openclaw\/skills\/([^/]+)$/);
+        if (method === "GET" && skillDetailMatch) {
+          const skillId = decodeURIComponent(skillDetailMatch[1]);
+          const skill = await getSkillStudioDetail(SKILLS_ROOT, REPO_ROOT, skillId, [], url.searchParams.get("agentId") ?? undefined);
+          if (!skill) {
+            writeJson(res, 404, { error: "skill_not_found" });
+            return;
+          }
+          writeJson(res, 200, { skill });
+          return;
+        }
+
+        const skillFileMatch = pathname.match(/^\/openclaw\/skills\/([^/]+)\/file$/);
+        if (method === "GET" && skillFileMatch) {
+          const skillId = decodeURIComponent(skillFileMatch[1]);
+          const filePath = url.searchParams.get("path") ?? "";
+          if (!filePath.trim()) {
+            writeJson(res, 400, { error: "skill_file_path_required" });
+            return;
+          }
+          const file = await readSkillStudioFile(SKILLS_ROOT, REPO_ROOT, skillId, filePath);
+          if (!file) {
+            writeJson(res, 404, { error: "skill_file_not_found" });
+            return;
+          }
+          writeJson(res, 200, { file });
+          return;
+        }
+
+        const skillDemoRunMatch = pathname.match(/^\/openclaw\/skills\/([^/]+)\/demos\/run$/);
+        if (method === "POST" && skillDemoRunMatch) {
+          const skillId = decodeURIComponent(skillDemoRunMatch[1]);
+          const body = (await readBody(req)) as JsonObject;
+          const caseId = String(body.caseId ?? "").trim();
+          if (!caseId) {
+            writeJson(res, 400, { error: "skill_demo_case_required" });
+            return;
+          }
+          const run = await runSkillStudioDemo(SKILLS_ROOT, REPO_ROOT, skillId, caseId);
+          if (!run) {
+            writeJson(res, 404, { error: "skill_demo_not_found" });
+            return;
+          }
+          writeJson(res, 200, { run });
+          return;
+        }
+
+        const skillConfigMatch = pathname.match(/^\/openclaw\/skills\/([^/]+)\/config$/);
+        if (method === "POST" && skillConfigMatch) {
+          if (!hasBridgeWriteAccess(req)) {
+            writeJson(res, 403, { error: "forbidden" });
+            return;
+          }
+          const skillId = decodeURIComponent(skillConfigMatch[1]);
+          const body = (await readBody(req)) as JsonObject;
+          const skill = await saveSkillStudioManifest(SKILLS_ROOT, REPO_ROOT, skillId, {
+            manifest:
+              body.manifest && typeof body.manifest === "object"
+                ? (body.manifest as Record<string, unknown> as never)
+                : undefined,
+            rawYaml: typeof body.rawYaml === "string" ? body.rawYaml : undefined,
+          });
+          if (!skill) {
+            writeJson(res, 404, { error: "skill_not_found" });
+            return;
+          }
+          writeJson(res, 200, { skill });
           return;
         }
 
@@ -1457,19 +1684,14 @@ function shellcorpStateBridge() {
             const currentObjects = normalizeOfficeObjects(await readJsonFile<unknown[]>(OFFICE_OBJECTS_PATH, []));
             const clusterId = `team-cluster-${teamId}`;
             const nextObjects = currentObjects.filter((entry) => String(entry.id ?? "") !== clusterId);
-            nextObjects.push({
-              id: clusterId,
-              identifier: clusterId,
-              meshType: "team-cluster",
-              position: [0, 0, 8],
-              rotation: [0, 0, 0],
-              metadata: {
+            nextObjects.push(
+              buildNewTeamClusterObject({
+                existingObjects: currentObjects,
                 teamId,
                 name,
                 description,
-                services: [],
-              },
-            } satisfies JsonObject);
+              }) satisfies JsonObject,
+            );
             await mkdir(path.dirname(OFFICE_OBJECTS_PATH), { recursive: true });
             await writeFile(OFFICE_OBJECTS_PATH, `${JSON.stringify(nextObjects, null, 2)}\n`, "utf-8");
           }
@@ -1729,7 +1951,7 @@ function shellcorpStateBridge() {
 }
 
 export default defineConfig({
-  root: "ui",
+  root: __dirname,
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },

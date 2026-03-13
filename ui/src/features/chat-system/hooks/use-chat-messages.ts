@@ -1,9 +1,30 @@
 "use client";
 
+/**
+ * CHAT MESSAGE HOOKS
+ * ==================
+ * Maps OpenClaw chat history and live gateway events into local chat rows.
+ *
+ * KEY CONCEPTS:
+ * - Preserve structured working-output parts (thinking + tool activity) instead of flattening them early.
+ * - Keep plain assistant/user text as standard chat bubbles so the working-output toggle remains useful.
+ *
+ * USAGE:
+ * - `useChatMessages(threadId)` inside the chat dialog.
+ *
+ * MEMORY REFERENCES:
+ * - MEM-0162
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useChatStore, type LocalChatMessage } from "@/features/chat-system/chat-store";
-import { useAppStore } from "@/lib/app-store";
-import { useGateway } from "@/providers/gateway-provider";
+import { useChatStore, type LocalChatMessage, type LocalChatPart } from "../chat-store";
+import {
+    formatWorkingOutput as formatStructuredWorkingOutput,
+    mapHistoryMessageToLocal as mapHistoryMessages,
+    type ToolProgressEntry as SharedToolProgressEntry,
+} from "../chat-message-utils";
+import { useAppStore } from "../../../lib/app-store";
+import { useGateway } from "../../../providers/gateway-provider";
 
 type SubmissionStatus = "submitted" | "streaming" | "ready";
 type ChatGatewayEventPayload = {
@@ -61,25 +82,27 @@ function createMessage(role: "user" | "assistant", text: string): LocalChatMessa
     };
 }
 
-function isToolResultRole(roleRaw: string): boolean {
-    return roleRaw === "toolresult" || roleRaw === "tool_result";
+function createStructuredMessage(args: {
+    role?: "user" | "assistant";
+    text: string;
+    createdAt: number;
+    kind?: LocalChatMessage["kind"];
+    parts?: LocalChatPart[];
+    keySuffix?: string;
+}): LocalChatMessage {
+    const role = args.role ?? "assistant";
+    return {
+        key: `${role}-${args.createdAt}-${Math.random().toString(36).slice(2, 8)}${args.keySuffix ? `-${args.keySuffix}` : ""}`,
+        role,
+        text: args.text,
+        createdAt: args.createdAt,
+        kind: args.kind,
+        ...(args.parts?.length ? { parts: args.parts } : {}),
+    };
 }
 
-function extractToolCallsFromContent(content: unknown): Array<{ name: string; args: unknown }> {
-    if (!Array.isArray(content)) return [];
-    return content
-        .map((part) => {
-            if (!part || typeof part !== "object") return null;
-            const item = part as Record<string, unknown>;
-            const type = typeof item.type === "string" ? item.type.toLowerCase() : "";
-            if (type !== "toolcall" && type !== "tool_call" && type !== "tooluse" && type !== "tool_use") {
-                return null;
-            }
-            const name = typeof item.name === "string" && item.name.trim() ? item.name.trim() : "tool";
-            const args = item.arguments ?? item.args ?? item.input;
-            return { name, args };
-        })
-        .filter((entry): entry is { name: string; args: unknown } => entry !== null);
+function isToolResultRole(roleRaw: string): boolean {
+    return roleRaw === "toolresult" || roleRaw === "tool_result";
 }
 
 function formatHistoryToolResult(row: Record<string, unknown>, text: string): string {
@@ -98,47 +121,188 @@ function formatHistoryToolCall(name: string, args: unknown): string {
     return `[tool:start] ${name} - ${command}`;
 }
 
-function mapHistoryMessageToLocal(msg: unknown, index: number): LocalChatMessage | null {
-    if (!msg || typeof msg !== "object") return null;
+function safeTrimString(value: unknown): string {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function parseThinkingSignature(value: unknown): Pick<
+    Extract<LocalChatPart, { kind: "thinking" }>,
+    "signature" | "signatureId" | "signatureType" | "encrypted" | "summary"
+> {
+    const rawSignature = safeTrimString(value);
+    if (!rawSignature) return {};
+    try {
+        const parsed = JSON.parse(rawSignature) as Record<string, unknown>;
+        const signatureId = safeTrimString(parsed.id);
+        const signatureType = safeTrimString(parsed.type);
+        const encrypted = typeof parsed.encrypted_content === "string" && parsed.encrypted_content.length > 0;
+        const summary = Array.isArray(parsed.summary)
+            ? parsed.summary.map((item) => safeTrimString(item)).filter(Boolean)
+            : undefined;
+        return {
+            signature: rawSignature,
+            ...(signatureId ? { signatureId } : {}),
+            ...(signatureType ? { signatureType } : {}),
+            ...(encrypted ? { encrypted } : {}),
+            ...(summary?.length ? { summary } : {}),
+        };
+    } catch {
+        return {
+            signature: rawSignature,
+            ...(rawSignature ? { signatureType: rawSignature } : {}),
+        };
+    }
+}
+
+function formatThinkingSummary(part: Extract<LocalChatPart, { kind: "thinking" }>): string {
+    if (part.text?.trim()) return part.text.trim();
+    if (part.summary?.length) return part.summary.join("\n");
+    if (part.encrypted) return "Reasoning signature stored, but transcript does not contain readable thinking text.";
+    return "Reasoning metadata captured without readable thinking text.";
+}
+
+function mapAssistantContentToLocalMessages(
+    content: unknown,
+    createdAt: number,
+    index: number,
+): LocalChatMessage[] {
+    if (!Array.isArray(content)) return [];
+    const messages: LocalChatMessage[] = [];
+    const textChunks: string[] = [];
+
+    content.forEach((part, partIndex) => {
+        if (!part || typeof part !== "object") return;
+        const item = part as Record<string, unknown>;
+        const type = safeTrimString(item.type).toLowerCase();
+        if (type === "text") {
+            const text = safeTrimString(item.text);
+            if (text) textChunks.push(text);
+            return;
+        }
+        if (type === "thinking") {
+            const thinkingText = safeTrimString(item.thinking) || safeTrimString(item.text);
+            const thinkingPart: Extract<LocalChatPart, { kind: "thinking" }> = {
+                kind: "thinking",
+                ...(thinkingText ? { text: thinkingText } : {}),
+                ...parseThinkingSignature(item.thinkingSignature),
+            };
+            messages.push(
+                createStructuredMessage({
+                    text: formatThinkingSummary(thinkingPart),
+                    createdAt,
+                    kind: "working_output",
+                    parts: [thinkingPart],
+                    keySuffix: `hist-${index}-thinking-${partIndex}`,
+                }),
+            );
+            return;
+        }
+        if (type === "toolcall" || type === "tool_call" || type === "tooluse" || type === "tool_use") {
+            const toolName = safeTrimString(item.name) || "tool";
+            const input = item.arguments ?? item.args ?? item.input;
+            messages.push(
+                createStructuredMessage({
+                    text: formatHistoryToolCall(toolName, input),
+                    createdAt,
+                    kind: "working_output",
+                    parts: [
+                        {
+                            kind: "tool",
+                            toolName,
+                            state: "input-available",
+                            ...(input !== undefined ? { input } : {}),
+                        },
+                    ],
+                    keySuffix: `hist-${index}-tool-call-${partIndex}`,
+                }),
+            );
+            return;
+        }
+        if (type === "toolresult" || type === "tool_result") {
+            const toolName = safeTrimString(item.name) || safeTrimString(item.toolName) || "tool";
+            const output = item.result ?? item.output ?? item.content ?? item.text;
+            const errorText = safeTrimString(item.errorText) || safeTrimString(item.error);
+            messages.push(
+                createStructuredMessage({
+                    text: errorText ? `[tool:error] ${toolName} - ${errorText}` : `[tool:result] ${toolName}`,
+                    createdAt,
+                    kind: "working_output",
+                    parts: [
+                        {
+                            kind: "tool",
+                            toolName,
+                            state: errorText ? "output-error" : "output-available",
+                            ...(output !== undefined ? { output } : {}),
+                            ...(errorText ? { errorText } : {}),
+                        },
+                    ],
+                    keySuffix: `hist-${index}-tool-result-${partIndex}`,
+                }),
+            );
+        }
+    });
+
+    const assistantText = textChunks.join("\n").trim();
+    if (assistantText) {
+        messages.push(
+            createStructuredMessage({
+                text: assistantText,
+                createdAt,
+                keySuffix: `hist-${index}-text`,
+            }),
+        );
+    }
+
+    return messages;
+}
+
+export function mapHistoryMessageToLocal(msg: unknown, index: number): LocalChatMessage[] {
+    if (!msg || typeof msg !== "object") return [];
     const row = msg as Record<string, unknown>;
     const roleRaw = String(row.role ?? "").toLowerCase();
     const createdAt = typeof row.created_at === "number" ? row.created_at * 1000 : Date.now();
 
     if (isToolResultRole(roleRaw)) {
         const text = extractEventText(msg);
-        return {
-            key: `hist-${index}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            role: "assistant",
-            text: formatHistoryToolResult(row, text),
-            createdAt,
-            kind: "working_output",
-        };
+        const toolName =
+            (typeof row.toolName === "string" && row.toolName.trim()) ||
+            (typeof row.tool_name === "string" && row.tool_name.trim()) ||
+            "tool";
+        const errorText =
+            (typeof row.error === "string" && row.error.trim()) ||
+            (typeof row.errorText === "string" && row.errorText.trim()) ||
+            undefined;
+        return [
+            createStructuredMessage({
+                text: formatHistoryToolResult(row, text),
+                createdAt,
+                kind: "working_output",
+                parts: [
+                    {
+                        kind: "tool",
+                        toolName,
+                        state: errorText ? "output-error" : "output-available",
+                        ...(text ? { output: text } : {}),
+                        ...(errorText ? { errorText } : {}),
+                    },
+                ],
+                keySuffix: `hist-${index}-tool-result`,
+            }),
+        ];
     }
 
     if (roleRaw === "assistant") {
-        const toolCalls = extractToolCallsFromContent(row.content);
-        if (toolCalls.length > 0) {
-            const firstCall = toolCalls[0];
-            return {
-                key: `hist-${index}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                role: "assistant",
-                text: formatHistoryToolCall(firstCall.name, firstCall.args),
-                createdAt,
-                kind: "working_output",
-            };
+        const mapped = mapAssistantContentToLocalMessages(row.content, createdAt, index);
+        if (mapped.length > 0) {
+            return mapped;
         }
     }
 
     const role = roleRaw === "user" ? "user" : roleRaw === "assistant" ? "assistant" : null;
-    if (!role) return null;
+    if (!role) return [];
     const text = extractEventText(msg);
-    if (!text.trim()) return null;
-    return {
-        key: `hist-${index}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        role,
-        text,
-        createdAt,
-    };
+    if (!text.trim()) return [];
+    return [createStructuredMessage({ role, text, createdAt, keySuffix: `hist-${index}` })];
 }
 
 function createAssistantMessage(text: string, kind: LocalChatMessage["kind"] = "default"): LocalChatMessage {
@@ -219,9 +383,13 @@ function summarizeToolOutput(value: unknown): string {
     return serialized.length > 220 ? `${serialized.slice(0, 220)}...` : serialized;
 }
 
-function formatWorkingOutput(payload: AgentGatewayEventPayload, toolProgressById: Map<string, ToolProgressEntry>): string {
+export function formatWorkingOutput(
+    payload: AgentGatewayEventPayload,
+    toolProgressById: Map<string, ToolProgressEntry>,
+): LocalChatMessage | null {
     const stream = String(payload.stream ?? "");
     const data = payload.data ?? {};
+    const createdAt = Date.now();
     if (stream === "tool") {
         const phase = typeof data.phase === "string" ? data.phase : "update";
         const toolCallId = typeof data.toolCallId === "string" ? data.toolCallId : "";
@@ -234,44 +402,84 @@ function formatWorkingOutput(payload: AgentGatewayEventPayload, toolProgressById
         if (phase === "start") {
             entry.command = summarizeToolCommand(data.args);
             if (toolCallId) toolProgressById.set(toolCallId, entry);
-            if (!entry.command) return `[tool:start] ${name}`;
-            return `[tool:start] ${name} - ${entry.command}`;
+            return createStructuredMessage({
+                text: !entry.command ? `[tool:start] ${name}` : `[tool:start] ${name} - ${entry.command}`,
+                createdAt,
+                kind: "working_output",
+                parts: [
+                    {
+                        kind: "tool",
+                        toolName: name,
+                        state: "input-available",
+                        ...(data.args !== undefined ? { input: data.args } : {}),
+                    },
+                ],
+            });
         }
 
         if (phase === "update") {
             const partial = summarizeToolOutput(data.partialResult);
             if (partial) entry.lastOutput = partial;
             if (toolCallId) toolProgressById.set(toolCallId, entry);
-            return "";
+            return null;
         }
 
-        if (phase !== "result") return "";
+        if (phase !== "result") return null;
 
         const resultText =
             summarizeToolOutput(data.result) ||
             summarizeToolOutput(data.summary ?? data.error ?? data.status) ||
             entry.lastOutput;
-        const detailParts: string[] = [];
-        if (entry.command) detailParts.push(`Command: ${entry.command}`);
-        if (resultText) detailParts.push(`Result: ${resultText}`);
-        const formatted =
-            detailParts.length > 0 ? `[tool:result] ${name} - ${detailParts.join("\n")}` : `[tool:result] ${name}`;
+        const errorText = typeof data.error === "string" ? data.error : "";
         if (toolCallId) toolProgressById.delete(toolCallId);
-
-        return formatted;
+        return createStructuredMessage({
+            text: resultText ? `[tool:result] ${name} - ${resultText}` : `[tool:result] ${name}`,
+            createdAt,
+            kind: "working_output",
+            parts: [
+                {
+                    kind: "tool",
+                    toolName: name,
+                    state: errorText ? "output-error" : "output-available",
+                    ...(entry.command ? { input: entry.command } : data.args !== undefined ? { input: data.args } : {}),
+                    ...(data.result !== undefined
+                        ? { output: data.result }
+                        : resultText
+                          ? { output: resultText }
+                          : {}),
+                    ...(errorText ? { errorText } : {}),
+                },
+            ],
+        });
     }
-    if (stream === "lifecycle") return "";
+    if (stream === "lifecycle") return null;
     if (stream === "assistant") {
         const text = typeof data.text === "string" ? data.text.trim() : "";
-        if (text) return "";
+        if (text) return null;
+        const thinking = safeTrimString(data.thinking) || safeTrimString(data.reasoning);
+        if (thinking) {
+            const thinkingPart: Extract<LocalChatPart, { kind: "thinking" }> = {
+                kind: "thinking",
+                text: thinking,
+                ...parseThinkingSignature(data.thinkingSignature),
+            };
+            return createStructuredMessage({
+                text: formatThinkingSummary(thinkingPart),
+                createdAt,
+                kind: "working_output",
+                parts: [thinkingPart],
+            });
+        }
         const detail = stringifyWorkingValue(data);
-        return detail ? `[assistant] ${detail}` : "";
+        return detail ? createStructuredMessage({ text: `[assistant] ${detail}`, createdAt, kind: "working_output" }) : null;
     }
     if (stream) {
         const detail = stringifyWorkingValue(data);
-        return detail ? `[${stream}] ${detail}` : `[${stream}]`;
+        return detail
+            ? createStructuredMessage({ text: `[${stream}] ${detail}`, createdAt, kind: "working_output" })
+            : createStructuredMessage({ text: `[${stream}]`, createdAt, kind: "working_output" });
     }
-    return "";
+    return null;
 }
 
 function isWorkingOutputMessage(message: LocalChatMessage): boolean {
@@ -306,7 +514,7 @@ export function useChatMessages(threadId: string | null): {
     const showWorkingOutput = useChatStore((state) => state.showWorkingOutput);
     const { client } = useGateway();
     const seenAgentEventIdsRef = useRef<Set<string>>(new Set());
-    const toolProgressByIdRef = useRef<Map<string, ToolProgressEntry>>(new Map());
+    const toolProgressByIdRef = useRef<Map<string, SharedToolProgressEntry>>(new Map());
 
     const messages = useMemo(() => {
         if (!threadId) return [];
@@ -320,6 +528,18 @@ export function useChatMessages(threadId: string | null): {
     const effectiveSessionKey = selectedSessionKey ?? threadId;
     const effectiveThreadId = threadId ?? selectedSessionKey;
 
+    const reloadHistory = useCallback(
+        async (sessionKey: string): Promise<LocalChatMessage[]> => {
+            const result = await client.request<{ messages?: unknown[] }>("chat.history", {
+                sessionKey,
+                limit: 200,
+            });
+            const raw = Array.isArray(result?.messages) ? result.messages : [];
+            return raw.flatMap((msg, i) => mapHistoryMessages(msg, i));
+        },
+        [client],
+    );
+
     useEffect(() => {
         if (!effectiveSessionKey) return;
         let cancelled = false;
@@ -328,15 +548,8 @@ export function useChatMessages(threadId: string | null): {
         setSubmissionStatus("ready");
         async function loadHistory(): Promise<void> {
             try {
-                const result = await client.request<{ messages?: unknown[] }>("chat.history", {
-                    sessionKey: effectiveSessionKey,
-                    limit: 200,
-                });
+                const mapped = await reloadHistory(effectiveSessionKey);
                 if (cancelled) return;
-                const raw = Array.isArray(result?.messages) ? result.messages : [];
-                const mapped = raw
-                    .map((msg, i) => mapHistoryMessageToLocal(msg, i))
-                    .filter((m): m is LocalChatMessage => m !== null);
                 useChatStore.getState().setMessagesByThread({
                     ...useChatStore.getState().messagesByThread,
                     [effectiveSessionKey]: mapped,
@@ -351,7 +564,7 @@ export function useChatMessages(threadId: string | null): {
         return () => {
             cancelled = true;
         };
-    }, [client, effectiveSessionKey]);
+    }, [effectiveSessionKey, reloadHistory]);
 
     useEffect(() => {
         const unsubscribe = client.subscribe((event) => {
@@ -384,6 +597,17 @@ export function useChatMessages(threadId: string | null): {
                         ...useChatStore.getState().messagesByThread,
                         [effectiveThreadId]: [...nextMessages, createAssistantMessage(finalText)],
                     });
+                } else {
+                    void reloadHistory(effectiveSessionKey)
+                        .then((mapped) => {
+                            useChatStore.getState().setMessagesByThread({
+                                ...useChatStore.getState().messagesByThread,
+                                [effectiveThreadId]: mapped,
+                            });
+                        })
+                        .catch(() => {
+                            // Ignore history refresh failures on terminal event fallback.
+                        });
                 }
                 if (payload.runId) {
                     completedRunIdsRef.current.add(payload.runId);
@@ -429,7 +653,36 @@ export function useChatMessages(threadId: string | null): {
 
         });
         return unsubscribe;
-    }, [activeRunId, client, effectiveSessionKey, effectiveThreadId, showWorkingOutput, streamingText]);
+    }, [activeRunId, client, effectiveSessionKey, effectiveThreadId, reloadHistory, showWorkingOutput, streamingText]);
+
+    useEffect(() => {
+        if (submissionStatus !== "streaming" || !effectiveSessionKey || !effectiveThreadId) return;
+        let cancelled = false;
+        const startedCount = (useChatStore.getState().messagesByThread[effectiveThreadId] ?? []).length;
+        const timer = window.setTimeout(() => {
+            void reloadHistory(effectiveSessionKey)
+                .then((mapped) => {
+                    if (cancelled) return;
+                    const lastMessage = mapped[mapped.length - 1];
+                    if (!lastMessage || lastMessage.role !== "assistant" || mapped.length <= startedCount) return;
+                    useChatStore.getState().setMessagesByThread({
+                        ...useChatStore.getState().messagesByThread,
+                        [effectiveThreadId]: mapped,
+                    });
+                    setStreamingText("");
+                    setActiveRunId(null);
+                    setSubmissionStatus("ready");
+                })
+                .catch(() => {
+                    // Ignore fallback history refresh failures while streaming.
+                });
+        }, 6000);
+
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timer);
+        };
+    }, [effectiveSessionKey, effectiveThreadId, reloadHistory, submissionStatus]);
 
     useEffect(() => {
         seenAgentEventIdsRef.current.clear();
@@ -455,13 +708,13 @@ export function useChatMessages(threadId: string | null): {
             if (seenAgentEventIdsRef.current.has(eventId)) return;
             seenAgentEventIdsRef.current.add(eventId);
 
-            const text = formatWorkingOutput(payload, toolProgressByIdRef.current);
-            if (!text.trim()) return;
+            const message = formatStructuredWorkingOutput(payload, toolProgressByIdRef.current);
+            if (!message) return;
 
             const nextMessages = useChatStore.getState().messagesByThread[effectiveThreadId] ?? [];
             useChatStore.getState().setMessagesByThread({
                 ...useChatStore.getState().messagesByThread,
-                [effectiveThreadId]: [...nextMessages, createAssistantMessage(text, "working_output")],
+                [effectiveThreadId]: [...nextMessages, message],
             });
         });
         return unsubscribe;
@@ -542,4 +795,3 @@ export function useChatMessages(threadId: string | null): {
         streamingText,
     };
 }
-

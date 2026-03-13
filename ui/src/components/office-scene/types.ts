@@ -14,13 +14,23 @@
  * - MEM-0143
  */
 
-import type { DeskLayoutData, EmployeeData, OfficeId, OfficeObject, TeamData } from '@/lib/types';
+import type { DeskLayoutData, EmployeeData, OfficeId, OfficeObject, TeamData } from "@/lib/types";
+import type { OfficeLayoutModel } from "@/lib/office-layout";
+import type { OfficeFootprint } from "@/lib/office-footprint";
+import type { OfficeSettingsModel } from "@/lib/openclaw-types";
 
 export interface OfficeSceneProps {
-    teams: TeamData[];
-    employees: EmployeeData[];
-    desks: DeskLayoutData[];
-    officeObjects: OfficeObject[];
-    companyId?: OfficeId<"companies">;
-    onNavigationReady?: () => void;
+  teams: TeamData[];
+  employees: EmployeeData[];
+  desks: DeskLayoutData[];
+  officeObjects: OfficeObject[];
+  officeFootprint: OfficeFootprint;
+  officeLayout: OfficeLayoutModel;
+  officeDecorSettings: OfficeSettingsModel["decor"];
+  officeViewSettings: Pick<
+    OfficeSettingsModel,
+    "viewProfile" | "orbitControlsEnabled" | "cameraOrientation"
+  >;
+  companyId?: OfficeId<"companies">;
+  onNavigationReady?: () => void;
 }

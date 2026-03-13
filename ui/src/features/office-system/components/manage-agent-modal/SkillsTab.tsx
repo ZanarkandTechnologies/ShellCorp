@@ -13,6 +13,7 @@ type SkillsPanelProps = {
   fallbackSkills: SkillItemModel[];
   onReloadConfig: () => Promise<void>;
   onRefreshSkills: () => Promise<void>;
+  onOpenSkillStudio: (skillId: string) => void;
 };
 
 export function SkillsPanel(props: SkillsPanelProps): JSX.Element {
@@ -26,13 +27,19 @@ export function SkillsPanel(props: SkillsPanelProps): JSX.Element {
   }));
   const merged = new Map<string, { name: string; description: string; source: string }>();
   for (const entry of reportRows) {
-    merged.set(entry.name, { name: entry.name, description: entry.description, source: entry.source || "unknown" });
+    merged.set(entry.name, {
+      name: entry.name,
+      description: entry.description,
+      source: entry.source || "unknown",
+    });
   }
   for (const entry of fallbackRows) {
     if (!merged.has(entry.name)) merged.set(entry.name, entry);
   }
   const filteredSkills = [...merged.values()].filter((entry) =>
-    `${entry.name} ${entry.description} ${entry.source}`.toLowerCase().includes(filter.trim().toLowerCase()),
+    `${entry.name} ${entry.description} ${entry.source}`
+      .toLowerCase()
+      .includes(filter.trim().toLowerCase()),
   );
   const userLevel = filteredSkills.filter((entry) => !entry.source.toLowerCase().includes("agent"));
   const agentLevel = filteredSkills.filter((entry) => entry.source.toLowerCase().includes("agent"));
@@ -52,7 +59,9 @@ export function SkillsPanel(props: SkillsPanelProps): JSX.Element {
     <div className="rounded-md border p-4 space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Per-agent skill allowlist with user-level + agent-level visibility. {filteredSkills.length} shown.
+          Per-agent skill allowlist with user-level + agent-level visibility.{" "}
+          {filteredSkills.length} shown. Open any row in Skill Studio for files, diagrams, and
+          demos.
         </p>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => void props.onReloadConfig()}>
@@ -86,67 +95,135 @@ export function SkillsPanel(props: SkillsPanelProps): JSX.Element {
           Custom
         </Button>
       </div>
-      <Input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search skills" />
+      <Input
+        value={filter}
+        onChange={(event) => setFilter(event.target.value)}
+        placeholder="Search skills"
+      />
       <div className="max-h-[46vh] overflow-auto rounded-md border p-3 space-y-4">
         <div>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold text-muted-foreground">USER-LEVEL SKILLS</p>
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => toggleBatch(userLevel.map((row) => row.name), true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  toggleBatch(
+                    userLevel.map((row) => row.name),
+                    true,
+                  )
+                }
+              >
                 Batch Enable
               </Button>
-              <Button size="sm" variant="outline" onClick={() => toggleBatch(userLevel.map((row) => row.name), false)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  toggleBatch(
+                    userLevel.map((row) => row.name),
+                    false,
+                  )
+                }
+              >
                 Batch Disable
               </Button>
             </div>
           </div>
           {userLevel.map((row) => (
-            <label key={`user-${row.name}`} className="flex items-center gap-2 py-1 text-sm">
-              <input
-                type="checkbox"
-                checked={selected.has(row.name)}
-                disabled={props.draft.skillsMode !== "selected"}
-                onChange={(event) => {
-                  const next = new Set(props.draft.selectedSkills);
-                  if (event.target.checked) next.add(row.name);
-                  else next.delete(row.name);
-                  props.setDraft({ ...props.draft, selectedSkills: [...next], skillsMode: "selected" });
-                }}
-              />
-              <span>{row.name}</span>
-            </label>
+            <div
+              key={`user-${row.name}`}
+              className="flex items-center justify-between gap-2 py-1 text-sm"
+            >
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selected.has(row.name)}
+                  disabled={props.draft.skillsMode !== "selected"}
+                  onChange={(event) => {
+                    const next = new Set(props.draft.selectedSkills);
+                    if (event.target.checked) next.add(row.name);
+                    else next.delete(row.name);
+                    props.setDraft({
+                      ...props.draft,
+                      selectedSkills: [...next],
+                      skillsMode: "selected",
+                    });
+                  }}
+                />
+                <span>{row.name}</span>
+              </label>
+              <Button size="sm" variant="ghost" onClick={() => props.onOpenSkillStudio(row.name)}>
+                Open
+              </Button>
+            </div>
           ))}
-          {userLevel.length === 0 ? <p className="text-xs text-muted-foreground">No user-level skills found.</p> : null}
+          {userLevel.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No user-level skills found.</p>
+          ) : null}
         </div>
         <div>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold text-muted-foreground">AGENT-LEVEL SKILLS</p>
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => toggleBatch(agentLevel.map((row) => row.name), true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  toggleBatch(
+                    agentLevel.map((row) => row.name),
+                    true,
+                  )
+                }
+              >
                 Batch Enable
               </Button>
-              <Button size="sm" variant="outline" onClick={() => toggleBatch(agentLevel.map((row) => row.name), false)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  toggleBatch(
+                    agentLevel.map((row) => row.name),
+                    false,
+                  )
+                }
+              >
                 Batch Disable
               </Button>
             </div>
           </div>
           {agentLevel.map((row) => (
-            <label key={`agent-${row.name}`} className="flex items-center gap-2 py-1 text-sm">
-              <input
-                type="checkbox"
-                checked={selected.has(row.name)}
-                disabled={props.draft.skillsMode !== "selected"}
-                onChange={(event) => {
-                  const next = new Set(props.draft.selectedSkills);
-                  if (event.target.checked) next.add(row.name);
-                  else next.delete(row.name);
-                  props.setDraft({ ...props.draft, selectedSkills: [...next], skillsMode: "selected" });
-                }}
-              />
-              <span>{row.name}</span>
-            </label>
+            <div
+              key={`agent-${row.name}`}
+              className="flex items-center justify-between gap-2 py-1 text-sm"
+            >
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selected.has(row.name)}
+                  disabled={props.draft.skillsMode !== "selected"}
+                  onChange={(event) => {
+                    const next = new Set(props.draft.selectedSkills);
+                    if (event.target.checked) next.add(row.name);
+                    else next.delete(row.name);
+                    props.setDraft({
+                      ...props.draft,
+                      selectedSkills: [...next],
+                      skillsMode: "selected",
+                    });
+                  }}
+                />
+                <span>{row.name}</span>
+              </label>
+              <Button size="sm" variant="ghost" onClick={() => props.onOpenSkillStudio(row.name)}>
+                Open
+              </Button>
+            </div>
           ))}
-          {agentLevel.length === 0 ? <p className="text-xs text-muted-foreground">No agent-level skills found.</p> : null}
+          {agentLevel.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No agent-level skills found.</p>
+          ) : null}
         </div>
       </div>
     </div>

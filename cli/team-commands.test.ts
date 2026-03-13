@@ -122,6 +122,23 @@ async function readOpenclawAgentIds(stateDir: string): Promise<string[]> {
   return (config.agents?.list ?? []).map((entry) => entry.id ?? "").filter(Boolean);
 }
 
+async function readOfficeObjects(stateDir: string): Promise<
+  Array<{
+    id: string;
+    meshType: string;
+    position: [number, number, number];
+    metadata?: Record<string, unknown>;
+  }>
+> {
+  const raw = await readFile(path.join(stateDir, "office-objects.json"), "utf-8");
+  return JSON.parse(raw) as Array<{
+    id: string;
+    meshType: string;
+    position: [number, number, number];
+    metadata?: Record<string, unknown>;
+  }>;
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -222,6 +239,41 @@ describe("team CLI", () => {
     expect(project?.kpis ?? []).toEqual([]);
   });
 
+  it("auto-places new team clusters into distinct open slots", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Alpha",
+      "--description",
+      "Core team",
+      "--goal",
+      "Ship fast",
+      "--with-cluster",
+    ]);
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Beta",
+      "--description",
+      "Second team",
+      "--goal",
+      "Avoid overlap",
+      "--with-cluster",
+    ]);
+
+    const teamClusters = (await readOfficeObjects(stateDir)).filter(
+      (entry) => entry.meshType === "team-cluster",
+    );
+    expect(teamClusters).toHaveLength(2);
+    expect(teamClusters[0]?.position).toEqual([0, 0, 0]);
+    expect(teamClusters[1]?.position).toEqual([-5, 0, -5]);
+  });
+
   it("persists and executes team proposals through the CLI", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
@@ -259,6 +311,64 @@ describe("team CLI", () => {
     expect(executed?.executionStatus).toBe("created");
     expect(executed?.createdTeamId).toBe("team-proj-affiliate-content-engine-team");
     expect(finalModel.projects.some((entry) => entry.id === "proj-affiliate-content-engine-team")).toBe(true);
+
+    const teamClusters = (await readOfficeObjects(stateDir)).filter(
+      (entry) => entry.meshType === "team-cluster",
+    );
+    expect(teamClusters).toHaveLength(1);
+    expect(teamClusters[0]?.metadata?.teamId).toBe("team-proj-affiliate-content-engine-team");
+    expect(teamClusters[0]?.position).toEqual([0, 0, 0]);
+  });
+
+  it("proposal execution uses the next open cluster slot when one is already occupied", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Anchor Team",
+      "--description",
+      "Existing cluster",
+      "--goal",
+      "Occupy the first slot",
+      "--with-cluster",
+    ]);
+
+    await runCommand([
+      "team",
+      "proposal",
+      "create",
+      "--json-input",
+      JSON.stringify({
+        businessType: "affiliate_marketing",
+        requestedBy: "founder",
+        sourceAgentId: "main",
+        ideaBrief: {
+          focus: "affiliate content engine",
+          targetCustomer: "home office shoppers",
+          primaryGoal: "ship weekly revenue-producing content",
+          constraints: "keep spend low and use proven channels",
+        },
+      }),
+    ]);
+
+    const afterCreateRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const afterCreate = JSON.parse(afterCreateRaw) as CompanySnapshot;
+    const proposalId = afterCreate.teamProposals?.[0]?.id;
+    expect(proposalId).toBeTruthy();
+
+    await runCommand(["team", "proposal", "approve", "--proposal-id", proposalId!, "--note", "looks good"]);
+    await runCommand(["team", "proposal", "execute", "--proposal-id", proposalId!]);
+
+    const clusterByTeamId = new Map(
+      (await readOfficeObjects(stateDir))
+        .filter((entry) => entry.meshType === "team-cluster")
+        .map((entry) => [String(entry.metadata?.teamId ?? ""), entry.position] as const),
+    );
+    expect(clusterByTeamId.get("team-proj-anchor-team")).toEqual([0, 0, 0]);
+    expect(clusterByTeamId.get("team-proj-affiliate-content-engine-team")).toEqual([-5, 0, -5]);
   });
 
   it("blocks proposal execution until founder approval is recorded", async () => {

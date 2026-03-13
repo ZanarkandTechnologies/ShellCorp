@@ -11,12 +11,13 @@
  *
  * MEMORY REFERENCES:
  * - MEM-0144
+ * - MEM-0163
  */
-import { memo, useCallback, useMemo, useState } from "react";
-import { useFrame, type ThreeEvent } from "@react-three/fiber";
-import { Box, Edges, Sphere } from "@react-three/drei";
-import * as THREE from "three";
+import { Box, Edges } from "@react-three/drei";
+import { type ThreeEvent, useFrame } from "@react-three/fiber";
 import { Book, Brain, CheckSquare, MessageSquare, Monitor, UserCog } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
 import {
   BODY_HEIGHT,
   BODY_WIDTH,
@@ -31,14 +32,13 @@ import {
   SKIN_COLORS,
   TOTAL_HEIGHT,
 } from "@/constants";
-import type { Id } from "@/lib/entity-types";
-import type { AgentState } from "@/lib/openclaw-types";
-import { useAppStore } from "@/lib/app-store";
-import { getRandomItem } from "@/lib/utils";
 import PathVisualizer from "@/features/nav-system/components/path-visualizer";
 import type { StatusType } from "@/features/nav-system/components/status-indicator";
+import { useAppStore } from "@/lib/app-store";
+import type { Id } from "@/lib/entity-types";
+import type { AgentState } from "@/lib/openclaw-types";
+import { getRandomItem } from "@/lib/utils";
 import { ContextMenu } from "../context-menu";
-import { ProfileHead } from "./ProfileHead";
 import {
   LobsterAntennae,
   LobsterClaws,
@@ -46,12 +46,26 @@ import {
   SupervisorHat,
   TeamPlumbob,
 } from "./Decorations";
+import { getEmployeeAnimationPose } from "./employee-motion";
+import { ProfileHead } from "./ProfileHead";
 import { EmployeeStatusBubbles } from "./StatusBubbles";
 import { useEmployeeLocomotion } from "./use-employee-locomotion";
+
+type AvatarPalette = {
+  hair: string;
+  skin: string;
+  shirt: string;
+  pants: string;
+};
+
 export interface EmployeeProps {
   _id: Id<"employees">;
   name: string;
   position: [number, number, number];
+  activityTargetPosition?: [number, number, number];
+  activityTargetObjectPosition?: [number, number, number];
+  activityTargetSkillId?: string;
+  activityEffectVariant?: "ghost" | "blink";
   isBusy?: boolean;
   isCEO?: boolean;
   isSupervisor?: boolean;
@@ -69,12 +83,89 @@ export interface EmployeeProps {
   heartbeatState?: AgentState;
   heartbeatBubbles?: Array<{ label: string; weight?: number }>;
   profileImageUrl?: string;
+  useCompactOverlayMode?: boolean;
+}
+
+function AvatarShell({
+  colors,
+  profileImageUrl,
+  isSupervisor,
+  teamId,
+  useCompactOverlayMode,
+  projection = false,
+}: {
+  colors: AvatarPalette;
+  profileImageUrl?: string;
+  isSupervisor?: boolean;
+  teamId?: string;
+  useCompactOverlayMode?: boolean;
+  projection?: boolean;
+}) {
+  const baseY = -TOTAL_HEIGHT / 2;
+  const materialProps = projection ? { transparent: true, opacity: 0.48 } : {};
+  const projectionHeadColor = projection ? "#67e8f9" : colors.skin;
+  const projectionHairColor = projection ? "#a5f3fc" : colors.hair;
+  const projectionShirtColor = projection ? "#22d3ee" : colors.shirt;
+  const projectionPantsColor = projection ? "#0f766e" : colors.pants;
+
+  return (
+    <group>
+      <Box
+        args={[BODY_WIDTH, LEG_HEIGHT, BODY_WIDTH * 0.6]}
+        position={[0, baseY + LEG_HEIGHT / 2, 0]}
+        castShadow={!projection}
+      >
+        <meshStandardMaterial color={projectionPantsColor} {...materialProps} />
+      </Box>
+      <Box
+        args={[BODY_WIDTH, BODY_HEIGHT, BODY_WIDTH * 0.6]}
+        position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT / 2, 0]}
+        castShadow={!projection}
+      >
+        <meshStandardMaterial color={projectionShirtColor} {...materialProps} />
+      </Box>
+
+      {profileImageUrl && profileImageUrl.trim().length > 0 && !projection ? (
+        <ProfileHead
+          imageUrl={profileImageUrl}
+          position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT / 2, 0]}
+          skinColor={colors.skin}
+          hairColor={colors.hair}
+          useCompactOverlayMode={useCompactOverlayMode}
+        />
+      ) : (
+        <Box
+          args={[HEAD_WIDTH, HEAD_HEIGHT, HEAD_WIDTH]}
+          position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT / 2, 0]}
+          castShadow={!projection}
+        >
+          <meshStandardMaterial color={projectionHeadColor} {...materialProps} />
+        </Box>
+      )}
+
+      <group position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT + HAIR_HEIGHT / 2, 0]}>
+        <Box args={[HAIR_WIDTH, HAIR_HEIGHT, HAIR_WIDTH]} castShadow={!projection}>
+          <meshStandardMaterial color={projectionHairColor} {...materialProps} />
+        </Box>
+        {isSupervisor ? <SupervisorHat /> : null}
+      </group>
+
+      <LobsterClaws color={projectionShirtColor} />
+      <LobsterAntennae />
+      <LobsterEyes />
+      {!projection ? <TeamPlumbob teamId={teamId} /> : null}
+    </group>
+  );
 }
 
 const Employee = memo(function Employee({
   _id: id,
   name,
   position,
+  activityTargetPosition,
+  activityTargetObjectPosition,
+  activityTargetSkillId,
+  activityEffectVariant,
   isBusy,
   isCEO,
   isSupervisor,
@@ -91,6 +182,7 @@ const Employee = memo(function Employee({
   notificationPriority = 0,
   heartbeatState,
   heartbeatBubbles = [],
+  useCompactOverlayMode = false,
 }: EmployeeProps) {
   const employeeIdString = `employee-${id}`;
   const isSelected = useAppStore((state) => state.selectedObjectId === employeeIdString);
@@ -98,7 +190,6 @@ const Employee = memo(function Employee({
   const useHumanoidAvatar = useAppStore((state) => state.useHumanoidAvatar);
   const setManageAgentEmployeeId = useAppStore((state) => state.setManageAgentEmployeeId);
   const setViewComputerEmployeeId = useAppStore((state) => state.setViewComputerEmployeeId);
-  const viewComputerEmployeeId = useAppStore((state) => state.viewComputerEmployeeId);
   const setTrainingEmployeeId = useAppStore((state) => state.setTrainingEmployeeId);
   const setMemoryPanelEmployeeId = useAppStore((state) => state.setMemoryPanelEmployeeId);
   const setIsTeamPanelOpen = useAppStore((state) => state.setIsTeamPanelOpen);
@@ -107,20 +198,34 @@ const Employee = memo(function Employee({
   const setSelectedProjectId = useAppStore((state) => state.setSelectedProjectId);
   const setKanbanFocusAgentId = useAppStore((state) => state.setKanbanFocusAgentId);
   const highlightedEmployeeIds = useAppStore((state) => state.highlightedEmployeeIds);
+  const isOfficeOnboardingVisible = useAppStore((state) => state.isOfficeOnboardingVisible);
+  const officeOnboardingStep = useAppStore((state) => state.officeOnboardingStep);
 
   const [isHovered, setIsHovered] = useState(false);
   const isHighlighted = highlightedEmployeeIds.has(id);
-  const isViewComputerOpen = viewComputerEmployeeId === id;
+  const avatarRef = useRef<THREE.Group>(null);
+  const projectionRef = useRef<THREE.Group>(null);
+  const activityLineGeometryRef = useRef<THREE.BufferGeometry>(null);
+  const projectionPulseRef = useRef<THREE.Mesh>(null);
+  const projectionRingRef = useRef<THREE.Mesh>(null);
+  const sourcePulseRef = useRef<THREE.Mesh>(null);
+  const blinkRingRef = useRef<THREE.Mesh>(null);
+  const activityEffectStartedAtRef = useRef<number>(0);
+  const lastActivityEffectKeyRef = useRef("");
 
-  const { groupRef, debugDeskDecision, debugPathData, isGoingToDesk } = useEmployeeLocomotion({
-    id,
-    position,
-    isBusy,
-    isCEO,
-    wantsToWander,
-    heartbeatState,
-    debugMode,
-  });
+  const { groupRef, debugDeskDecision, debugPathData, isGoingToDesk, animationMode } =
+    useEmployeeLocomotion({
+      id,
+      position,
+      activityTargetPosition,
+      activityTargetSkillId,
+      activityEffectVariant,
+      isBusy,
+      isCEO,
+      wantsToWander,
+      heartbeatState,
+      debugMode,
+    });
 
   const colors = useMemo(
     () => ({
@@ -186,6 +291,8 @@ const Employee = memo(function Employee({
         icon: MessageSquare,
         color: "blue",
         position: "top" as const,
+        isHighlighted:
+          isOfficeOnboardingVisible && officeOnboardingStep === "open-chat" && Boolean(isCEO),
         onClick: () => {
           setSelectedObjectId(null);
           onClick(id);
@@ -224,8 +331,8 @@ const Employee = memo(function Employee({
             : employeeId;
           const selectedTeamIdFromEmployee = String(teamId ?? "");
           const selectedTeam = String(
-            (useAppStore.getState().activeChatParticipant as { teamId?: string } | null)
-              ?.teamId ?? "",
+            (useAppStore.getState().activeChatParticipant as { teamId?: string } | null)?.teamId ??
+              "",
           );
 
           setSelectedObjectId(null);
@@ -271,14 +378,17 @@ const Employee = memo(function Employee({
       setActiveTeamId,
       setIsTeamPanelOpen,
       setKanbanFocusAgentId,
+      isOfficeOnboardingVisible,
       setManageAgentEmployeeId,
       setMemoryPanelEmployeeId,
+      officeOnboardingStep,
       setSelectedObjectId,
       setSelectedProjectId,
       setSelectedTeamId,
       setTrainingEmployeeId,
       setViewComputerEmployeeId,
       teamId,
+      isCEO,
     ],
   );
 
@@ -291,22 +401,128 @@ const Employee = memo(function Employee({
   );
 
   const hoverScale = isHovered && !isSelected ? 1.05 : 1;
-  useFrame(() => {
+  const animationPhase = useMemo(() => {
+    return Array.from(String(id)).reduce((phase, character, index) => {
+      return phase + character.charCodeAt(0) * (index + 1) * 0.01;
+    }, 0);
+  }, [id]);
+  const isGhostProjectionActive =
+    activityEffectVariant === "ghost" &&
+    Array.isArray(activityTargetPosition) &&
+    Array.isArray(activityTargetObjectPosition);
+  const isBlinkEffectActive =
+    activityEffectVariant === "blink" && Array.isArray(activityTargetPosition);
+  const activityEffectKey = useMemo(
+    () =>
+      [
+        activityEffectVariant ?? "",
+        activityTargetSkillId ?? "",
+        activityTargetPosition?.join(",") ?? "",
+      ].join("|"),
+    [activityEffectVariant, activityTargetPosition, activityTargetSkillId],
+  );
+
+  useEffect(() => {
+    if (!activityEffectKey.replace(/\|/g, "")) {
+      lastActivityEffectKeyRef.current = "";
+      return;
+    }
+    if (lastActivityEffectKeyRef.current === activityEffectKey) {
+      return;
+    }
+    lastActivityEffectKeyRef.current = activityEffectKey;
+    activityEffectStartedAtRef.current = performance.now();
+  }, [activityEffectKey]);
+
+  useFrame((state) => {
     if (groupRef.current) {
-      if (
+      const isAtRestScale =
         hoverScale === 1 &&
         Math.abs(groupRef.current.scale.x - 1) < 0.001 &&
         Math.abs(groupRef.current.scale.y - 1) < 0.001 &&
-        Math.abs(groupRef.current.scale.z - 1) < 0.001
-      ) {
-        return;
+        Math.abs(groupRef.current.scale.z - 1) < 0.001;
+
+      if (!isAtRestScale) {
+        const targetScale = new THREE.Vector3(hoverScale, hoverScale, hoverScale);
+        groupRef.current.scale.lerp(targetScale, 0.1);
       }
-      const targetScale = new THREE.Vector3(hoverScale, hoverScale, hoverScale);
-      groupRef.current.scale.lerp(targetScale, 0.1);
+    }
+
+    if (avatarRef.current) {
+      const pose = getEmployeeAnimationPose(state.clock.elapsedTime, animationPhase, animationMode);
+      avatarRef.current.position.y = pose.bobY;
+      avatarRef.current.rotation.z = pose.rollZ;
+      avatarRef.current.rotation.y = pose.yawY;
+    }
+
+    if (projectionRef.current && activityEffectVariant === "ghost" && activityTargetPosition) {
+      const effectElapsed = (performance.now() - activityEffectStartedAtRef.current) / 1000;
+      const shimmer = Math.sin(state.clock.elapsedTime * 3 + animationPhase) * 0.08;
+      projectionRef.current.position.y = activityTargetPosition[1] + shimmer;
+      const settleScale = THREE.MathUtils.lerp(0.4, 0.94, Math.min(effectElapsed / 0.28, 1));
+      projectionRef.current.scale.setScalar(settleScale);
+      projectionRef.current.rotation.y =
+        Math.sin(state.clock.elapsedTime * 1.7 + animationPhase) * 0.08;
+    }
+
+    if (projectionPulseRef.current && isGhostProjectionActive) {
+      const effectElapsed = (performance.now() - activityEffectStartedAtRef.current) / 1000;
+      const pulseScale = 0.85 + Math.min(effectElapsed * 2.1, 1.45);
+      projectionPulseRef.current.scale.setScalar(pulseScale);
+      const material = projectionPulseRef.current.material as THREE.MeshBasicMaterial;
+      material.opacity = Math.max(0, 0.24 - effectElapsed * 0.15);
+    }
+
+    if (projectionRingRef.current && isGhostProjectionActive) {
+      const effectElapsed = (performance.now() - activityEffectStartedAtRef.current) / 1000;
+      const ringScale = 0.75 + Math.min(effectElapsed * 3.2, 1.95);
+      projectionRingRef.current.scale.set(ringScale, ringScale, ringScale);
+      const material = projectionRingRef.current.material as THREE.MeshBasicMaterial;
+      material.opacity = Math.max(0, 0.92 - effectElapsed * 1.55);
+    }
+
+    if (sourcePulseRef.current && isGhostProjectionActive) {
+      const effectElapsed = (performance.now() - activityEffectStartedAtRef.current) / 1000;
+      const pulseScale = 0.7 + Math.min(effectElapsed * 1.9, 1.3);
+      sourcePulseRef.current.scale.set(pulseScale, 1, pulseScale);
+      const material = sourcePulseRef.current.material as THREE.MeshBasicMaterial;
+      material.opacity = Math.max(0, 0.58 - effectElapsed * 1.1);
+    }
+
+    if (blinkRingRef.current && isBlinkEffectActive) {
+      const effectElapsed = (performance.now() - activityEffectStartedAtRef.current) / 1000;
+      const ringScale = 0.7 + Math.min(effectElapsed * 4.6, 2.8);
+      blinkRingRef.current.scale.set(ringScale, ringScale, ringScale);
+      const material = blinkRingRef.current.material as THREE.MeshBasicMaterial;
+      material.opacity = Math.max(0, 0.96 - effectElapsed * 1.9);
+    }
+
+    if (
+      activityLineGeometryRef.current &&
+      isGhostProjectionActive &&
+      activityTargetObjectPosition &&
+      groupRef.current
+    ) {
+      const currentPosition = groupRef.current.position;
+      activityLineGeometryRef.current.setFromPoints([
+        new THREE.Vector3(0, TOTAL_HEIGHT * 0.62, 0),
+        new THREE.Vector3(
+          activityTargetObjectPosition[0] - currentPosition.x,
+          activityTargetObjectPosition[1] - currentPosition.y + TOTAL_HEIGHT * 0.2,
+          activityTargetObjectPosition[2] - currentPosition.z,
+        ),
+      ]);
     }
   });
-
-  const baseY = -TOTAL_HEIGHT / 2;
+  const projectionStatus = isGhostProjectionActive ? currentStatus : ("none" as StatusType);
+  const onboardingPrompt =
+    isOfficeOnboardingVisible && isCEO
+      ? officeOnboardingStep === "click-ceo"
+        ? "Click me"
+        : officeOnboardingStep === "open-chat" && isSelected
+          ? "Open Chat"
+          : null
+      : null;
 
   return (
     <>
@@ -324,60 +540,26 @@ const Employee = memo(function Employee({
           setIsHovered(false);
         }}
       >
-        <Box args={[BODY_WIDTH, LEG_HEIGHT, BODY_WIDTH * 0.6]} position={[0, baseY + LEG_HEIGHT / 2, 0]} castShadow>
-          <meshStandardMaterial color={finalColors.pants} />
-        </Box>
-        <Box args={[BODY_WIDTH, BODY_HEIGHT, BODY_WIDTH * 0.6]} position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT / 2, 0]} castShadow>
-          <meshStandardMaterial color={finalColors.shirt} />
-        </Box>
-
-        {profileImageUrl && profileImageUrl.trim().length > 0 ? (
-          <ProfileHead
-            imageUrl={profileImageUrl}
-            position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT / 2, 0]}
-            skinColor={finalColors.skin}
-            hairColor={finalColors.hair}
+        <group ref={avatarRef}>
+          <AvatarShell
+            colors={finalColors}
+            profileImageUrl={profileImageUrl}
+            isSupervisor={isSupervisor}
+            teamId={teamId}
+            useCompactOverlayMode={useCompactOverlayMode}
           />
-        ) : useHumanoidAvatar ? (
-          <Sphere
-            args={[HEAD_WIDTH / 2, 16, 16]}
-            position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT / 2, 0]}
-            castShadow
-          >
-            <meshStandardMaterial color={finalColors.skin} />
-          </Sphere>
-        ) : (
-          <Box
-            args={[HEAD_WIDTH, HEAD_HEIGHT, HEAD_WIDTH]}
-            position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT / 2, 0]}
-            castShadow
-          >
-            <meshStandardMaterial color={finalColors.skin} />
-          </Box>
-        )}
+        </group>
 
-        {!useHumanoidAvatar && (
-          <group position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT + HAIR_HEIGHT / 2, 0]}>
-            <Box args={[HAIR_WIDTH, HAIR_HEIGHT, HAIR_WIDTH]} castShadow>
-              <meshStandardMaterial color={finalColors.hair} />
-            </Box>
-            {isSupervisor ? <SupervisorHat /> : null}
-          </group>
-        )}
-        {useHumanoidAvatar && isSupervisor ? (
-          <group position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT, 0]}>
-            <SupervisorHat />
-          </group>
+        {isGhostProjectionActive ? (
+          <mesh
+            ref={sourcePulseRef}
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, -TOTAL_HEIGHT / 2 + 0.03, 0]}
+          >
+            <ringGeometry args={[0.38, 0.7, 32]} />
+            <meshBasicMaterial color="#22d3ee" transparent opacity={0.5} />
+          </mesh>
         ) : null}
-
-        {!useHumanoidAvatar && (
-          <>
-            <LobsterClaws color={finalColors.shirt} />
-            <LobsterAntennae />
-            <LobsterEyes />
-          </>
-        )}
-        <TeamPlumbob teamId={teamId} />
 
         {(isHovered || isSelected) && (
           <Edges
@@ -387,12 +569,19 @@ const Employee = memo(function Employee({
           />
         )}
 
+        {isGhostProjectionActive ? (
+          <line>
+            <bufferGeometry ref={activityLineGeometryRef} attach="geometry" />
+            <lineBasicMaterial attach="material" color="#f59e0b" transparent opacity={0.75} />
+          </line>
+        ) : null}
+
         <EmployeeStatusBubbles
-          currentStatus={currentStatus}
-          statusMessage={statusMessage}
-          effectiveNotificationCount={effectiveNotificationCount}
+          currentStatus={isGhostProjectionActive ? ("none" as StatusType) : currentStatus}
+          statusMessage={isGhostProjectionActive ? undefined : statusMessage}
+          effectiveNotificationCount={isGhostProjectionActive ? 0 : effectiveNotificationCount}
           heartbeatState={heartbeatState}
-          heartbeatBubbles={heartbeatBubbles}
+          heartbeatBubbles={isGhostProjectionActive ? [] : heartbeatBubbles}
           isHovered={isHovered}
           isHighlighted={isHighlighted}
           name={name}
@@ -401,6 +590,8 @@ const Employee = memo(function Employee({
           totalHeight={TOTAL_HEIGHT}
           debugMode={debugMode}
           debugDeskDecision={debugDeskDecision}
+          onboardingPrompt={onboardingPrompt}
+          useCompactOverlayMode={useCompactOverlayMode}
         />
 
         <ContextMenu
@@ -410,6 +601,61 @@ const Employee = memo(function Employee({
           title={name}
         />
       </group>
+
+      {isGhostProjectionActive && activityTargetPosition ? (
+        <group
+          ref={projectionRef}
+          position={activityTargetPosition}
+          scale={[0.94, 0.94, 0.94]}
+          name={`employee-projection-${id}`}
+        >
+          <mesh ref={projectionPulseRef} position={[0, TOTAL_HEIGHT * 0.5, 0]}>
+            <sphereGeometry args={[0.72, 14, 14]} />
+            <meshBasicMaterial color="#67e8f9" transparent opacity={0.18} />
+          </mesh>
+          <mesh
+            ref={projectionRingRef}
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, -TOTAL_HEIGHT / 2 + 0.03, 0]}
+          >
+            <ringGeometry args={[0.44, 0.86, 36]} />
+            <meshBasicMaterial color="#67e8f9" transparent opacity={0.9} />
+          </mesh>
+          <AvatarShell colors={finalColors} isSupervisor={isSupervisor} projection />
+          <EmployeeStatusBubbles
+            currentStatus={projectionStatus}
+            statusMessage={statusMessage}
+            effectiveNotificationCount={0}
+            heartbeatState={heartbeatState}
+            heartbeatBubbles={heartbeatBubbles}
+            isHovered={false}
+            isHighlighted={false}
+            name={name}
+            jobTitle={jobTitle}
+            team={team}
+            totalHeight={TOTAL_HEIGHT}
+            debugMode={false}
+            debugDeskDecision=""
+            onboardingPrompt={null}
+            useCompactOverlayMode={useCompactOverlayMode}
+          />
+        </group>
+      ) : null}
+
+      {isBlinkEffectActive && activityTargetPosition ? (
+        <mesh
+          ref={blinkRingRef}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[
+            activityTargetPosition[0],
+            activityTargetPosition[1] + 0.03,
+            activityTargetPosition[2],
+          ]}
+        >
+          <ringGeometry args={[0.5, 1.0, 40]} />
+          <meshBasicMaterial color="#f59e0b" transparent opacity={0.96} />
+        </mesh>
+      ) : null}
 
       {debugMode && (debugPathData.originalPath || debugPathData.remainingPath) ? (
         <PathVisualizer

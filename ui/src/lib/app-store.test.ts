@@ -32,4 +32,26 @@ describe("app store perf guards", () => {
     before.setActiveObjectPanel(buildPanel(100));
     expect(useAppStore.getState()).toBe(before);
   });
+
+  it("stores Skill Studio selection context", () => {
+    useAppStore.getState().setSelectedSkillStudioSkillId("create-team");
+    useAppStore.getState().setSkillStudioFocusAgentId("main");
+    expect(useAppStore.getState().selectedSkillStudioSkillId).toBe("create-team");
+    expect(useAppStore.getState().skillStudioFocusAgentId).toBe("main");
+  });
+
+  it("stores builder transform target", () => {
+    useAppStore.getState().setActiveObjectTransformId("plant-1" as never);
+    expect(useAppStore.getState().activeObjectTransformId).toBe("plant-1");
+  });
+
+  it("stores office onboarding state", () => {
+    useAppStore.getState().setIsOfficeOnboardingVisible(true);
+    useAppStore.getState().setOfficeOnboardingStep("open-shop");
+    useAppStore.getState().setIsFurnitureShopOpen(true);
+
+    expect(useAppStore.getState().isOfficeOnboardingVisible).toBe(true);
+    expect(useAppStore.getState().officeOnboardingStep).toBe("open-shop");
+    expect(useAppStore.getState().isFurnitureShopOpen).toBe(true);
+  });
 });

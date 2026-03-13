@@ -17,6 +17,7 @@ export interface SpeedDialItem {
     color?: string;
     disabled?: boolean;
     component?: 'button' | React.ReactNode;
+    buttonClassName?: string;
 }
 
 interface SpeedDialProps {
@@ -28,6 +29,8 @@ interface SpeedDialProps {
     className?: string;
     positioning?: 'fixed' | 'absolute';
     tooltipDirection?: 'left' | 'right';
+    triggerClassName?: string;
+    forceOpen?: boolean;
 }
 
 export function SpeedDial({
@@ -39,8 +42,11 @@ export function SpeedDial({
     className,
     positioning = 'fixed',
     tooltipDirection,
+    triggerClassName,
+    forceOpen = false,
 }: SpeedDialProps) {
     const [isOpen, setIsOpen] = useState(false);
+    const menuOpen = forceOpen || isOpen;
 
     // Calculate position classes
     const positionClasses = {
@@ -159,16 +165,17 @@ export function SpeedDial({
                         className={cn(
                             "h-12 w-12 rounded-full shadow-lg transition-all duration-200",
                             triggerColor,
-                            isOpen && "rotate-45"
+                            menuOpen && "rotate-45",
+                            triggerClassName,
                         )}
                     >
-                        {isOpen ? <X className="h-5 w-5" /> : <TriggerIcon className="h-5 w-5" />}
+                        {menuOpen ? <X className="h-5 w-5" /> : <TriggerIcon className="h-5 w-5" />}
                     </Button>
                 </motion.div>
 
                 {/* Notification Badge for total items */}
                 <AnimatePresence>
-                    {totalBadgeCount > 0 && !isOpen && (
+                    {totalBadgeCount > 0 && !menuOpen && (
                         <motion.div
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
@@ -187,7 +194,7 @@ export function SpeedDial({
 
                 {/* Speed Dial Items */}
                 <AnimatePresence>
-                    {isOpen && (
+                    {menuOpen && (
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -228,7 +235,8 @@ export function SpeedDial({
                                                         className={cn(
                                                             "h-10 w-10 rounded-full shadow-lg transition-all duration-200",
                                                             item.color || "bg-primary hover:bg-primary/90 text-primary-foreground",
-                                                            item.disabled && "opacity-50 cursor-not-allowed"
+                                                            item.disabled && "opacity-50 cursor-not-allowed",
+                                                            item.buttonClassName,
                                                         )}
                                                     >
                                                         <item.icon className="h-4 w-4" />
@@ -296,4 +304,3 @@ export function SpeedDial({
         </div>
     );
 }
-

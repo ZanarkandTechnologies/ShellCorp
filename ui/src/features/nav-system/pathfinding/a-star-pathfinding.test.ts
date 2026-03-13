@@ -16,6 +16,18 @@ describe("a-star pathfinding initialization", () => {
     expect(pathfinding.isGridInitialized()).toBe(true);
   });
 
+  it("supports rectangular footprints", async () => {
+    const pathfinding = await import("./a-star-pathfinding");
+
+    pathfinding.initializeGrid({ width: 12, depth: 8 }, []);
+    const grid = pathfinding.getGridData();
+
+    expect(grid.floorWidth).toBe(12);
+    expect(grid.floorDepth).toBe(8);
+    expect(grid.gridWidth).toBe(24);
+    expect(grid.gridDepth).toBe(16);
+  });
+
   it("warns only once before the grid is initialized", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const pathfinding = await import("./a-star-pathfinding");

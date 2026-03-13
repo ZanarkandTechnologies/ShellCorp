@@ -1,251 +1,180 @@
 /**
  * OFFICE ROOM SHELL
  * =================
- * Floor, walls, and optional room features (carpet, windows, door, paintings).
- * Appearance driven by roomAppearance (floor type/color, wall color, toggles).
+ * Tile-based floor and auto-wall geometry for the office container.
+ *
+ * KEY CONCEPTS:
+ * - Room chrome is presentation-only and derives from the persisted office layout mask.
+ * - Builder mode should favor readability over decoration, so the floor pattern is intentionally muted while editing.
+ *
+ * USAGE:
+ * - Render inside `SceneContents` and pass the floor ref plus background click handler.
+ *
+ * MEMORY REFERENCES:
+ * - MEM-0143
+ * - MEM-0165
  */
 
+import { useMemo } from "react";
 import { Box } from "@react-three/drei";
-import {
-  FLOOR_SIZE,
-  HALF_FLOOR,
-  WALL_HEIGHT,
-  WALL_THICKNESS,
-} from "@/constants";
+import * as THREE from "three";
+import { WALL_HEIGHT } from "@/constants";
 import type { getOfficeTheme } from "@/config/office-theme";
 import type { ThreeEvent } from "@react-three/fiber";
-import type * as THREE from "three";
+import { getFloorPatternPreset, getWallColorPreset } from "@/lib/office-decor";
+import {
+  getOfficeLayoutBounds,
+  getOfficeLayoutTileSet,
+  getOfficeLayoutWallSegments,
+  parseOfficeLayoutTileKey,
+  type OfficeLayoutModel,
+} from "@/lib/office-layout";
+import type { OfficeFootprint } from "@/lib/office-footprint";
+import type { OfficeSettingsModel } from "@/lib/openclaw-types";
+import type { OfficeSceneViewSettings } from "./view-profile";
 
-export type RoomAppearance = {
-  floorType: "wood" | "tile" | "concrete";
-  floorColor: string;
-  wallColor: string;
-  windows: boolean;
-  paintings: boolean;
-  door: boolean;
-  carpet: boolean;
-  carpetColor: string;
-};
+function getWallVisibility(settings: OfficeSceneViewSettings): {
+  showNorth: boolean;
+  showSouth: boolean;
+  showWest: boolean;
+  showEast: boolean;
+} {
+  if (settings.viewProfile !== "fixed_2_5d") {
+    return { showNorth: true, showSouth: true, showWest: true, showEast: true };
+  }
 
-function wallOpacityFromDistance(distance: number): number {
-  const dMin = 8;
-  const dMax = 28;
-  if (distance <= dMin) return 0.08;
-  if (distance >= dMax) return 1;
-  return 0.08 + (1 - 0.08) * ((distance - dMin) / (dMax - dMin));
-}
-
-function floorRoughness(floorType: RoomAppearance["floorType"]): number {
-  switch (floorType) {
-    case "wood":
-      return 0.75;
-    case "tile":
-      return 0.35;
-    case "concrete":
-      return 0.85;
+  switch (settings.cameraOrientation) {
+    case "south_west":
+      return { showNorth: true, showSouth: false, showWest: false, showEast: true };
+    case "north_east":
+      return { showNorth: false, showSouth: true, showWest: true, showEast: false };
+    case "north_west":
+      return { showNorth: false, showSouth: true, showWest: false, showEast: true };
+    case "south_east":
     default:
-      return 0.7;
+      return { showNorth: true, showSouth: false, showWest: true, showEast: false };
   }
 }
 
-function floorMetalness(floorType: RoomAppearance["floorType"]): number {
-  switch (floorType) {
-    case "tile":
-      return 0.08;
-    default:
-      return 0.02;
+function resolveFloorTileColor(
+  patternId: OfficeSettingsModel["decor"]["floorPatternId"],
+  x: number,
+  z: number,
+  sceneBuilderMode: boolean,
+): string {
+  if (sceneBuilderMode) return "#d9ddd8";
+  const preset = getFloorPatternPreset(patternId);
+  const [base, accent, line] = preset.colors;
+  if (patternId === "sandstone_tiles") {
+    return (x + z) % 2 === 0 ? accent : base;
   }
+  if (patternId === "graphite_grid") {
+    return x % 3 === 0 || z % 3 === 0 ? line : accent;
+  }
+  return z % 2 === 0 ? accent : base;
 }
 
 export function OfficeRoomShell(props: {
   floorRef: React.RefObject<THREE.Mesh | null>;
+  officeFootprint: OfficeFootprint;
+  officeLayout: OfficeLayoutModel;
+  officeDecorSettings: OfficeSettingsModel["decor"];
+  officeViewSettings: OfficeSceneViewSettings;
   officeTheme: ReturnType<typeof getOfficeTheme>;
+  sceneBuilderMode: boolean;
   onBackgroundClick: (event: ThreeEvent<MouseEvent>) => void;
-  cameraDistance?: number;
-  roomAppearance: RoomAppearance;
 }): JSX.Element {
   const {
     floorRef,
+    officeLayout,
+    officeDecorSettings,
+    officeViewSettings,
     officeTheme,
+    sceneBuilderMode,
     onBackgroundClick,
-    cameraDistance = 35,
-    roomAppearance: room,
   } = props;
-  const wallOpacity = wallOpacityFromDistance(cameraDistance);
+
+  const bounds = useMemo(() => getOfficeLayoutBounds(officeLayout), [officeLayout]);
+  const tileSet = useMemo(() => getOfficeLayoutTileSet(officeLayout), [officeLayout]);
+  const wallSegments = useMemo(() => getOfficeLayoutWallSegments(officeLayout), [officeLayout]);
+  const wallColor = getWallColorPreset(officeDecorSettings.wallColorId).color;
+  const wallOpacity =
+    sceneBuilderMode && officeViewSettings.viewProfile !== "fixed_2_5d"
+      ? 0.22
+      : officeViewSettings.viewProfile === "fixed_2_5d"
+        ? 0.96
+        : 1;
+  const { showNorth, showSouth, showWest, showEast } = getWallVisibility(officeViewSettings);
 
   return (
     <>
-      {/* Main floor */}
-      <Box
+      <mesh
         ref={floorRef}
-        args={[FLOOR_SIZE, WALL_THICKNESS, FLOOR_SIZE]}
-        position={[0, -WALL_THICKNESS / 2, 0]}
+        position={[bounds.centerX, -0.02, bounds.centerZ]}
+        rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
         name="floor"
         onClick={onBackgroundClick}
       >
-        <meshStandardMaterial
-          color={room.floorColor}
-          roughness={floorRoughness(room.floorType)}
-          metalness={floorMetalness(room.floorType)}
-        />
-      </Box>
+        <planeGeometry args={[bounds.width, bounds.depth]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
 
-      {/* Optional carpet */}
-      {room.carpet && (
-        <Box
-          args={[FLOOR_SIZE * 0.6, 0.005, FLOOR_SIZE * 0.5]}
-          position={[0, 0.003, 0]}
-          receiveShadow
-          name="carpet"
-          onClick={onBackgroundClick}
-        >
-          <meshStandardMaterial
-            color={room.carpetColor}
-            roughness={0.92}
-            metalness={0}
-          />
-        </Box>
-      )}
-
-      {/* Back wall */}
-      <Box
-        args={[FLOOR_SIZE, WALL_HEIGHT, WALL_THICKNESS]}
-        position={[0, WALL_HEIGHT / 2, -HALF_FLOOR]}
-        castShadow
-        receiveShadow
-        name="wall-back"
-        onClick={onBackgroundClick}
-      >
-        <meshStandardMaterial
-          color={room.wallColor}
-          transparent
-          opacity={wallOpacity}
-          roughness={0.8}
-          metalness={0.02}
-        />
-      </Box>
-      {/* Windows on back wall */}
-      {room.windows && (
-        <>
+      {[...tileSet].map((tileKey) => {
+        const tile = parseOfficeLayoutTileKey(tileKey);
+        if (!tile) return null;
+        return (
           <Box
-            args={[1.4, 1.2, 0.02]}
-            position={[-2, WALL_HEIGHT / 2 + 0.1, -HALF_FLOOR - 0.012]}
-            castShadow
+            key={tileKey}
+            args={[1, 0.08, 1]}
+            position={[tile.x, -0.04, tile.z]}
             receiveShadow
+            name={`floor-tile-${tileKey}`}
+            onClick={onBackgroundClick}
           >
             <meshStandardMaterial
-              color="#b0d4e8"
-              transparent
-              opacity={0.5}
-              roughness={0.1}
-              metalness={0.05}
+              color={resolveFloorTileColor(
+                officeDecorSettings.floorPatternId,
+                tile.x,
+                tile.z,
+                sceneBuilderMode,
+              )}
+              roughness={0.9}
+              metalness={0.03}
             />
           </Box>
+        );
+      })}
+
+      {wallSegments
+        .filter((segment) => {
+          if (segment.id.endsWith(":north")) return showNorth;
+          if (segment.id.endsWith(":south")) return showSouth;
+          if (segment.id.endsWith(":west")) return showWest;
+          if (segment.id.endsWith(":east")) return showEast;
+          return true;
+        })
+        .map((segment) => (
           <Box
-            args={[1.4, 1.2, 0.02]}
-            position={[2, WALL_HEIGHT / 2 + 0.1, -HALF_FLOOR - 0.012]}
+            key={segment.id}
+            args={[segment.width, WALL_HEIGHT, segment.depth]}
+            position={segment.position}
+            rotation={segment.rotation}
             castShadow
             receiveShadow
+            name={`wall-${segment.id}`}
+            onClick={onBackgroundClick}
           >
             <meshStandardMaterial
-              color="#b0d4e8"
+              color={wallColor}
+              emissive={sceneBuilderMode ? officeTheme.scene.floor : "#000000"}
+              emissiveIntensity={sceneBuilderMode ? 0.05 : 0}
               transparent
-              opacity={0.5}
-              roughness={0.1}
-              metalness={0.05}
+              opacity={wallOpacity}
             />
           </Box>
-        </>
-      )}
-
-      {/* Front wall (with optional door) */}
-      <Box
-        args={[FLOOR_SIZE, WALL_HEIGHT, WALL_THICKNESS]}
-        position={[0, WALL_HEIGHT / 2, HALF_FLOOR]}
-        castShadow
-        receiveShadow
-        name="wall-front"
-        onClick={onBackgroundClick}
-      >
-        <meshStandardMaterial
-          color={room.wallColor}
-          transparent
-          opacity={wallOpacity}
-          roughness={0.8}
-          metalness={0.02}
-        />
-      </Box>
-      {room.door && (
-        <Box
-          args={[1.0, 2.0, 0.06]}
-          position={[0, 0.25, HALF_FLOOR + 0.04]}
-          castShadow
-          receiveShadow
-        >
-          <meshStandardMaterial
-            color="#5c4a3a"
-            roughness={0.7}
-            metalness={0.05}
-          />
-        </Box>
-      )}
-
-      {/* Left wall */}
-      <Box
-        args={[WALL_THICKNESS, WALL_HEIGHT, FLOOR_SIZE + WALL_THICKNESS]}
-        position={[-HALF_FLOOR, WALL_HEIGHT / 2, 0]}
-        castShadow
-        receiveShadow
-        name="wall-left"
-        onClick={onBackgroundClick}
-      >
-        <meshStandardMaterial
-          color={room.wallColor}
-          transparent
-          opacity={wallOpacity}
-          roughness={0.8}
-          metalness={0.02}
-        />
-      </Box>
-      {room.paintings && (
-        <Box
-          args={[0.6, 0.5, 0.03]}
-          position={[-HALF_FLOOR - 0.016, WALL_HEIGHT / 2 + 0.1, 0]}
-          castShadow
-          receiveShadow
-        >
-          <meshStandardMaterial color="#2c2c2c" roughness={0.6} metalness={0} />
-        </Box>
-      )}
-
-      {/* Right wall */}
-      <Box
-        args={[WALL_THICKNESS, WALL_HEIGHT, FLOOR_SIZE + WALL_THICKNESS]}
-        position={[HALF_FLOOR, WALL_HEIGHT / 2, 0]}
-        castShadow
-        receiveShadow
-        name="wall-right"
-        onClick={onBackgroundClick}
-      >
-        <meshStandardMaterial
-          color={room.wallColor}
-          transparent
-          opacity={wallOpacity}
-          roughness={0.8}
-          metalness={0.02}
-        />
-      </Box>
-      {room.paintings && (
-        <Box
-          args={[0.6, 0.5, 0.03]}
-          position={[HALF_FLOOR + 0.016, WALL_HEIGHT / 2 + 0.1, 0]}
-          castShadow
-          receiveShadow
-        >
-          <meshStandardMaterial color="#2c2c2c" roughness={0.6} metalness={0} />
-        </Box>
-      )}
+        ))}
     </>
   );
 }
+

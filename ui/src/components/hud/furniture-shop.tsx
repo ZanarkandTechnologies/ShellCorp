@@ -23,7 +23,9 @@
  */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -31,36 +33,50 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { useOfficeDataContext } from "@/providers/office-data-provider";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { usePlacementSystem } from "@/features/office-system/systems/placement-system";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { MeshAssetModel } from "@/lib/openclaw-types";
-import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { usePlacementSystem } from "@/features/office-system/systems/placement-system";
 import {
-  Store,
-  Box,
-  CloudDownload,
-  Monitor,
-  Download,
-  Package,
-  Sofa,
-  Library,
-  Briefcase,
-  Leaf,
-  Lamp as LampIcon,
-  Droplets,
-  Square,
-  RectangleHorizontal,
-  LayoutPanelTop,
-} from "lucide-react";
+  getBackgroundPreset,
+  getPaintingPreset,
+  getWallArtSlots,
+  OFFICE_BACKGROUND_PRESETS,
+  OFFICE_DECOR_PACKS,
+  OFFICE_FLOOR_PATTERN_PRESETS,
+  OFFICE_PAINTING_PRESETS,
+  OFFICE_WALL_COLOR_PRESETS,
+  type OfficeBackgroundId,
+  type OfficeFloorPatternId,
+  type OfficePaintingPresetId,
+  type OfficeWallColorId,
+  type WallArtSlotId,
+} from "@/lib/office-decor";
+import type { MeshAssetModel } from "@/lib/openclaw-types";
 import { cn } from "@/lib/utils";
+import { useOfficeDataContext } from "@/providers/office-data-provider";
+import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { getGameObjectDefinition } from "@/features/office-system/components/object-registry";
+import {
+  Box,
+  Briefcase,
+  CloudDownload,
+  Download,
+  Droplets,
+  Lamp as LampIcon,
+  LayoutPanelTop,
+  Leaf,
+  Library,
+  Monitor,
+  Package,
+  Palette,
+  RectangleHorizontal,
+  Sofa,
+  Square,
+  Store,
+} from "lucide-react";
 
-type TabId = "catalog" | "custom" | "import";
+type TabId = "catalog" | "decor" | "custom" | "import";
 
 interface BuiltInCatalogItem {
   id: string;
@@ -163,7 +179,8 @@ interface FurnitureShopProps {
 }
 
 export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
-  const { company } = useOfficeDataContext();
+  const { company, officeSettings, officeObjects, refresh, applyOfficeSettings } =
+    useOfficeDataContext();
   const { startPlacement } = usePlacementSystem();
   const adapter = useOpenClawAdapter();
 
@@ -177,6 +194,17 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
   const [isSavingDir, setIsSavingDir] = useState(false);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [meshError, setMeshError] = useState<string | null>(null);
+  const [decorStatus, setDecorStatus] = useState<string | null>(null);
+  const [isSavingDecor, setIsSavingDecor] = useState(false);
+  const [draftFloorPatternId, setDraftFloorPatternId] = useState<OfficeFloorPatternId>(
+    officeSettings.decor.floorPatternId,
+  );
+  const [draftWallColorId, setDraftWallColorId] = useState<OfficeWallColorId>(
+    officeSettings.decor.wallColorId,
+  );
+  const [draftBackgroundId, setDraftBackgroundId] = useState<OfficeBackgroundId>(
+    officeSettings.decor.backgroundId,
+  );
 
   const hasMeshAssets = meshAssets.length > 0;
 
@@ -184,6 +212,24 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     () => [...meshAssets].sort((a, b) => b.addedAt - a.addedAt),
     [meshAssets],
   );
+  const wallArtSlots = useMemo(
+    () => getWallArtSlots(officeSettings.officeFootprint),
+    [officeSettings.officeFootprint],
+  );
+  const wallArtBySlotId = useMemo(() => {
+    const next = new Map<WallArtSlotId, (typeof officeObjects)[number]>();
+    for (const object of officeObjects) {
+      if (object.meshType !== "wall-art") continue;
+      const slotId =
+        typeof object.metadata?.wallSlotId === "string"
+          ? (object.metadata.wallSlotId as WallArtSlotId)
+          : null;
+      if (slotId) {
+        next.set(slotId, object);
+      }
+    }
+    return next;
+  }, [officeObjects]);
 
   const getAssetPathBase = (publicPath: string): string => publicPath.replace(/\.(glb|gltf)$/i, "");
 
@@ -196,7 +242,7 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   };
 
-  const loadMeshAssets = async () => {
+  const loadMeshAssets = useCallback(async () => {
     setIsLoadingAssets(true);
     setMeshError(null);
     try {
@@ -211,18 +257,31 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     } finally {
       setIsLoadingAssets(false);
     }
-  };
+  }, [adapter]);
 
   useEffect(() => {
     if (!isOpen) return;
     void loadMeshAssets();
-  }, [isOpen]);
+  }, [isOpen, loadMeshAssets]);
 
   useEffect(() => {
     if (!isOpen) {
       setFailedPreviewByAssetId({});
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setDraftFloorPatternId(officeSettings.decor.floorPatternId);
+    setDraftWallColorId(officeSettings.decor.wallColorId);
+    setDraftBackgroundId(officeSettings.decor.backgroundId);
+    setDecorStatus(null);
+  }, [
+    isOpen,
+    officeSettings.decor.backgroundId,
+    officeSettings.decor.floorPatternId,
+    officeSettings.decor.wallColorId,
+  ]);
 
   const handleSaveMeshDir = async () => {
     const nextDir = meshAssetDir.trim();
@@ -232,7 +291,8 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     }
     setIsSavingDir(true);
     setMeshError(null);
-    const result = await adapter.saveOfficeSettings({ meshAssetDir: nextDir });
+    const currentSettings = await adapter.getOfficeSettings();
+    const result = await adapter.saveOfficeSettings({ ...currentSettings, meshAssetDir: nextDir });
     setIsSavingDir(false);
     if (!result.ok) {
       setMeshError(result.error ?? "Failed to save mesh folder setting.");
@@ -262,6 +322,91 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     setMeshUrlInput("");
     setMeshLabelInput("");
     await loadMeshAssets();
+  };
+
+  const handleApplyDecor = async () => {
+    setIsSavingDecor(true);
+    setDecorStatus(null);
+    try {
+      const result = await adapter.saveOfficeSettings({
+        ...officeSettings,
+        decor: {
+          floorPatternId: draftFloorPatternId,
+          wallColorId: draftWallColorId,
+          backgroundId: draftBackgroundId,
+        },
+      });
+      if (!result.ok) {
+        setDecorStatus(result.error ?? "Failed to save office decor.");
+        return;
+      }
+      applyOfficeSettings(result.settings);
+      setDecorStatus("Decoration view applied.");
+      onOpenChange(false);
+      await refresh();
+    } catch (error) {
+      setDecorStatus(error instanceof Error ? error.message : "Failed to save office decor.");
+    } finally {
+      setIsSavingDecor(false);
+    }
+  };
+
+  const handlePlacePainting = async (
+    slotId: WallArtSlotId,
+    paintingPresetId: OfficePaintingPresetId,
+  ) => {
+    const slot = wallArtSlots.find((entry) => entry.id === slotId);
+    if (!slot) return;
+    setIsSavingDecor(true);
+    setDecorStatus(null);
+    try {
+      const currentObjects = await adapter.getOfficeObjects();
+      const preset = getPaintingPreset(paintingPresetId);
+      const result = await adapter.upsertOfficeObject(
+        {
+          id: `wall-art-${slotId}`,
+          identifier: `wall-art-${slotId}`,
+          meshType: "wall-art",
+          position: slot.position,
+          rotation: slot.rotation,
+          metadata: {
+            wallSlotId: slotId,
+            paintingPresetId,
+            displayName: preset.label,
+          },
+        },
+        { currentObjects },
+      );
+      if (!result.ok) {
+        setDecorStatus(result.error ?? "Failed to place painting.");
+        return;
+      }
+      await refresh();
+      setDecorStatus(`${preset.label} placed on ${slot.label}.`);
+    } catch (error) {
+      setDecorStatus(error instanceof Error ? error.message : "Failed to place painting.");
+    } finally {
+      setIsSavingDecor(false);
+    }
+  };
+
+  const handleClearPainting = async (slotId: WallArtSlotId) => {
+    setIsSavingDecor(true);
+    setDecorStatus(null);
+    try {
+      const currentObjects = await adapter.getOfficeObjects();
+      const result = await adapter.deleteOfficeObject(`wall-art-${slotId}`, { currentObjects });
+      if (!result.ok) {
+        setDecorStatus(result.error ?? "Failed to clear painting.");
+        return;
+      }
+      await refresh();
+      setDecorStatus("Painting removed.");
+    } catch (error) {
+      setDecorStatus(error instanceof Error ? error.message : "Failed to clear painting.");
+    } finally {
+      setIsSavingDecor(false);
+    }
   };
 
   const startCustomMeshPlacement = (asset: MeshAssetModel) => {
@@ -514,13 +659,261 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     </div>
   );
 
+  const renderDecor = () => (
+    <div className="space-y-8 max-w-5xl">
+      <div className="rounded-lg border bg-card p-5">
+        <h3 className="text-lg font-semibold">Office Decor</h3>
+        <p className="text-sm text-muted-foreground">
+          Keep the MVP simple: choose a floor pattern, choose a wall color, and snap paintings to a
+          few curated wall slots.
+        </p>
+        {decorStatus ? <p className="mt-3 text-sm text-muted-foreground">{decorStatus}</p> : null}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button onClick={() => void handleApplyDecor()} disabled={isSavingDecor}>
+            {isSavingDecor ? "Applying..." : "Apply View"}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={isSavingDecor}
+            onClick={() => {
+              setDraftFloorPatternId(officeSettings.decor.floorPatternId);
+              setDraftWallColorId(officeSettings.decor.wallColorId);
+              setDraftBackgroundId(officeSettings.decor.backgroundId);
+              setDecorStatus("Decoration draft reset.");
+            }}
+          >
+            Reset Draft
+          </Button>
+        </div>
+      </div>
+
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-base font-semibold">Decor Packs</h3>
+          <p className="text-sm text-muted-foreground">
+            Cohesive floor, wall, and void-background pairings that look better together than the
+            raw presets.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {OFFICE_DECOR_PACKS.map((pack) => (
+            <Card key={pack.id} className="flex flex-col overflow-hidden">
+              <div className="h-28 border-b" style={{ backgroundImage: pack.preview }} />
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">{pack.label}</CardTitle>
+                <p className="text-xs text-muted-foreground">{pack.description}</p>
+              </CardHeader>
+              <CardContent className="pt-0 pb-4 text-xs text-muted-foreground">
+                <p>
+                  Floor:{" "}
+                  {
+                    OFFICE_FLOOR_PATTERN_PRESETS.find((preset) => preset.id === pack.floorPatternId)
+                      ?.label
+                  }
+                </p>
+                <p>
+                  Walls:{" "}
+                  {
+                    OFFICE_WALL_COLOR_PRESETS.find((preset) => preset.id === pack.wallColorId)
+                      ?.label
+                  }
+                </p>
+                <p>Background: {getBackgroundPreset(pack.backgroundId).label}</p>
+              </CardContent>
+              <CardFooter className="pt-0">
+                <Button
+                  className="w-full"
+                  variant={
+                    draftFloorPatternId === pack.floorPatternId &&
+                    draftWallColorId === pack.wallColorId &&
+                    draftBackgroundId === pack.backgroundId
+                      ? "secondary"
+                      : "outline"
+                  }
+                  disabled={isSavingDecor}
+                  onClick={() => {
+                    setDraftFloorPatternId(pack.floorPatternId);
+                    setDraftWallColorId(pack.wallColorId);
+                    setDraftBackgroundId(pack.backgroundId);
+                    setDecorStatus(`${pack.label} loaded into the draft.`);
+                  }}
+                >
+                  {draftFloorPatternId === pack.floorPatternId &&
+                  draftWallColorId === pack.wallColorId &&
+                  draftBackgroundId === pack.backgroundId
+                    ? "Selected"
+                    : "Use Pack"}
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-base font-semibold">Floor Pattern</h3>
+          <p className="text-sm text-muted-foreground">
+            A few bundled options for the office floor.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {OFFICE_FLOOR_PATTERN_PRESETS.map((preset) => (
+            <Card key={preset.id} className="flex flex-col">
+              <div className="h-24 border-b" style={{ backgroundImage: preset.swatch }} />
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">{preset.label}</CardTitle>
+                <p className="text-xs text-muted-foreground">{preset.description}</p>
+              </CardHeader>
+              <CardFooter className="pt-0">
+                <Button
+                  className="w-full"
+                  variant={draftFloorPatternId === preset.id ? "secondary" : "outline"}
+                  disabled={isSavingDecor}
+                  onClick={() => setDraftFloorPatternId(preset.id)}
+                >
+                  {draftFloorPatternId === preset.id ? "Selected" : "Choose Pattern"}
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-base font-semibold">Wall Color</h3>
+          <p className="text-sm text-muted-foreground">Keep the walls clean and easy to swap.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {OFFICE_WALL_COLOR_PRESETS.map((preset) => (
+            <Card key={preset.id} className="flex flex-col">
+              <div className="h-20 border-b" style={{ backgroundColor: preset.color }} />
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">{preset.label}</CardTitle>
+                <p className="text-xs text-muted-foreground">{preset.description}</p>
+              </CardHeader>
+              <CardFooter className="pt-0">
+                <Button
+                  className="w-full"
+                  variant={draftWallColorId === preset.id ? "secondary" : "outline"}
+                  disabled={isSavingDecor}
+                  onClick={() => setDraftWallColorId(preset.id)}
+                >
+                  {draftWallColorId === preset.id ? "Selected" : "Choose Color"}
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-base font-semibold">Void Background</h3>
+          <p className="text-sm text-muted-foreground">
+            Set the 3D space backdrop. Each preset includes both a light-mode and dark-mode tone.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+          {OFFICE_BACKGROUND_PRESETS.map((preset) => (
+            <Card key={preset.id} className="flex flex-col">
+              <div className="h-20 border-b" style={{ backgroundImage: preset.swatch }} />
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">{preset.label}</CardTitle>
+                <p className="text-xs text-muted-foreground">{preset.description}</p>
+              </CardHeader>
+              <CardContent className="pt-0 pb-4 text-xs text-muted-foreground">
+                <p>Light: {preset.lightColor}</p>
+                <p>Dark: {preset.darkColor}</p>
+              </CardContent>
+              <CardFooter className="pt-0">
+                <Button
+                  className="w-full"
+                  variant={draftBackgroundId === preset.id ? "secondary" : "outline"}
+                  disabled={isSavingDecor}
+                  onClick={() => setDraftBackgroundId(preset.id)}
+                >
+                  {draftBackgroundId === preset.id ? "Selected" : "Choose Background"}
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-base font-semibold">Wall Paintings</h3>
+          <p className="text-sm text-muted-foreground">
+            Pick one of the bundled paintings and assign it to a fixed wall slot.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {wallArtSlots.map((slot) => {
+            const assignedObject = wallArtBySlotId.get(slot.id);
+            const assignedPresetId =
+              typeof assignedObject?.metadata?.paintingPresetId === "string"
+                ? (assignedObject.metadata.paintingPresetId as OfficePaintingPresetId)
+                : null;
+            const assignedPreset = assignedPresetId ? getPaintingPreset(assignedPresetId) : null;
+
+            return (
+              <Card key={slot.id}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">{slot.label}</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {assignedPreset ? `Current: ${assignedPreset.label}` : "Current: empty"}
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {OFFICE_PAINTING_PRESETS.map((preset) => (
+                      <button
+                        key={`${slot.id}-${preset.id}`}
+                        type="button"
+                        className="rounded-lg border text-left transition hover:border-primary/60 hover:bg-muted/40"
+                        disabled={isSavingDecor}
+                        onClick={() => void handlePlacePainting(slot.id, preset.id)}
+                      >
+                        <div
+                          className="h-20 rounded-t-lg border-b"
+                          style={{
+                            background: `linear-gradient(135deg, ${preset.colors[0]} 0%, ${preset.colors[1]} 55%, ${preset.colors[2]} 100%)`,
+                          }}
+                        />
+                        <div className="p-3">
+                          <p className="text-sm font-medium">{preset.label}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{preset.description}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </CardContent>
+                <CardFooter className="pt-0">
+                  <Button
+                    variant="outline"
+                    disabled={!assignedPreset || isSavingDecor}
+                    onClick={() => void handleClearPainting(slot.id)}
+                  >
+                    Clear Slot
+                  </Button>
+                </CardFooter>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="w-[85vw] max-w-[85vw] h-[85vh] sm:max-w-[85vw] flex flex-col p-0 overflow-hidden gap-0">
         <DialogHeader className="px-6 py-4 border-b shrink-0">
-          <DialogTitle>Furniture & Assets</DialogTitle>
+          <DialogTitle>Decoration</DialogTitle>
           <DialogDescription className="sr-only">
-            Buy furniture and equipment for your office or import custom meshes.
+            Configure office decoration and import custom meshes.
           </DialogDescription>
         </DialogHeader>
 
@@ -533,7 +926,15 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
               onClick={() => setActiveTab("catalog")}
             >
               <Store className="w-4 h-4 mr-2" />
-              Built-in Catalog
+              Furniture
+            </Button>
+            <Button
+              variant={activeTab === "decor" ? "secondary" : "ghost"}
+              className={cn("justify-start", activeTab === "decor" && "bg-muted")}
+              onClick={() => setActiveTab("decor")}
+            >
+              <Palette className="w-4 h-4 mr-2" />
+              Decor
             </Button>
             <Button
               variant={activeTab === "custom" ? "secondary" : "ghost"}
@@ -557,6 +958,7 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
           <ScrollArea className="flex-1 bg-background">
             <div className="p-6">
               {activeTab === "catalog" && renderCatalog()}
+              {activeTab === "decor" && renderDecor()}
               {activeTab === "custom" && renderCustomLibrary()}
               {activeTab === "import" && renderImport()}
             </div>

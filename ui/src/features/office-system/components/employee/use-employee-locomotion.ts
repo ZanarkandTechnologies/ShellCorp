@@ -14,15 +14,12 @@
  * - MEM-0144
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Group } from "three";
 import * as THREE from "three";
 
 import { IDLE_DESTINATIONS, TOTAL_HEIGHT } from "@/constants";
-import type { Id } from "@/lib/entity-types";
-import type { AgentState } from "@/lib/openclaw-types";
-import { getRandomItem } from "@/lib/utils";
 import {
   findPathAStar,
   isGridInitialized,
@@ -31,6 +28,10 @@ import {
   findAvailableDestination,
   releaseEmployeeReservations,
 } from "@/features/nav-system/pathfinding/destination-registry";
+import type { Id } from "@/lib/entity-types";
+import type { AgentState } from "@/lib/openclaw-types";
+import { getRandomItem } from "@/lib/utils";
+import type { EmployeeAnimationMode } from "./employee-motion";
 
 type DebugPathData = {
   originalPath: THREE.Vector3[] | null;
@@ -40,6 +41,9 @@ type DebugPathData = {
 type UseEmployeeLocomotionOptions = {
   id: Id<"employees">;
   position: [number, number, number];
+  activityTargetPosition?: [number, number, number];
+  activityTargetSkillId?: string;
+  activityEffectVariant?: "ghost" | "blink";
   isBusy?: boolean;
   isCEO?: boolean;
   wantsToWander: boolean;
@@ -52,11 +56,15 @@ type UseEmployeeLocomotionResult = {
   debugPathData: DebugPathData;
   debugDeskDecision: string;
   isGoingToDesk: boolean;
+  animationMode: EmployeeAnimationMode;
 };
 
 export function useEmployeeLocomotion({
   id,
   position,
+  activityTargetPosition,
+  activityTargetSkillId,
+  activityEffectVariant,
   isBusy,
   isCEO,
   wantsToWander,
@@ -78,9 +86,11 @@ export function useEmployeeLocomotion({
     remainingPath: null,
   });
   const [debugDeskDecision, setDebugDeskDecision] = useState("");
+  const [animationMode, setAnimationMode] = useState<EmployeeAnimationMode>("idle");
 
   const idleTimerRef = useRef(0);
   const debugPathUpdateRef = useRef(0);
+  const activityTargetRef = useRef<THREE.Vector3 | null>(null);
 
   const movementSpeed = 1.5;
   const arrivalThreshold = 0.1;
@@ -96,6 +106,30 @@ export function useEmployeeLocomotion({
       groupRef.current.position.copy(initialPositionRef.current);
     }
   }, []);
+
+  useEffect(() => {
+    const shouldSnapToTarget =
+      activityEffectVariant === "blink" && Array.isArray(activityTargetPosition);
+    if (!shouldSnapToTarget || !activityTargetPosition) {
+      activityTargetRef.current = null;
+      setCurrentDestination(null);
+      setIsGoingToDesk(false);
+      return;
+    }
+    activityTargetRef.current = new THREE.Vector3(
+      activityTargetPosition[0],
+      TOTAL_HEIGHT / 2,
+      activityTargetPosition[2],
+    );
+    setPath(null);
+    setPathIndex(0);
+    setCurrentDestination(activityTargetRef.current);
+    setIdleState("wandering");
+    setIsGoingToDesk(true);
+    if (groupRef.current) {
+      groupRef.current.position.copy(activityTargetRef.current);
+    }
+  }, [activityEffectVariant, activityTargetPosition]);
 
   const chooseNewIdleDestination = useCallback(() => {
     const currentPos = groupRef.current?.position;
@@ -149,6 +183,7 @@ export function useEmployeeLocomotion({
     let isMoving = false;
 
     const hasHeartbeatState = typeof heartbeatState === "string";
+    const hasActivityTarget = Boolean(activityTargetRef.current);
     const heartbeatRequiresDesk =
       heartbeatState === "running" ||
       heartbeatState === "planning" ||
@@ -156,14 +191,15 @@ export function useEmployeeLocomotion({
       heartbeatState === "blocked" ||
       heartbeatState === "error";
     const shouldBeAtDesk =
+      hasActivityTarget ||
       Boolean(isCEO) ||
       !wantsToWander ||
       (hasHeartbeatState ? heartbeatRequiresDesk : Boolean(isBusy));
 
     if (debugMode) {
-      const nextDecision = `${heartbeatState ?? "none"} -> ${
-        shouldBeAtDesk ? "desk" : "wander"
-      }`;
+      const nextDecision = hasActivityTarget
+        ? `${activityTargetSkillId ?? "skill"} -> object`
+        : `${heartbeatState ?? "none"} -> ${shouldBeAtDesk ? "desk" : "wander"}`;
       setDebugDeskDecision((prev) => (prev === nextDecision ? prev : nextDecision));
     }
 
@@ -172,7 +208,8 @@ export function useEmployeeLocomotion({
       !path &&
       !isGoingToDesk &&
       currentDestination === null &&
-      currentPos.distanceTo(initialPositionRef.current) <= arrivalThreshold
+      currentPos.distanceTo(activityTargetRef.current ?? initialPositionRef.current) <=
+        arrivalThreshold
     ) {
       return;
     }
@@ -183,7 +220,7 @@ export function useEmployeeLocomotion({
       }
       idleTimerRef.current = 0;
 
-      const deskPosition = initialPositionRef.current;
+      const deskPosition = activityTargetRef.current ?? initialPositionRef.current;
       const distanceToDesk = currentPos.distanceTo(deskPosition);
 
       if (distanceToDesk > arrivalThreshold) {
@@ -261,6 +298,9 @@ export function useEmployeeLocomotion({
       }
     }
 
+    const nextAnimationMode = isMoving ? "walking" : shouldBeAtDesk ? "working" : "idle";
+    setAnimationMode((prev) => (prev === nextAnimationMode ? prev : nextAnimationMode));
+
     if (debugMode && path && path.length > 0) {
       const now = performance.now();
       if (now - debugPathUpdateRef.current > 500) {
@@ -288,5 +328,5 @@ export function useEmployeeLocomotion({
     }
   }, [debugMode]);
 
-  return { groupRef, debugPathData, debugDeskDecision, isGoingToDesk };
+  return { groupRef, debugPathData, debugDeskDecision, isGoingToDesk, animationMode };
 }

@@ -26,10 +26,12 @@ describe("status-contract", () => {
         label: "planning",
         detail: "Reviewing top priority ticket",
         state: "planning",
+        skillId: "world-monitor",
       },
     );
     expect(next.state).toBe("planning");
     expect(next.statusText).toBe("Reviewing top priority ticket");
+    expect(next.currentSkillId).toBe("world-monitor");
     expect(next.bubbles[0]?.label).toBe("planning");
   });
 
@@ -40,10 +42,12 @@ describe("status-contract", () => {
         eventType: "skill_start",
         label: "distribute/affiliate-video-poster",
         detail: "Posting short video",
+        skillId: "distribute/affiliate-video-poster",
       },
     );
     expect(running.state).toBe("executing");
     expect(running.statusText).toContain("Posting");
+    expect(running.currentSkillId).toBe("distribute/affiliate-video-poster");
     expect(running.bubbles.some((bubble) => bubble.label.includes("distribute"))).toBe(true);
 
     const finished = reduceStatus(running, {
@@ -53,6 +57,7 @@ describe("status-contract", () => {
     });
     expect(finished.state).toBe("planning");
     expect(finished.statusText).toContain("finished");
+    expect(finished.currentSkillId).toBeUndefined();
   });
 
   it("maps activity_log transitions into live state", () => {
@@ -63,10 +68,12 @@ describe("status-contract", () => {
         activityType: "planning",
         label: "planning",
         detail: "Planning next move",
+        skillId: "world-monitor",
       },
     );
     expect(planning.state).toBe("planning");
     expect(planning.statusText).toBe("Planning next move");
+    expect(planning.currentSkillId).toBe("world-monitor");
 
     const blocked = reduceStatus(planning, {
       eventType: "activity_log",
@@ -85,5 +92,6 @@ describe("status-contract", () => {
     });
     expect(finished.state).toBe("done");
     expect(finished.statusText).toBe("Turn complete");
+    expect(finished.currentSkillId).toBeUndefined();
   });
 });

@@ -1,230 +1,173 @@
 # Shell Company
 
-Gamified control center UI for OpenClaw multi-agent operations.
+Minimal AI office for OpenClaw teams.
 
-## Start Here
+ShellCorp keeps OpenClaw as the runtime source of truth and adds a founder-facing office for one job first: ask the CEO to form a team, review the proposal, approve it, and then manage the resulting company from one place.
 
-Read in this order:
+## Repo Map
 
-1. `docs/getting-started.md`
-2. `docs/progress.md`
-3. `docs/openclaw-adapter-contracts.md` (UI adapter contract reference)
-4. `docs/prd.md`
-5. `docs/office-furniture.md` (office furniture storage, move/remove, and adding more)
+The repo is split into a few main surfaces:
 
-## Multi-Agent Heartbeat Proof Loop
+- `cli/`: the ShellCorp CLI, including onboarding, team management, office commands, and doctor checks
+- `convex/`: the Convex backend contracts, HTTP endpoints, and event/status persistence
+- `extensions/`: in-repo OpenClaw extensions, starting with the Notion plugin
+- `skills/`: agent-facing skills and workflow/tooling packages used by the ShellCorp platform
+- `ui/`: the Vite/React office UI and its local state bridge
+- `templates/`: bootstrap files for OpenClaw config, sidecars, and workspace scaffolding
 
-Use this to prove every agent can heartbeat and write status via CLI.
+Canonical local state lives under `~/.openclaw`, especially:
 
-## SC11 Demo In 7 Commands
+- `~/.openclaw/openclaw.json`
+- `~/.openclaw/company.json`
+- `~/.openclaw/office-objects.json`
 
-Use this flow to demo an affiliate team with equipped skills, seeded pipeline tasks, and visible activity:
+## What To Demo
 
-```bash
-# 1) Create Buffalos AI affiliate team
-npm run shell -- team create \
-  --name "Buffalos AI" \
-  --description "Affiliate marketing demo team" \
-  --goal "Run affiliate content loop" \
-  --business-type affiliate_marketing
+The smallest convincing ShellCorp demo is not a huge pre-populated office. It is a tight loop:
 
-# 2) Set SC11 slot skills
-npm run shell -- team business set-all \
-  --team-id team-proj-buffalos-ai \
-  --business-type affiliate_marketing \
-  --measure-skill-id amazon-affiliate-metrics \
-  --execute-skill-id video-generator \
-  --distribute-skill-id tiktok-poster
+1. Install the ShellCorp CLI.
+2. Run onboarding.
+3. Ask the CEO to form a team for an idea.
+4. Review the proposal in the office.
+5. Approve it.
+6. Watch the new team appear and start working.
 
-# 3) Preview equip sync
-npm run shell -- team business equip-skills \
-  --team-id team-proj-buffalos-ai \
-  --mode replace_minimum \
-  --dry-run \
-  --json
+For staged demos, use progressive company shapes instead of a large permanent roster:
 
-# 4) Apply equip sync
-npm run shell -- team business equip-skills \
-  --team-id team-proj-buffalos-ai \
-  --mode replace_minimum \
-  --json
+- `1-claw company`: one focused executor team
+- `2-claw company`: executor plus operator/reviewer split
+- `3-claw company`: executor plus operator plus growth/analysis split
 
-# 5) Sync selected skills into each business agent workspace
-npm run shell -- team business sync-workspace-skills \
-  --team-id team-proj-buffalos-ai \
-  --json
+All of those should be created through the CEO + team-formation workflow, not hardcoded as static office content.
 
-# 6) Generate two lamp promo videos with infsh
-npm run shell -- team business generate-lamp-videos \
-  --team-id team-proj-buffalos-ai \
-  --count 2 \
-  --model google/veo-3-1-fast \
-  --json
+## Quick Start for Users
 
-# 7) Seed demo board/timeline/ledger narrative
-npm run shell -- team business seed-demo --team-id team-proj-buffalos-ai --json
-```
+Prerequisites:
 
-Then open Team Panel for Buffalos AI:
+- Node.js 20+
+- OpenClaw installed locally or on the target machine
+- OpenClaw onboarding completed first on that machine
 
-- `Business` tab shows slot config + Agent Skill Equip Matrix.
-- PM/executor workspaces include synced `skills/` directories for selected business capabilities.
-- `Kanban` shows seeded affiliate pipeline tasks.
-- `Projects` tab can open project-scoped lamp video artefacts under `projects/proj-buffalos-ai/affiliate/videos`.
-- `Timeline`/`Communications` show seeded PM/executor activity breadcrumbs.
-- `Ledger` shows demo revenue/cost entries.
+Important:
 
-### 1) Verify OpenClaw + heartbeat wiring
+- ShellCorp does not replace OpenClaw setup.
+- If OpenClaw has not created `~/.openclaw/openclaw.json` and the main CEO agent `main`, the ShellCorp office will not show the main agent correctly.
 
-```bash
-openclaw --version
-openclaw status
-openclaw hooks list
-```
-
-Expected:
-
-- `Heartbeat` shows a cadence for each agent (for example `3m (...)`), not `disabled`.
-- `shellcorp-status` hook is `ready`.
-
-If non-default agents show `disabled`, add per-agent heartbeat config under `agents.list[].heartbeat` in `~/.openclaw/openclaw.json`.
-
-### 2) Ensure agents have runtime tools
-
-```bash
-openclaw config set tools.profile coding
-openclaw gateway restart
-openclaw config get tools.profile
-```
-
-Expected: `coding`
-
-Without this, agents only get messaging tools and cannot run CLI commands.
-
-### 3) Install ShellCorp CLI command for operator use
-
-From repo root:
+From the repo root:
 
 ```bash
 npm install
 npm link
-shellcorp --version
+npm run shell -- onboarding
+npm run shell -- ui
 ```
 
-Note: the current global `shellcorp` wrapper executes the repo-local CLI via `npm run shell`.
-If the repo dependencies are missing, it will print an actionable error telling you to run `npm install`.
+What `shellcorp onboarding` does:
 
-### 4) Run one-command heartbeat smoke test
+- starts with a ShellCorp intro and an OpenClaw-first preflight check
+- creates missing ShellCorp sidecar JSON under `~/.openclaw`
+- creates or updates `~/.openclaw/openclaw.json` with the minimum ShellCorp wiring
+- adds the in-repo Notion plugin load path and default `notion-shell` entry
+- offers to install the global `shellcorp` CLI alias with `npm link`
+- asks for a basic office style preset
+- shows a staged bootstrap flow so you can see each setup phase complete
+- generates `ui/.env.local` with safe `VITE_*` values
+- copies Convex URL from the repo-root `.env.local` when available
+- runs doctor checks and prints the next steps
+- offers to launch the UI immediately so you can continue onboarding in-app
+
+After that:
+
+1. Open the UI.
+2. Complete the in-app onboarding flow.
+3. Ask the CEO agent to create your first team proposal.
+4. Approve the proposal in User Tasks / the CEO workbench flow.
+5. Inspect the created team in the office and board surfaces.
+6. Use `shellcorp office decor ...` only after the core founder workflow is working.
+
+Notes:
+
+- If you already ran `npx convex dev`, `shellcorp onboarding` will reuse the Convex URL from the repo-root `.env.local`.
+- If you have a protected gateway, set `VITE_GATEWAY_TOKEN` when prompted or rerun `shellcorp onboarding --gateway-token <token>`.
+- Start the UI with `npm run shell -- ui` from the repo root.
+- `shellcorp onboarding` can run `npm link` for you, or you can run it manually first.
+- In non-interactive flows such as `--yes`, pass `--install-cli` if you want onboarding to run `npm link`.
+
+- Use `shellcorp onboarding --launch-ui` if you want the CLI to jump straight into the UI after bootstrap.
+
+## Minimal Demo Flow
+
+Use this when you want to show the actual office instead of a large fake company:
 
 ```bash
-./scripts/heartbeat-smoke.sh --team-id team-proj-shellcorp-v2
+npm install
+npm link
+npm run shell -- onboarding --launch-ui
+scripts/reset-demo-office.sh --profile ladder
 ```
 
-Expected output:
+Then in the product:
 
-- One line per agent:
-  - `RESULT|<agent-id>|pass|status_and_heartbeat_ok`
-- Final line:
-  - `heartbeat-smoke:ok count=<N>`
-- Exit code `1` if any agent fails marker checks.
+1. Start with only the CEO / founder control loop visible.
+2. Ask the CEO to form a `1-claw` team from a small brief.
+3. Review and approve the proposal.
+4. Show the created team board and activity.
+5. Repeat with a `2-claw` or `3-claw` team to show how ShellCorp scales by forming new teams, not by shipping a cluttered default office.
 
-Override defaults when needed:
+## Quick Start for Developers
+
+From the repo root:
 
 ```bash
-./scripts/heartbeat-smoke.sh \
-  --team-id team-proj-shellcorp-v2 \
-  --convex-url http://127.0.0.1:3211 \
-  --agents "shellcorp-pm shellcorp-builder"
+npm install
+npm link
+npm run shell -- onboarding --yes
+npm run shell -- ui
 ```
 
-### 5) Confirm timeline event landed in ShellCorp
+Validation:
 
 ```bash
-SHELLCORP_CONVEX_SITE_URL=http://127.0.0.1:3211 \
-  npm run shell -- team bot timeline --team-id team-proj-shellcorp-v2 --json
-
+npm run test:once
+npm run typecheck
+npm run build
 ```
 
-Expected:
+Useful commands:
 
-- Timeline includes one or more new `heartbeat_smoke` events from the smoke run.
+- `npm run shell -- onboarding --json`
+- `npm run shell -- onboarding --install-cli`
+- `npm run shell -- onboarding --skip-install-cli`
+- `npm run shell -- onboarding --launch-ui`
+- `npm run shell -- ui`
+- `npm run shell -- office decor docs`
+- `npm run shell -- office decor list`
+- `npm run shell -- office decor pack list`
+- `npm run shell -- office decor floor list`
+- `npm run shell -- office decor wall list`
+- `npm run shell -- office decor background list`
+- `npm run shell -- office decor pack apply clam-cabinet`
+- `npm run shell -- office decor background set midnight_tide`
+- `shellcorp ui`
+- `npm run shell -- doctor team-data --json`
+- `npm run shell -- office doctor --json`
+- `npm run shell -- team list --json`
+- `npm run shell -- team proposal list --json`
+- `npm run shell -- team proposal show --proposal-id <proposalId> --json`
+- `scripts/reset-demo-office.sh --profile minimal`
+- `scripts/reset-demo-office.sh --profile ladder`
 
-Reference: [OpenClaw Multi-Agent Routing](https://docs.openclaw.ai/concepts/multi-agent)
+Developer notes:
 
-## Concept Video
+- The CLI and UI both read ShellCorp sidecars from `~/.openclaw`.
+- The UI reads `VITE_*` values from `ui/.env.local`; backend/private env stays in the repo-root `.env.local`.
+- The global `shellcorp` alias comes from the package `bin` entry plus `npm link`.
 
-Original concept demo of what an AI office could look like:
+- `templates/` is only for bootstrap and scaffolding. It is not the live source of truth after onboarding runs.
 
-[Watch on Loom](https://www.loom.com/share/2252d33ca4f14d5a8a4671c30746c756)
+## More Docs
 
-## Job To Be Done
-
-When a small team runs many autonomous agents on one VPS, they need a single office control center that makes sessions, teams, memory, skills, and autonomy loops easy to inspect and steer without rebuilding the runtime.
-
-## Product Direction
-
-ShellCorp is UI-first:
-
-- OpenClaw owns runtime, sessions, routing, and plugin lifecycle.
-- ShellCorp maps OpenClaw state into a gamified office UI.
-- Team and office operations are CLI-first in this phase.
-- Extensions stay plugin-first (starting with Notion comments hooks).
-
-## Current Product Value
-
-- Office personalization and decoration controls for operators.
-- Builder-configurable office objects that can open routed runtime panels, starting with iframe/embed-driven tool surfaces.
-- Team topology, role demand, KPI/goal shaping, and heartbeat controls.
-- Observability across team state, agent memory, and federated Kanban sync health.
-- Team/agent timeline visibility backed by Convex event streams (`teamId` + `projectId` scope).
-- Explicit operator governance for autonomy loops (pause/resume/manual run).
-
-Feature docs:
-
-- `docs/feature-decorations.md`
-- `docs/feature-cli.md`
-- `docs/feature-business-logic.md`
-- `docs/extensions.md`
-
-## Scope Boundaries
-
-In scope now:
-
-- UI + adapter mapping on top of OpenClaw.
-- CLI-first team and office operations (`npm run shell -- ...`).
-- Canonical-provider-per-project federation baseline (`internal`/`notion`/`vibe`).
-- Notion comments-first webhook integration via OpenClaw hooks.
-
-Out of scope now:
-
-- Rebuilding a custom runtime/gateway that duplicates OpenClaw.
-- Full multi-master board writes with implicit conflict resolution.
-- Hiding canonical provider ownership semantics.
-
-## Behavioral Invariants
-
-- OpenClaw is source-of-truth for runtime and sessions (`MEM-0100`).
-- Team/org metadata lives in sidecar JSON (`MEM-0104`).
-- Navigation is panel-first and parity-critical flows remain dedicated modal-based (`MEM-0107`, `MEM-0109`).
-- Ticket lifecycle maps to session lifecycle until explicit close/reopen (`MEM-0112`).
-- Team and office management remain CLI-first in current phase (`MEM-0119`, `MEM-0120`).
-- Team timeline/audit logs are first-class by `teamId` in Convex writes and queries (`MEM-0132`).
-
-## Recent Changes
-
-- Added AI office UI QA runbook (`MEM-0118`).
-- Added CEO Team Management CLI and docs-only SCL cookbook (`MEM-0119`).
-- Added Office Decoration CLI and meshy-based spec generation workflow (`MEM-0120`).
-
-## Canonical Indexes
-
-- OpenClaw Multi-Agent Routing: [https://docs.openclaw.ai/concepts/multi-agent#multi-agent-routing](https://docs.openclaw.ai/concepts/multi-agent#multi-agent-routing)
-- OpenClaw Plugins: [https://docs.openclaw.ai/tools/plugin#plugins](https://docs.openclaw.ai/tools/plugin#plugins)
-
-## Repo Surfaces
-
-- `ui/src/**`: office UI, panels, and interaction flows.
-- `cli/**`: ShellCorp CLI command entry and handlers.
-- `skills/**`: repo-local skills for operators/agents.
-- `docs/specs/**`: SC01-SC10 and study specs.
-- `docs/how-to/**`: runbooks and focused operational recipes.
+- [docs/prd.md](./docs/prd.md)
+- [docs/progress.md](./docs/progress.md)
+- [docs/public-docs/getting-started.md](./docs/public-docs/getting-started.md)
+- [extensions/notion/README.md](./extensions/notion/README.md)

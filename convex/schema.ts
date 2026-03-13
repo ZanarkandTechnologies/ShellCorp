@@ -42,6 +42,7 @@ export default defineSchema({
       }),
     ),
     currentBeatId: v.optional(v.string()),
+    currentSkillId: v.optional(v.string()),
     sessionKey: v.optional(v.string()),
     updatedAt: v.number(),
     lastEventAt: v.number(),

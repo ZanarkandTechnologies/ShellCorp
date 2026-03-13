@@ -11,6 +11,14 @@ interface ChatInputProps {
 
 export function ChatInput({ onSubmit, onAbort, submissionStatus, isStreaming }: ChatInputProps) {
     const [text, setText] = useState("");
+    const canSubmit = submissionStatus !== "streaming" && Boolean(text.trim());
+
+    const submitMessage = async (): Promise<void> => {
+        const trimmed = text.trim();
+        if (!trimmed || submissionStatus === "streaming") return;
+        await onSubmit({ text: trimmed });
+        setText("");
+    };
 
     return (
         <div className="border-t bg-background">
@@ -21,6 +29,11 @@ export function ChatInput({ onSubmit, onAbort, submissionStatus, isStreaming }: 
                         placeholder="Ask me to research something..."
                         value={text}
                         onChange={(event) => setText(event.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key !== "Enter" || event.shiftKey) return;
+                            event.preventDefault();
+                            void submitMessage();
+                        }}
                     />
                     {isStreaming && onAbort ? (
                         <Button variant="outline" onClick={() => void onAbort()} type="button">
@@ -28,15 +41,7 @@ export function ChatInput({ onSubmit, onAbort, submissionStatus, isStreaming }: 
                             Stop
                         </Button>
                     ) : null}
-                    <Button
-                        onClick={async () => {
-                            const trimmed = text.trim();
-                            if (!trimmed) return;
-                            await onSubmit({ text: trimmed });
-                            setText("");
-                        }}
-                        disabled={submissionStatus === "streaming" || !text.trim()}
-                    >
+                    <Button onClick={() => void submitMessage()} disabled={!canSubmit}>
                         {submissionStatus === "streaming" ? (
                             <span className="inline-flex items-center gap-2">
                                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -52,4 +57,3 @@ export function ChatInput({ onSubmit, onAbort, submissionStatus, isStreaming }: 
         </div>
     );
 }
-

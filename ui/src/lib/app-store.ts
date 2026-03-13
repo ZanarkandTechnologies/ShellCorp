@@ -5,6 +5,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 
 import type { OfficeId } from "@/lib/types";
 import type { TeamData } from "@/lib/types";
+import type { OfficeOnboardingStep } from "@/lib/office-onboarding";
 
 type PlacementMode = {
   active: boolean;
@@ -12,7 +13,10 @@ type PlacementMode = {
   data: Record<string, unknown> | null;
 };
 
+export type BuilderTool = "paint-floor" | "remove-floor" | null;
+
 type ObjectPanelAspectRatio = "wide" | "square" | "tall";
+export type CeoWorkbenchView = "board" | "review";
 
 export type ActiveObjectPanelState = {
   objectId: OfficeId<"officeObjects">;
@@ -46,6 +50,8 @@ interface AppState {
   setIsUserTasksModalOpen: (isOpen: boolean) => void;
   isCeoWorkbenchOpen: boolean;
   setIsCeoWorkbenchOpen: (isOpen: boolean) => void;
+  ceoWorkbenchView: CeoWorkbenchView;
+  setCeoWorkbenchView: (view: CeoWorkbenchView) => void;
   isTeamOptionsDialogOpen: boolean;
   setIsTeamOptionsDialogOpen: (isOpen: boolean) => void;
   activeTeamForOptions: TeamData | null;
@@ -56,10 +62,8 @@ interface AppState {
   setDebugMode: (enabled: boolean) => void;
   isBuilderMode: boolean;
   setBuilderMode: (enabled: boolean) => void;
-  officeView2_5D: boolean;
-  setOfficeView2_5D: (enabled: boolean) => void;
-  cameraDistance: number;
-  setCameraDistance: (d: number) => void;
+  activeBuilderTool: BuilderTool;
+  setActiveBuilderTool: (tool: BuilderTool) => void;
   isDragging: boolean;
   setIsDragging: (enabled: boolean) => void;
   isAnimatingCamera: boolean;
@@ -70,6 +74,8 @@ interface AppState {
   setSelectedObjectId: (id: string | null) => void;
   activeObjectConfigId: OfficeId<"officeObjects"> | null;
   setActiveObjectConfigId: (id: OfficeId<"officeObjects"> | null) => void;
+  activeObjectTransformId: OfficeId<"officeObjects"> | null;
+  setActiveObjectTransformId: (id: OfficeId<"officeObjects"> | null) => void;
   activeObjectPanel: ActiveObjectPanelState | null;
   setActiveObjectPanel: (panel: ActiveObjectPanelState | null) => void;
   manageAgentEmployeeId: OfficeId<"employees"> | null;
@@ -95,6 +101,10 @@ interface AppState {
   setIsAgentSessionPanelOpen: (isOpen: boolean) => void;
   isSkillsPanelOpen: boolean;
   setIsSkillsPanelOpen: (isOpen: boolean) => void;
+  selectedSkillStudioSkillId: string | null;
+  setSelectedSkillStudioSkillId: (skillId: string | null) => void;
+  skillStudioFocusAgentId: string | null;
+  setSkillStudioFocusAgentId: (agentId: string | null) => void;
   activeTeamId: string | null;
   setActiveTeamId: (id: string | null) => void;
   selectedProjectId: string | null;
@@ -109,24 +119,12 @@ interface AppState {
   setSelectedSessionKey: (sessionKey: string | null) => void;
   isSettingsModalOpen: boolean;
   setIsSettingsModalOpen: (isOpen: boolean) => void;
-
-  roomAppearance: {
-    floorType: "wood" | "tile" | "concrete";
-    floorColor: string;
-    wallColor: string;
-    windows: boolean;
-    paintings: boolean;
-    door: boolean;
-    carpet: boolean;
-    carpetColor: string;
-  };
-  setRoomAppearance: (patch: Partial<AppState["roomAppearance"]>) => void;
-
-  useHumanoidAvatar: boolean;
-  setUseHumanoidAvatar: (enabled: boolean) => void;
-
-  ceoDeskHidden: boolean;
-  setCeoDeskHidden: (hidden: boolean) => void;
+  isFurnitureShopOpen: boolean;
+  setIsFurnitureShopOpen: (isOpen: boolean) => void;
+  isOfficeOnboardingVisible: boolean;
+  setIsOfficeOnboardingVisible: (isVisible: boolean) => void;
+  officeOnboardingStep: OfficeOnboardingStep | null;
+  setOfficeOnboardingStep: (step: OfficeOnboardingStep | null) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -137,6 +135,8 @@ export const useAppStore = create<AppState>()(
     setIsUserTasksModalOpen: (isOpen) => set({ isUserTasksModalOpen: isOpen }),
     isCeoWorkbenchOpen: false,
     setIsCeoWorkbenchOpen: (isOpen) => set({ isCeoWorkbenchOpen: isOpen }),
+    ceoWorkbenchView: "board",
+    setCeoWorkbenchView: (view) => set({ ceoWorkbenchView: view }),
     isTeamOptionsDialogOpen: false,
     setIsTeamOptionsDialogOpen: (isOpen) => set({ isTeamOptionsDialogOpen: isOpen }),
     activeTeamForOptions: null,
@@ -147,10 +147,8 @@ export const useAppStore = create<AppState>()(
     setDebugMode: (enabled) => set({ debugMode: enabled }),
     isBuilderMode: false,
     setBuilderMode: (enabled) => set({ isBuilderMode: enabled }),
-    officeView2_5D: false,
-    setOfficeView2_5D: (enabled) => set({ officeView2_5D: enabled }),
-    cameraDistance: 35,
-    setCameraDistance: (d) => set((s) => (Math.abs(s.cameraDistance - d) < 0.5 ? s : { cameraDistance: d })),
+    activeBuilderTool: null,
+    setActiveBuilderTool: (tool) => set({ activeBuilderTool: tool }),
     isDragging: false,
     setIsDragging: (enabled) => set({ isDragging: enabled }),
     isAnimatingCamera: false,
@@ -164,6 +162,9 @@ export const useAppStore = create<AppState>()(
     activeObjectConfigId: null,
     setActiveObjectConfigId: (id) =>
       set((state) => (state.activeObjectConfigId === id ? state : { activeObjectConfigId: id })),
+    activeObjectTransformId: null,
+    setActiveObjectTransformId: (id) =>
+      set((state) => (state.activeObjectTransformId === id ? state : { activeObjectTransformId: id })),
     activeObjectPanel: null,
     // Modal payload is compared structurally so repeated opens of the same state do not trigger extra work.
     setActiveObjectPanel: (panel) =>
@@ -198,6 +199,10 @@ export const useAppStore = create<AppState>()(
     setIsAgentSessionPanelOpen: (isOpen) => set({ isAgentSessionPanelOpen: isOpen }),
     isSkillsPanelOpen: false,
     setIsSkillsPanelOpen: (isOpen) => set({ isSkillsPanelOpen: isOpen }),
+    selectedSkillStudioSkillId: null,
+    setSelectedSkillStudioSkillId: (skillId) => set({ selectedSkillStudioSkillId: skillId }),
+    skillStudioFocusAgentId: null,
+    setSkillStudioFocusAgentId: (agentId) => set({ skillStudioFocusAgentId: agentId }),
     activeTeamId: null,
     setActiveTeamId: (id) => set({ activeTeamId: id }),
     selectedProjectId: null,
@@ -212,25 +217,12 @@ export const useAppStore = create<AppState>()(
     setSelectedSessionKey: (sessionKey) => set({ selectedSessionKey: sessionKey }),
     isSettingsModalOpen: false,
     setIsSettingsModalOpen: (isOpen) => set({ isSettingsModalOpen: isOpen }),
-
-    roomAppearance: {
-      floorType: "wood",
-      floorColor: "#c4b5a0",
-      wallColor: "#e8e4df",
-      windows: true,
-      paintings: true,
-      door: true,
-      carpet: true,
-      carpetColor: "#3d3d3d",
-    },
-    setRoomAppearance: (patch) =>
-      set((s) => ({ roomAppearance: { ...s.roomAppearance, ...patch } })),
-
-    useHumanoidAvatar: false,
-    setUseHumanoidAvatar: (enabled) => set({ useHumanoidAvatar: enabled }),
-
-    ceoDeskHidden: false,
-    setCeoDeskHidden: (hidden) => set({ ceoDeskHidden: hidden }),
+    isFurnitureShopOpen: false,
+    setIsFurnitureShopOpen: (isOpen) => set({ isFurnitureShopOpen: isOpen }),
+    isOfficeOnboardingVisible: false,
+    setIsOfficeOnboardingVisible: (isVisible) => set({ isOfficeOnboardingVisible: isVisible }),
+    officeOnboardingStep: null,
+    setOfficeOnboardingStep: (step) => set({ officeOnboardingStep: step }),
   })),
 );
 

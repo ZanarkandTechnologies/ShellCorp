@@ -10,6 +10,7 @@ import {
   toFederationPolicy,
   toProviderIndexProfile,
   toTask,
+  toTimeline,
 } from "./openclaw-adapter";
 
 afterEach(() => {
@@ -227,6 +228,73 @@ describe("heartbeat parsing", () => {
   });
 });
 
+describe("timeline usage normalization", () => {
+  it("normalizes usage summaries and backfills tokenUsage", () => {
+    const timeline = toTimeline("builder", "agent:builder:main", {
+      events: [
+        {
+          ts: 1000,
+          type: "message",
+          role: "assistant",
+          text: "Done",
+        },
+      ],
+      usageSummary: {
+        lastResponse: {
+          inputTokens: 100,
+          outputTokens: 20,
+          cacheReadTokens: 5,
+          cacheWriteTokens: 0,
+          totalTokens: 125,
+          estimatedCostUsd: 0.12,
+          responseCount: 1,
+          provider: "openrouter",
+          model: "moonshotai/kimi-k2.5",
+          timestamp: 1000,
+        },
+        sessionTotals: {
+          inputTokens: 120,
+          outputTokens: 25,
+          cacheReadTokens: 5,
+          cacheWriteTokens: 0,
+          totalTokens: 150,
+          estimatedCostUsd: 0.14,
+          responseCount: 2,
+        },
+        last24Hours: {
+          inputTokens: 20,
+          outputTokens: 5,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          totalTokens: 25,
+          estimatedCostUsd: 0.04,
+          responseCount: 1,
+        },
+        last7Days: {
+          inputTokens: 120,
+          outputTokens: 25,
+          cacheReadTokens: 5,
+          cacheWriteTokens: 0,
+          totalTokens: 150,
+          estimatedCostUsd: 0.14,
+          responseCount: 2,
+        },
+      },
+    });
+    expect(timeline.usageSummary?.sessionTotals.totalTokens).toBe(150);
+    expect(timeline.usageSummary?.lastResponse?.model).toBe("moonshotai/kimi-k2.5");
+    expect(timeline.usageSummary?.last24Hours?.estimatedCostUsd).toBe(0.04);
+    expect(timeline.tokenUsage).toEqual({
+      inputTokens: 120,
+      outputTokens: 25,
+      totalTokens: 150,
+      cacheReadTokens: 5,
+      cacheWriteTokens: 0,
+      estimatedCostUsd: 0.14,
+    });
+  });
+});
+
 describe("team business skill sync adapter", () => {
   it("normalizes successful sync payload", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
@@ -389,5 +457,53 @@ describe("agent files fallback", () => {
     expect(result.files.some((entry) => entry.path.includes("projects/proj-buffalos-ai-v2"))).toBe(
       true,
     );
+  });
+});
+
+describe("skill studio catalog compatibility", () => {
+  it("falls back to legacy /openclaw/skills when /catalog is unavailable", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          skills: [
+            {
+              name: "create-team",
+              category: "workflow",
+              scope: "shared",
+              sourcePath: "skills/create-team",
+              updatedAt: 123,
+            },
+          ],
+        }),
+      } as Response);
+
+    const adapter = new OpenClawAdapter("http://127.0.0.1:8787", "http://127.0.0.1:8787");
+    const result = await adapter.listSkillStudioCatalog();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8787/openclaw/skills/catalog",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8787/openclaw/skills",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+    expect(result).toEqual([
+      expect.objectContaining({
+        skillId: "create-team",
+        displayName: "create-team",
+        category: "workflow",
+        hasTests: false,
+      }),
+    ]);
   });
 });

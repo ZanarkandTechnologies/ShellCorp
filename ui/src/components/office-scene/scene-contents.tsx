@@ -15,245 +15,186 @@
  * - MEM-0150
  */
 
-'use client';
+"use client";
 
-import { OrbitControls } from '@react-three/drei';
-import { useMemo } from 'react';
-import { useAppStore } from '@/lib/app-store';
-import { Employee } from '@/features/office-system/components/employee';
-import Desk from '@/features/office-system/components/desk';
-import { ContextMenu } from '@/features/office-system/components/context-menu';
-import { Trash2 } from 'lucide-react';
-import { SmartGrid } from '@/components/debug/unified-grid-helper';
-import { DestinationDebugger } from '@/components/debug/destination-debugger';
-import { PlacementHandler } from '@/components/placement-handler';
-import type { StatusType } from '@/features/nav-system/components/status-indicator';
-import { HALF_FLOOR } from '@/constants';
-import type { OfficeObject } from '@/lib/types';
-import { OfficeLighting } from './office-lighting';
-import { OfficeRoomShell } from './office-room-shell';
-import { OfficeObjectRenderer } from './office-object-renderer';
-import { CameraDistanceUpdater } from './camera-distance-updater';
-import { Starfield } from './starfield';
-import { useOfficeSceneTheme, useOfficeSceneCameraTransition } from './use-office-scene-camera';
-import { useOfficeSceneInteractions } from './use-office-scene-interactions';
-import { useOfficeSceneBootstrap } from './use-office-scene-bootstrap';
-import { useOfficeSceneDerivedData } from './use-office-scene-derived-data';
-import type { OfficeSceneProps } from './types';
-
-function filterOfficeObjectsInBounds(objects: OfficeObject[] | undefined): OfficeObject[] {
-    if (!objects?.length) return [];
-    return objects.filter((obj) => {
-        const pos = obj.position;
-        if (!Array.isArray(pos) || pos.length < 3) return false;
-        const x = pos[0];
-        const z = pos[2];
-        return Math.abs(x) <= HALF_FLOOR && Math.abs(z) <= HALF_FLOOR;
-    });
-}
+import { OrbitControls } from "@react-three/drei";
+import { useMemo } from "react";
+import { DestinationDebugger } from "@/components/debug/destination-debugger";
+import { SmartGrid } from "@/components/debug/unified-grid-helper";
+import { PlacementHandler } from "@/components/placement-handler";
+import type { StatusType } from "@/features/nav-system/components/status-indicator";
+import { Employee } from "@/features/office-system/components/employee";
+import { useAppStore } from "@/lib/app-store";
+import { OfficeLayoutEditor } from "./office-layout-editor";
+import { OfficeLighting } from "./office-lighting";
+import { OfficeObjectRenderer } from "./office-object-renderer";
+import { OfficeRoomShell } from "./office-room-shell";
+import type { OfficeSceneProps } from "./types";
+import { useOfficeSceneBootstrap } from "./use-office-scene-bootstrap";
+import { useOfficeSceneCameraTransition, useOfficeSceneTheme } from "./use-office-scene-camera";
+import { useOfficeSceneDerivedData } from "./use-office-scene-derived-data";
+import { useOfficeSceneInteractions } from "./use-office-scene-interactions";
+import { getOfficeSceneViewState, isFixedOfficeSceneView } from "./view-profile";
 
 export function SceneContents(props: OfficeSceneProps): JSX.Element {
-    const { teams, employees, desks, officeObjects, companyId, onNavigationReady } = props;
-    const enableOfficeObjects = import.meta.env.VITE_ENABLE_OFFICE_OBJECTS !== 'false';
+  const {
+    teams,
+    employees,
+    desks,
+    officeObjects,
+    officeFootprint,
+    officeLayout,
+    officeDecorSettings,
+    officeViewSettings,
+    companyId,
+    onNavigationReady,
+  } = props;
+  const enableOfficeObjects = import.meta.env.VITE_ENABLE_OFFICE_OBJECTS !== "false";
 
-    const isBuilderMode = useAppStore((state) => state.isBuilderMode);
-    const officeView2_5D = useAppStore((state) => state.officeView2_5D);
-    const debugMode = useAppStore((state) => state.debugMode);
-    const isAnimatingCamera = useAppStore((state) => state.isAnimatingCamera);
-    const setAnimatingCamera = useAppStore((state) => state.setAnimatingCamera);
-    const isDragging = useAppStore((state) => state.isDragging);
-    const placementMode = useAppStore((state) => state.placementMode);
+  const isBuilderMode = useAppStore((state) => state.isBuilderMode);
+  const debugMode = useAppStore((state) => state.debugMode);
+  const isAnimatingCamera = useAppStore((state) => state.isAnimatingCamera);
+  const setAnimatingCamera = useAppStore((state) => state.setAnimatingCamera);
+  const isDragging = useAppStore((state) => state.isDragging);
+  const placementMode = useAppStore((state) => state.placementMode);
+  const activeBuilderTool = useAppStore((state) => state.activeBuilderTool);
 
-    const officeTheme = useOfficeSceneTheme();
-    const sceneBuilderMode = isAnimatingCamera ? false : isBuilderMode;
-    const cameraDistance = useAppStore((state) => state.cameraDistance);
-    const roomAppearance = useAppStore((state) => state.roomAppearance);
-    const ceoDeskHidden = useAppStore((state) => state.ceoDeskHidden);
-    const setCeoDeskHidden = useAppStore((state) => state.setCeoDeskHidden);
-    const selectedObjectId = useAppStore((state) => state.selectedObjectId);
-    const setSelectedObjectId = useAppStore((state) => state.setSelectedObjectId);
+  const officeTheme = useOfficeSceneTheme();
+  const sceneBuilderMode = isAnimatingCamera ? false : isBuilderMode;
+  const isLayoutEditing = sceneBuilderMode && activeBuilderTool !== null;
+  // MEM-0170 decision: fixed 2.5D uses compact scene overlays so Html cards cannot occlude the office.
+  const useCompactSceneOverlays = isFixedOfficeSceneView(officeViewSettings);
+  const viewState = getOfficeSceneViewState({
+    isBuilderMode: sceneBuilderMode,
+    isDragging,
+    settings: officeViewSettings,
+  });
 
-    const officeObjectsInBounds = useMemo(
-        () => filterOfficeObjectsInBounds(officeObjects),
-        [officeObjects],
-    );
+  const { employeesForScene, teamById, desksByTeamId } = useOfficeSceneDerivedData({
+    teams,
+    employees,
+    desks,
+    officeViewSettings,
+  });
 
-    const glassWallObjects = useMemo(
-        () =>
-            officeObjectsInBounds
-                .filter((object) => object.meshType === 'glass-wall')
-                .map((object) => ({ position: object.position as [number, number, number] })),
-        [officeObjectsInBounds],
-    );
-
-    const {
-        ceoDeskData,
-        employeesForScene,
-        teamById,
-        desksByTeamId,
-    } = useOfficeSceneDerivedData({
-        teams,
-        employees,
-        desks,
-        glassWallObjects,
+  const { orbitControlsRef, floorRef, createRegisteredObjectRef, getObjectRef } =
+    useOfficeSceneBootstrap({
+      officeLayout,
+      officeObjectCount:
+        officeObjects?.filter((object) => object.meshType !== "wall-art").length ?? 0,
+      onNavigationReady,
     });
 
-    const {
-        orbitControlsRef,
-        floorRef,
-        ceoDeskRef,
-        createRegisteredObjectRef,
-        getObjectRef,
-    } = useOfficeSceneBootstrap({
-        officeObjectCount: officeObjectsInBounds.length,
-        hasCeoDesk: Boolean(ceoDeskData),
-        onNavigationReady,
-    });
+  const { handleBackgroundClick, handleEmployeeClick, handleTeamClick, handleCeoDeskClick } =
+    useOfficeSceneInteractions({ employees });
 
-    const {
-        handleBackgroundClick,
-        handleEmployeeClick,
-        handleTeamClick,
-        handleCeoDeskClick,
-    } = useOfficeSceneInteractions({ employees });
+  useOfficeSceneCameraTransition({
+    isBuilderMode,
+    settings: officeViewSettings,
+    orbitControlsRef,
+    setAnimatingCamera,
+  });
 
-    useOfficeSceneCameraTransition({
-        isBuilderMode,
-        officeView2_5D,
-        orbitControlsRef,
-        setAnimatingCamera,
-    });
-
-    const officeObjectsRendered = useMemo(() => {
-        if (!enableOfficeObjects) return null;
-        return (
-            <OfficeObjectRenderer
-                officeObjects={officeObjectsInBounds}
-                companyId={companyId}
-                teamById={teamById}
-                desksByTeamId={desksByTeamId}
-                handleTeamClick={handleTeamClick}
-                getObjectRef={getObjectRef}
-                createRegisteredObjectRef={createRegisteredObjectRef}
-            />
-        );
-    }, [
-        companyId,
-        createRegisteredObjectRef,
-        desksByTeamId,
-        enableOfficeObjects,
-        getObjectRef,
-        handleTeamClick,
-        officeObjectsInBounds,
-        teamById,
-    ]);
-
+  const officeObjectsRendered = useMemo(() => {
+    if (!enableOfficeObjects) return null;
     return (
-        <>
-            <Starfield />
-            <OfficeLighting officeTheme={officeTheme} sceneBuilderMode={sceneBuilderMode} />
-
-            <OrbitControls
-                ref={orbitControlsRef}
-                enabled={!isDragging}
-                enableRotate={!officeView2_5D && !isDragging}
-                enablePan={!officeView2_5D && !isDragging}
-                enableZoom
-                minDistance={officeView2_5D ? 8 : 5}
-                maxDistance={officeView2_5D ? 40 : 200}
-                minPolarAngle={officeView2_5D ? Math.PI / 3 : 0}
-                maxPolarAngle={officeView2_5D ? Math.PI / 3 : sceneBuilderMode ? Math.PI / 3 : Math.PI}
-                minAzimuthAngle={officeView2_5D ? Math.PI / 4 : undefined}
-                maxAzimuthAngle={officeView2_5D ? Math.PI / 4 : undefined}
-            />
-
-            <CameraDistanceUpdater controlsRef={orbitControlsRef} />
-
-            <OfficeRoomShell
-                floorRef={floorRef}
-                officeTheme={officeTheme}
-                onBackgroundClick={handleBackgroundClick}
-                cameraDistance={cameraDistance}
-                roomAppearance={roomAppearance}
-            />
-
-            {ceoDeskData && !ceoDeskHidden && (
-                <group ref={ceoDeskRef} name="obstacle-ceoDeskGroup">
-                    <group
-                        position={ceoDeskData.position}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (sceneBuilderMode) {
-                                setSelectedObjectId(selectedObjectId === 'ceo-desk' ? null : 'ceo-desk');
-                            } else {
-                                handleCeoDeskClick(e);
-                            }
-                        }}
-                    >
-                        <Desk
-                            key={ceoDeskData.id}
-                            deskId={ceoDeskData.id}
-                            position={[0, 0, 0]}
-                            rotationY={ceoDeskData.rotationY}
-                            isHovered={false}
-                            onClick={undefined}
-                        />
-                        <ContextMenu
-                            isOpen={sceneBuilderMode && selectedObjectId === 'ceo-desk'}
-                            onClose={() => setSelectedObjectId(null)}
-                            actions={[
-                                {
-                                    id: 'delete',
-                                    label: 'Remove',
-                                    icon: Trash2,
-                                    onClick: () => {
-                                        setCeoDeskHidden(true);
-                                        setSelectedObjectId(null);
-                                    },
-                                },
-                            ]}
-                            title="CEO desk"
-                        />
-                    </group>
-                </group>
-            )}
-
-            {!sceneBuilderMode &&
-                employeesForScene.map((employee) => (
-                    <Employee
-                        key={employee._id}
-                        _id={employee._id}
-                        name={employee.name}
-                        position={employee.initialPosition}
-                        isBusy={employee.isBusy}
-                        isCEO={employee.isCEO}
-                        isSupervisor={employee.isSupervisor}
-                        gender={employee.gender}
-                        onClick={handleEmployeeClick}
-                        debugMode={debugMode}
-                        status={(employee.status || 'none') as StatusType}
-                        statusMessage={employee.statusMessage}
-                        wantsToWander={employee.wantsToWander}
-                        jobTitle={employee.jobTitle}
-                        team={employee.team}
-                        teamId={employee.teamId}
-                        notificationCount={employee.notificationCount}
-                        notificationPriority={employee.notificationPriority}
-                        heartbeatState={employee.heartbeatState}
-                        heartbeatBubbles={employee.heartbeatBubbles}
-                        profileImageUrl={employee.profileImageUrl}
-                    />
-                ))}
-
-            {officeObjectsRendered}
-
-            <SmartGrid
-                debugMode={debugMode}
-                isBuilderMode={sceneBuilderMode}
-                placementActive={placementMode.active}
-            />
-            {debugMode ? <DestinationDebugger /> : null}
-            {enableOfficeObjects ? <PlacementHandler /> : null}
-        </>
+      <OfficeObjectRenderer
+        officeObjects={officeObjects}
+        companyId={companyId}
+        teamById={teamById}
+        desksByTeamId={desksByTeamId}
+        officeFootprint={officeFootprint}
+        handleTeamClick={handleTeamClick}
+        handleManagementClick={handleCeoDeskClick}
+        getObjectRef={getObjectRef}
+        createRegisteredObjectRef={createRegisteredObjectRef}
+      />
     );
+  }, [
+    companyId,
+    createRegisteredObjectRef,
+    desksByTeamId,
+    getObjectRef,
+    handleTeamClick,
+    officeFootprint,
+    officeObjects,
+    teamById,
+    handleCeoDeskClick,
+    enableOfficeObjects,
+  ]);
+
+  return (
+    <>
+      <OfficeLighting
+        officeTheme={officeTheme}
+        officeLayout={officeLayout}
+        officeViewSettings={officeViewSettings}
+        sceneBuilderMode={sceneBuilderMode}
+      />
+
+      <OrbitControls
+        ref={orbitControlsRef}
+        enabled={viewState.controlsEnabled && !isLayoutEditing}
+        enableRotate={viewState.rotateEnabled && !isLayoutEditing}
+        enablePan={viewState.panEnabled && !isLayoutEditing}
+        enableZoom={viewState.zoomEnabled}
+        maxPolarAngle={viewState.maxPolarAngle}
+        minPolarAngle={viewState.minPolarAngle}
+      />
+
+      <OfficeRoomShell
+        floorRef={floorRef}
+        officeFootprint={officeFootprint}
+        officeLayout={officeLayout}
+        officeDecorSettings={officeDecorSettings}
+        officeViewSettings={officeViewSettings}
+        officeTheme={officeTheme}
+        sceneBuilderMode={sceneBuilderMode}
+        onBackgroundClick={handleBackgroundClick}
+      />
+      <OfficeLayoutEditor />
+      {!sceneBuilderMode &&
+        employeesForScene.map((employee) => (
+          <Employee
+            key={employee._id}
+            _id={employee._id}
+            name={employee.name}
+            position={employee.initialPosition}
+            activityTargetPosition={employee.activityTargetPosition}
+            activityTargetObjectPosition={employee.activityTargetObjectPosition}
+            activityTargetSkillId={employee.activityTargetSkillId}
+            activityEffectVariant={employee.activityEffectVariant}
+            isBusy={employee.isBusy}
+            isCEO={employee.isCEO}
+            isSupervisor={employee.isSupervisor}
+            gender={employee.gender}
+            onClick={handleEmployeeClick}
+            debugMode={debugMode}
+            status={(employee.status || "none") as StatusType}
+            statusMessage={employee.statusMessage}
+            wantsToWander={employee.wantsToWander}
+            jobTitle={employee.jobTitle}
+            team={employee.team}
+            teamId={employee.teamId}
+            notificationCount={employee.notificationCount}
+            notificationPriority={employee.notificationPriority}
+            heartbeatState={employee.heartbeatState}
+            heartbeatBubbles={employee.heartbeatBubbles}
+            profileImageUrl={employee.profileImageUrl}
+            useCompactOverlayMode={useCompactSceneOverlays}
+          />
+        ))}
+
+      {officeObjectsRendered}
+
+      <SmartGrid
+        debugMode={debugMode}
+        isBuilderMode={sceneBuilderMode}
+        placementActive={placementMode.active}
+      />
+      {debugMode ? <DestinationDebugger /> : null}
+      {enableOfficeObjects ? <PlacementHandler /> : null}
+    </>
+  );
 }
+

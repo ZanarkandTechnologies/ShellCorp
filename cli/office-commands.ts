@@ -15,27 +15,160 @@
  * MEMORY REFERENCES:
  * - MEM-0120
  */
-import path from "node:path";
+
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
-import { Command } from "commander";
+import path from "node:path";
+import type { Command } from "commander";
+import { FLOOR_SIZE, HALF_FLOOR } from "./constants.js";
+import { findFirstOpenPlacement, isPlacementAreaFree } from "./office-placement.js";
+import { renderOfficeAscii } from "./office-renderer.js";
 import {
+  type CompanyModel,
   createSidecarStore,
   generateObjectId,
-  resolveOpenclawHome,
-  type CompanyModel,
+  type OfficeBackgroundId,
+  type OfficeFloorPatternId,
   type OfficeObjectModel,
+  type OfficeSettingsModel,
   type OfficeStylePreset,
+  type OfficeWallColorId,
+  resolveOpenclawHome,
 } from "./sidecar-store.js";
-import { renderOfficeAscii } from "./office-renderer.js";
-import { findFirstOpenPlacement, isPlacementAreaFree } from "./office-placement.js";
-import { FLOOR_SIZE, HALF_FLOOR } from "./constants.js";
-const MESH_TYPES = new Set(["team-cluster", "plant", "couch", "bookshelf", "pantry", "glass-wall", "custom-mesh"]);
+
+const MESH_TYPES = new Set([
+  "team-cluster",
+  "plant",
+  "couch",
+  "bookshelf",
+  "pantry",
+  "glass-wall",
+  "custom-mesh",
+  "wall-art",
+]);
 const THEME_PRESETS: Array<{ id: OfficeStylePreset; description: string }> = [
   { id: "default", description: "Balanced default office palette" },
   { id: "pixel", description: "Pixel-like retro office mood" },
   { id: "brutalist", description: "High-contrast concrete office style" },
   { id: "cozy", description: "Warm and comfortable office style" },
 ];
+const OFFICE_FLOOR_PATTERNS = [
+  {
+    id: "sandstone_tiles" as const,
+    label: "Sandstone Tiles",
+    description: "Warm square tiles with subtle grout lines.",
+  },
+  {
+    id: "graphite_grid" as const,
+    label: "Graphite Grid",
+    description: "Cool stone grid for a more technical office look.",
+  },
+  {
+    id: "walnut_parquet" as const,
+    label: "Walnut Parquet",
+    description: "Simple parquet-inspired wood pattern.",
+  },
+];
+const OFFICE_WALL_COLORS = [
+  {
+    id: "gallery_cream" as const,
+    label: "Gallery Cream",
+    description: "Soft shell-white wall tone for brighter rooms.",
+  },
+  {
+    id: "sage_mist" as const,
+    label: "Sage Mist",
+    description: "Muted green wall tone with a grounded burrow feel.",
+  },
+  {
+    id: "harbor_blue" as const,
+    label: "Harbor Blue",
+    description: "Blue-grey wall tone for a colder clam-cabinet mood.",
+  },
+  {
+    id: "clay_rose" as const,
+    label: "Clay Rose",
+    description: "Warm clay wall tone for estuary sunset rooms.",
+  },
+];
+const OFFICE_BACKGROUNDS = [
+  {
+    id: "shell_haze" as const,
+    label: "Shell Haze",
+    description: "Warm shell-toned void that stays soft in light and dark mode.",
+  },
+  {
+    id: "midnight_tide" as const,
+    label: "Midnight Tide",
+    description: "Cool harbor backdrop for the darker clam-cabinet moods.",
+  },
+  {
+    id: "kelp_fog" as const,
+    label: "Kelp Fog",
+    description: "Muted environmental backdrop with a mossy underground feel.",
+  },
+  {
+    id: "estuary_glow" as const,
+    label: "Estuary Glow",
+    description: "Warmer dusk-toned backdrop for softer atmospheric offices.",
+  },
+] as const;
+const OFFICE_PAINTINGS = [
+  {
+    id: "sunrise_blocks",
+    label: "Sunrise Blocks",
+    description: "Layered warm blocks with a soft sunrise accent.",
+  },
+  {
+    id: "night_geometry",
+    label: "Night Geometry",
+    description: "Dark geometric shapes with brass contrast.",
+  },
+  {
+    id: "studio_lines",
+    label: "Studio Lines",
+    description: "Minimal graphic lines in a neutral studio palette.",
+  },
+] as const;
+const OFFICE_DECOR_PACKS = [
+  {
+    id: "shell-parlor",
+    label: "Shell Parlor",
+    description: "Soft shell walls with warm stone flooring. Calm and slightly coastal.",
+    floorPatternId: "sandstone_tiles" as const,
+    wallColorId: "gallery_cream" as const,
+    backgroundId: "shell_haze" as const,
+  },
+  {
+    id: "clam-cabinet",
+    label: "Clam Cabinet",
+    description: "Blue-grey walls with graphite flooring for a cool crustacean control room.",
+    floorPatternId: "graphite_grid" as const,
+    wallColorId: "harbor_blue" as const,
+    backgroundId: "midnight_tide" as const,
+  },
+  {
+    id: "underclaw-burrow",
+    label: "Underclaw Burrow",
+    description: "Muted sage walls with walnut floor tones for an underground den feel.",
+    floorPatternId: "walnut_parquet" as const,
+    wallColorId: "sage_mist" as const,
+    backgroundId: "kelp_fog" as const,
+  },
+  {
+    id: "estuary-sunset",
+    label: "Estuary Sunset",
+    description: "Clay walls with warm tile flooring for a softer environmental room.",
+    floorPatternId: "sandstone_tiles" as const,
+    wallColorId: "clay_rose" as const,
+    backgroundId: "estuary_glow" as const,
+  },
+] as const;
+const WALL_ART_SLOTS = [
+  { id: "back-left", label: "Back Left" },
+  { id: "back-center", label: "Back Center" },
+  { id: "back-right", label: "Back Right" },
+  { id: "left-center", label: "Left Wall" },
+] as const;
 
 type OutputMode = "text" | "json";
 
@@ -118,10 +251,130 @@ function ensureMeshType(meshType: string): string {
 
 function ensureThemePreset(preset: string): OfficeStylePreset {
   const normalized = preset.trim();
-  if (normalized === "default" || normalized === "pixel" || normalized === "brutalist" || normalized === "cozy") {
+  if (
+    normalized === "default" ||
+    normalized === "pixel" ||
+    normalized === "brutalist" ||
+    normalized === "cozy"
+  ) {
     return normalized;
   }
   fail(`invalid_theme_preset:${preset}`);
+}
+
+function ensureFloorPatternId(patternId: string): OfficeFloorPatternId {
+  const normalized = patternId.trim();
+  if (
+    normalized === "sandstone_tiles" ||
+    normalized === "graphite_grid" ||
+    normalized === "walnut_parquet"
+  ) {
+    return normalized;
+  }
+  fail(`invalid_floor_pattern:${patternId}`);
+}
+
+function ensureWallColorId(wallColorId: string): OfficeWallColorId {
+  const normalized = wallColorId.trim();
+  if (
+    normalized === "gallery_cream" ||
+    normalized === "sage_mist" ||
+    normalized === "harbor_blue" ||
+    normalized === "clay_rose"
+  ) {
+    return normalized;
+  }
+  fail(`invalid_wall_color:${wallColorId}`);
+}
+
+function ensureBackgroundId(backgroundId: string): OfficeBackgroundId {
+  const normalized = backgroundId.trim();
+  if (
+    normalized === "shell_haze" ||
+    normalized === "midnight_tide" ||
+    normalized === "kelp_fog" ||
+    normalized === "estuary_glow"
+  ) {
+    return normalized;
+  }
+  fail(`invalid_background:${backgroundId}`);
+}
+
+function ensurePaintingPresetId(presetId: string): string {
+  const normalized = presetId.trim();
+  if (OFFICE_PAINTINGS.some((entry) => entry.id === normalized)) return normalized;
+  fail(`invalid_painting_preset:${presetId}`);
+}
+
+function ensureDecorPackId(packId: string): (typeof OFFICE_DECOR_PACKS)[number] {
+  const normalized = packId.trim();
+  const pack = OFFICE_DECOR_PACKS.find((entry) => entry.id === normalized);
+  if (pack) return pack;
+  fail(`invalid_decor_pack:${packId}`);
+}
+
+function ensureWallArtSlotId(slotId: string): (typeof WALL_ART_SLOTS)[number]["id"] {
+  const normalized = slotId.trim();
+  if (WALL_ART_SLOTS.some((entry) => entry.id === normalized)) {
+    return normalized as (typeof WALL_ART_SLOTS)[number]["id"];
+  }
+  fail(`invalid_wall_art_slot:${slotId}`);
+}
+
+function getWallArtSlotLayout(
+  officeSettings: OfficeSettingsModel,
+  slotId: (typeof WALL_ART_SLOTS)[number]["id"],
+): { position: [number, number, number]; rotation: [number, number, number] } {
+  const halfWidth = officeSettings.officeFootprint.width / 2;
+  const halfDepth = officeSettings.officeFootprint.depth / 2;
+  const artY = 3.2;
+  const inset = 0.23;
+  switch (slotId) {
+    case "back-left":
+      return {
+        position: [-Math.max(4, halfWidth * 0.45), artY, -halfDepth + inset],
+        rotation: [0, 0, 0],
+      };
+    case "back-center":
+      return {
+        position: [0, artY, -halfDepth + inset],
+        rotation: [0, 0, 0],
+      };
+    case "back-right":
+      return {
+        position: [Math.max(4, halfWidth * 0.45), artY, -halfDepth + inset],
+        rotation: [0, 0, 0],
+      };
+    case "left-center":
+      return {
+        position: [-halfWidth + inset, artY, 0],
+        rotation: [0, Math.PI / 2, 0],
+      };
+  }
+}
+
+function formatDecorState(
+  settings: OfficeSettingsModel,
+  paintings: OfficeObjectModel[],
+): {
+  decor: OfficeSettingsModel["decor"];
+  paintings: Array<{ slotId: string; paintingPresetId: string; objectId: string }>;
+} {
+  return {
+    decor: settings.decor,
+    paintings: paintings
+      .filter((entry) => entry.meshType === "wall-art")
+      .map((entry) => ({
+        slotId:
+          typeof entry.metadata?.wallSlotId === "string" ? String(entry.metadata.wallSlotId) : "",
+        paintingPresetId:
+          typeof entry.metadata?.paintingPresetId === "string"
+            ? String(entry.metadata.paintingPresetId)
+            : "",
+        objectId: entry.id,
+      }))
+      .filter((entry) => entry.slotId && entry.paintingPresetId),
+  };
 }
 
 function slugify(input: string): string {
@@ -154,9 +407,11 @@ async function ensureTeamClusterProject(opts: {
   fallbackObjectId: string;
 }): Promise<Record<string, unknown>> {
   const company = await opts.store.readCompanyModel();
-  const requestedTeamId = typeof opts.metadata.teamId === "string" ? opts.metadata.teamId.trim() : "";
+  const requestedTeamId =
+    typeof opts.metadata.teamId === "string" ? opts.metadata.teamId.trim() : "";
   const requestedName = typeof opts.metadata.name === "string" ? opts.metadata.name.trim() : "";
-  const requestedDescription = typeof opts.metadata.description === "string" ? opts.metadata.description.trim() : "";
+  const requestedDescription =
+    typeof opts.metadata.description === "string" ? opts.metadata.description.trim() : "";
   let projectId = requestedTeamId.startsWith("team-") ? requestedTeamId.slice("team-".length) : "";
   if (!projectId) {
     const seed = requestedName || requestedTeamId || opts.fallbackObjectId;
@@ -220,7 +475,7 @@ function getTeamNameById(company: CompanyModel, teamId: string): string {
   return project?.name ?? "";
 }
 
-function findInvalidOfficeObjects(input: {
+export function findInvalidOfficeObjects(input: {
   objects: OfficeObjectModel[];
   company: CompanyModel;
 }): Array<{
@@ -229,18 +484,24 @@ function findInvalidOfficeObjects(input: {
   reasons: string[];
 }> {
   const projectIds = new Set(input.company.projects.map((entry) => entry.id));
-  const archivedProjectIds = new Set(input.company.projects.filter((entry) => entry.status === "archived").map((entry) => entry.id));
+  const archivedProjectIds = new Set(
+    input.company.projects.filter((entry) => entry.status === "archived").map((entry) => entry.id),
+  );
   const issues: Array<{ id: string; meshType: string; reasons: string[] }> = [];
   for (const object of input.objects) {
     const reasons: string[] = [];
     if (object.meshType === "custom-mesh") {
-      const meshPath = typeof object.metadata?.meshPublicPath === "string" ? object.metadata.meshPublicPath.trim() : "";
+      const meshPath =
+        typeof object.metadata?.meshPublicPath === "string"
+          ? object.metadata.meshPublicPath.trim()
+          : "";
       if (!meshPath) {
         reasons.push("missing_mesh_public_path");
       }
     }
     if (object.meshType === "team-cluster") {
-      const teamId = typeof object.metadata?.teamId === "string" ? object.metadata.teamId.trim() : "";
+      const teamId =
+        typeof object.metadata?.teamId === "string" ? object.metadata.teamId.trim() : "";
       if (!teamId) {
         reasons.push("missing_team_id");
       } else if (!teamId.startsWith("team-")) {
@@ -309,7 +570,11 @@ ${input.prompt}
   await writeFile(targetPath, body, "utf-8");
 
   const indexPath = path.join(assetsDir, "INDEX.md");
-  await appendFile(indexPath, `- ${createdAt.slice(0, 10)} | ${title} | ${targetPath} | office,${input.assetType},${input.style}\n`, "utf-8");
+  await appendFile(
+    indexPath,
+    `- ${createdAt.slice(0, 10)} | ${title} | ${targetPath} | office,${input.assetType},${input.style}\n`,
+    "utf-8",
+  );
 
   return { path: targetPath, title };
 }
@@ -350,7 +615,10 @@ export function registerOfficeCommands(program: Command): void {
             JSON.stringify(
               {
                 objects,
-                teams: company.projects.map((project) => ({ teamId: `team-${project.id}`, name: project.name })),
+                teams: company.projects.map((project) => ({
+                  teamId: `team-${project.id}`,
+                  name: project.name,
+                })),
               },
               null,
               2,
@@ -375,7 +643,9 @@ export function registerOfficeCommands(program: Command): void {
     .option("--json", "Output JSON", false)
     .action(async (opts: { type?: string; json?: boolean }) => {
       const objects = await store.readOfficeObjects();
-      const filtered = opts.type?.trim() ? objects.filter((entry) => entry.meshType === opts.type?.trim()) : objects;
+      const filtered = opts.type?.trim()
+        ? objects.filter((entry) => entry.meshType === opts.type?.trim())
+        : objects;
       if (opts.json) {
         console.log(JSON.stringify({ objects: filtered }, null, 2));
         return;
@@ -384,7 +654,9 @@ export function registerOfficeCommands(program: Command): void {
         console.log("No office objects found.");
         return;
       }
-      const lines = filtered.map((entry) => `${entry.id} | ${entry.meshType} | pos=${entry.position.join(",")}`);
+      const lines = filtered.map(
+        (entry) => `${entry.id} | ${entry.meshType} | pos=${entry.position.join(",")}`,
+      );
       console.log(lines.join("\n"));
     });
 
@@ -392,13 +664,20 @@ export function registerOfficeCommands(program: Command): void {
     .command("doctor")
     .description("Detect and optionally remove invalid office objects")
     .option("--fix", "Remove invalid objects", false)
-    .option("--reason <reason>", "Only include invalid objects matching this reason (repeatable)", collectValue, [] as string[])
+    .option(
+      "--reason <reason>",
+      "Only include invalid objects matching this reason (repeatable)",
+      collectValue,
+      [] as string[],
+    )
     .option("--json", "Output JSON", false)
     .action(async (opts: { fix?: boolean; reason?: string[]; json?: boolean }) => {
       const objects = await store.readOfficeObjects();
       const company = await store.readCompanyModel();
       const allInvalid = findInvalidOfficeObjects({ objects, company });
-      const reasonFilter = new Set((opts.reason ?? []).map((entry) => entry.trim()).filter(Boolean));
+      const reasonFilter = new Set(
+        (opts.reason ?? []).map((entry) => entry.trim()).filter(Boolean),
+      );
       const invalid =
         reasonFilter.size === 0
           ? allInvalid
@@ -465,7 +744,14 @@ export function registerOfficeCommands(program: Command): void {
         console.log("No team clusters found.");
         return;
       }
-      console.log(payload.map((entry) => `${entry.teamId || "(unlinked)"} | ${entry.name || "Unnamed"} | agents=${entry.agentCount}`).join("\n"));
+      console.log(
+        payload
+          .map(
+            (entry) =>
+              `${entry.teamId || "(unlinked)"} | ${entry.name || "Unnamed"} | agents=${entry.agentCount}`,
+          )
+          .join("\n"),
+      );
     });
 
   office
@@ -481,7 +767,20 @@ export function registerOfficeCommands(program: Command): void {
     .option("--metadata <key=value>", "Metadata entries (repeatable)", collectValue, [] as string[])
     .option("--json", "Output JSON", false)
     .action(
-      async (meshTypeArg: string, opts: { position?: string; autoPlace?: boolean; rotation?: string; scale?: string; id?: string; meshPublicPath?: string; displayName?: string; metadata: string[]; json?: boolean }) => {
+      async (
+        meshTypeArg: string,
+        opts: {
+          position?: string;
+          autoPlace?: boolean;
+          rotation?: string;
+          scale?: string;
+          id?: string;
+          meshPublicPath?: string;
+          displayName?: string;
+          metadata: string[];
+          json?: boolean;
+        },
+      ) => {
         const meshType = ensureMeshType(meshTypeArg);
         const rotation = opts.rotation ? parseVector3(opts.rotation, "--rotation") : undefined;
         const scale = opts.scale ? parseVector3(opts.scale, "--scale") : undefined;
@@ -498,7 +797,8 @@ export function registerOfficeCommands(program: Command): void {
           fail("placement_flags_conflict");
         }
         if (meshType === "custom-mesh") {
-          const meshPath = typeof metadata.meshPublicPath === "string" ? metadata.meshPublicPath.trim() : "";
+          const meshPath =
+            typeof metadata.meshPublicPath === "string" ? metadata.meshPublicPath.trim() : "";
           if (!meshPath) fail("custom_mesh_requires_asset_metadata");
         }
         if (meshType === "team-cluster") {
@@ -538,7 +838,11 @@ export function registerOfficeCommands(program: Command): void {
           ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
         };
         await store.writeOfficeObjects([...objects, nextObject]);
-        formatOutput(opts.json ? "json" : "text", { ok: true, object: nextObject }, `Added object ${objectId}`);
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, object: nextObject },
+          `Added object ${objectId}`,
+        );
       },
     );
 
@@ -548,30 +852,36 @@ export function registerOfficeCommands(program: Command): void {
     .requiredOption("--position <x,y,z>", "New position")
     .option("--rotation <x,y,z>", "New rotation")
     .option("--json", "Output JSON", false)
-    .action(async (objectId: string, opts: { position: string; rotation?: string; json?: boolean }) => {
-      const objects = await store.readOfficeObjects();
-      const index = objects.findIndex((entry) => entry.id === objectId.trim());
-      if (index === -1) fail(`object_not_found:${objectId}`);
-      const position = parseVector3(opts.position, "--position");
-      assertPositionInBounds(position);
-      const rotation = opts.rotation ? parseVector3(opts.rotation, "--rotation") : undefined;
-      const next = [...objects];
-      const current = next[index];
-      assertPositionUnoccupied({
-        position,
-        meshType: current.meshType,
-        metadata: current.metadata,
-        objects,
-        ignoreObjectId: current.id,
-      });
-      next[index] = {
-        ...current,
-        position,
-        ...(rotation ? { rotation } : {}),
-      };
-      await store.writeOfficeObjects(next);
-      formatOutput(opts.json ? "json" : "text", { ok: true, object: next[index] }, `Moved object ${objectId}`);
-    });
+    .action(
+      async (objectId: string, opts: { position: string; rotation?: string; json?: boolean }) => {
+        const objects = await store.readOfficeObjects();
+        const index = objects.findIndex((entry) => entry.id === objectId.trim());
+        if (index === -1) fail(`object_not_found:${objectId}`);
+        const position = parseVector3(opts.position, "--position");
+        assertPositionInBounds(position);
+        const rotation = opts.rotation ? parseVector3(opts.rotation, "--rotation") : undefined;
+        const next = [...objects];
+        const current = next[index];
+        assertPositionUnoccupied({
+          position,
+          meshType: current.meshType,
+          metadata: current.metadata,
+          objects,
+          ignoreObjectId: current.id,
+        });
+        next[index] = {
+          ...current,
+          position,
+          ...(rotation ? { rotation } : {}),
+        };
+        await store.writeOfficeObjects(next);
+        formatOutput(
+          opts.json ? "json" : "text",
+          { ok: true, object: next[index] },
+          `Moved object ${objectId}`,
+        );
+      },
+    );
 
   office
     .command("remove")
@@ -583,7 +893,11 @@ export function registerOfficeCommands(program: Command): void {
       if (!found) fail(`object_not_found:${objectId}`);
       const next = objects.filter((entry) => entry.id !== objectId.trim());
       await store.writeOfficeObjects(next);
-      formatOutput(opts.json ? "json" : "text", { ok: true, removed: found }, `Removed object ${objectId}`);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, removed: found },
+        `Removed object ${objectId}`,
+      );
     });
 
   office
@@ -594,7 +908,10 @@ export function registerOfficeCommands(program: Command): void {
     .option("--deliverable <deliverable>", "spec-only|generate-later|unknown", "spec-only")
     .option("--json", "Output JSON", false)
     .action(
-      async (promptParts: string[], opts: { style: string; type: string; deliverable: string; json?: boolean }) => {
+      async (
+        promptParts: string[],
+        opts: { style: string; type: string; deliverable: string; json?: boolean },
+      ) => {
         const prompt = promptParts.join(" ").trim();
         if (!prompt) fail("missing_prompt");
         const written = await writeMeshySpecFile({
@@ -610,6 +927,295 @@ export function registerOfficeCommands(program: Command): void {
         );
       },
     );
+
+  const decor = office.command("decor").description("Manage office decor settings and wall art");
+
+  decor
+    .command("docs")
+    .option("--json", "Output JSON", false)
+    .action((opts: { json?: boolean }) => {
+      const examples = [
+        "shellcorp office decor",
+        "shellcorp office decor list",
+        "shellcorp office decor pack list",
+        "shellcorp office decor floor list",
+        "shellcorp office decor wall list",
+        "shellcorp office decor background list",
+        "shellcorp office decor painting list",
+        "shellcorp office decor pack apply clam-cabinet",
+        "shellcorp office decor floor set walnut_parquet",
+        "shellcorp office decor wall set sage_mist",
+        "shellcorp office decor background set midnight_tide",
+        "shellcorp office decor painting place back-center sunrise_blocks",
+        "shellcorp office decor painting clear back-center",
+      ];
+      const payload = {
+        purpose: "Configure ShellCorp office decoration through office.json and wall-art objects.",
+        examples,
+      };
+      formatOutput(
+        opts.json ? "json" : "text",
+        payload,
+        ["Office decor CLI", "", "Examples:", ...examples.map((entry) => `- ${entry}`)].join("\n"),
+      );
+    });
+
+  decor
+    .command("list")
+    .option("--json", "Output JSON", false)
+    .action(async (opts: { json?: boolean }) => {
+      const settings = await store.readOfficeSettings();
+      const objects = await store.readOfficeObjects();
+      const payload = {
+        current: formatDecorState(settings, objects),
+        packs: OFFICE_DECOR_PACKS,
+        floorPatterns: OFFICE_FLOOR_PATTERNS,
+        wallColors: OFFICE_WALL_COLORS,
+        backgrounds: OFFICE_BACKGROUNDS,
+        paintings: OFFICE_PAINTINGS,
+        slots: WALL_ART_SLOTS,
+      };
+      formatOutput(
+        opts.json ? "json" : "text",
+        payload,
+        [
+          `Current floor: ${settings.decor.floorPatternId}`,
+          `Current wall: ${settings.decor.wallColorId}`,
+          `Current background: ${settings.decor.backgroundId}`,
+          `Paintings: ${payload.current.paintings.length}`,
+          "",
+          "Use `shellcorp office decor floor|wall|background|painting|pack list` to inspect options.",
+        ].join("\n"),
+      );
+    });
+
+  decor.option("--json", "Output JSON", false).action(async (opts: { json?: boolean }) => {
+    const settings = await store.readOfficeSettings();
+    const objects = await store.readOfficeObjects();
+    const payload = formatDecorState(settings, objects);
+    formatOutput(
+      opts.json ? "json" : "text",
+      payload,
+      [
+        `Current floor: ${settings.decor.floorPatternId}`,
+        `Current wall: ${settings.decor.wallColorId}`,
+        `Current background: ${settings.decor.backgroundId}`,
+        `Paintings: ${payload.paintings.map((entry) => `${entry.slotId}=${entry.paintingPresetId}`).join(", ") || "none"}`,
+        "",
+        "Use `shellcorp office decor list` for the full catalog.",
+      ].join("\n"),
+    );
+  });
+
+  const decorPack = decor.command("pack").description("Apply curated decor packs");
+  decorPack
+    .command("list")
+    .option("--json", "Output JSON", false)
+    .action((opts: { json?: boolean }) => {
+      formatOutput(
+        opts.json ? "json" : "text",
+        { packs: OFFICE_DECOR_PACKS },
+        OFFICE_DECOR_PACKS.map(
+          (entry) =>
+            `${entry.id} | ${entry.label} | floor=${entry.floorPatternId} wall=${entry.wallColorId} background=${entry.backgroundId}`,
+        ).join("\n"),
+      );
+    });
+  decorPack
+    .command("apply")
+    .argument("<packId>", "Decor pack id")
+    .option("--json", "Output JSON", false)
+    .action(async (packId: string, opts: { json?: boolean }) => {
+      const pack = ensureDecorPackId(packId);
+      const settings = await store.readOfficeSettings();
+      const nextSettings: OfficeSettingsModel = {
+        ...settings,
+        decor: {
+          floorPatternId: pack.floorPatternId,
+          wallColorId: pack.wallColorId,
+          backgroundId: pack.backgroundId,
+        },
+      };
+      await store.writeOfficeSettings(nextSettings);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, packId: pack.id, decor: nextSettings.decor },
+        `Applied decor pack ${pack.id}`,
+      );
+    });
+
+  const decorFloor = decor.command("floor").description("Manage floor decor");
+  decorFloor
+    .command("list")
+    .option("--json", "Output JSON", false)
+    .action((opts: { json?: boolean }) => {
+      formatOutput(
+        opts.json ? "json" : "text",
+        { floorPatterns: OFFICE_FLOOR_PATTERNS },
+        OFFICE_FLOOR_PATTERNS.map(
+          (entry) => `${entry.id} | ${entry.label} | ${entry.description}`,
+        ).join("\n"),
+      );
+    });
+  decorFloor
+    .command("set")
+    .argument("<patternId>", "Floor pattern id")
+    .option("--json", "Output JSON", false)
+    .action(async (patternId: string, opts: { json?: boolean }) => {
+      const normalized = ensureFloorPatternId(patternId);
+      const settings = await store.readOfficeSettings();
+      const nextSettings: OfficeSettingsModel = {
+        ...settings,
+        decor: {
+          ...settings.decor,
+          floorPatternId: normalized,
+        },
+      };
+      await store.writeOfficeSettings(nextSettings);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, floorPatternId: normalized, decor: nextSettings.decor },
+        `Office floor set to ${normalized}`,
+      );
+    });
+
+  const decorWall = decor.command("wall").description("Manage wall decor");
+  decorWall
+    .command("list")
+    .option("--json", "Output JSON", false)
+    .action((opts: { json?: boolean }) => {
+      formatOutput(
+        opts.json ? "json" : "text",
+        { wallColors: OFFICE_WALL_COLORS },
+        OFFICE_WALL_COLORS.map(
+          (entry) => `${entry.id} | ${entry.label} | ${entry.description}`,
+        ).join("\n"),
+      );
+    });
+  decorWall
+    .command("set")
+    .argument("<wallColorId>", "Wall color id")
+    .option("--json", "Output JSON", false)
+    .action(async (wallColorId: string, opts: { json?: boolean }) => {
+      const normalized = ensureWallColorId(wallColorId);
+      const settings = await store.readOfficeSettings();
+      const nextSettings: OfficeSettingsModel = {
+        ...settings,
+        decor: {
+          ...settings.decor,
+          wallColorId: normalized,
+        },
+      };
+      await store.writeOfficeSettings(nextSettings);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, wallColorId: normalized, decor: nextSettings.decor },
+        `Office wall color set to ${normalized}`,
+      );
+    });
+
+  const decorBackground = decor
+    .command("background")
+    .description("Manage scene background decor");
+  decorBackground
+    .command("list")
+    .option("--json", "Output JSON", false)
+    .action((opts: { json?: boolean }) => {
+      formatOutput(
+        opts.json ? "json" : "text",
+        { backgrounds: OFFICE_BACKGROUNDS },
+        OFFICE_BACKGROUNDS.map(
+          (entry) => `${entry.id} | ${entry.label} | ${entry.description}`,
+        ).join("\n"),
+      );
+    });
+  decorBackground
+    .command("set")
+    .argument("<backgroundId>", "Background preset id")
+    .option("--json", "Output JSON", false)
+    .action(async (backgroundId: string, opts: { json?: boolean }) => {
+      const normalized = ensureBackgroundId(backgroundId);
+      const settings = await store.readOfficeSettings();
+      const nextSettings: OfficeSettingsModel = {
+        ...settings,
+        decor: {
+          ...settings.decor,
+          backgroundId: normalized,
+        },
+      };
+      await store.writeOfficeSettings(nextSettings);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, backgroundId: normalized, decor: nextSettings.decor },
+        `Office background set to ${normalized}`,
+      );
+    });
+
+  const painting = decor.command("painting").description("Manage fixed-slot wall paintings");
+  painting
+    .command("list")
+    .option("--json", "Output JSON", false)
+    .action((opts: { json?: boolean }) => {
+      formatOutput(
+        opts.json ? "json" : "text",
+        { paintings: OFFICE_PAINTINGS, slots: WALL_ART_SLOTS },
+        [
+          "Paintings:",
+          ...OFFICE_PAINTINGS.map((entry) => `- ${entry.id} | ${entry.label}`),
+          "",
+          "Slots:",
+          ...WALL_ART_SLOTS.map((entry) => `- ${entry.id} | ${entry.label}`),
+        ].join("\n"),
+      );
+    });
+  painting
+    .command("place")
+    .argument("<slotId>", "Wall slot id")
+    .argument("<paintingPresetId>", "Painting preset id")
+    .option("--json", "Output JSON", false)
+    .action(async (slotId: string, paintingPresetId: string, opts: { json?: boolean }) => {
+      const normalizedSlotId = ensureWallArtSlotId(slotId);
+      const normalizedPaintingPresetId = ensurePaintingPresetId(paintingPresetId);
+      const settings = await store.readOfficeSettings();
+      const objects = await store.readOfficeObjects();
+      const layout = getWallArtSlotLayout(settings, normalizedSlotId);
+      const nextObjects = objects.filter((entry) => entry.id !== `wall-art-${normalizedSlotId}`);
+      nextObjects.push({
+        id: `wall-art-${normalizedSlotId}`,
+        identifier: `wall-art-${normalizedSlotId}`,
+        meshType: "wall-art",
+        position: layout.position,
+        rotation: layout.rotation,
+        metadata: {
+          wallSlotId: normalizedSlotId,
+          paintingPresetId: normalizedPaintingPresetId,
+          displayName:
+            OFFICE_PAINTINGS.find((entry) => entry.id === normalizedPaintingPresetId)?.label ??
+            normalizedPaintingPresetId,
+        },
+      });
+      await store.writeOfficeObjects(nextObjects);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, slotId: normalizedSlotId, paintingPresetId: normalizedPaintingPresetId },
+        `Placed ${normalizedPaintingPresetId} on ${normalizedSlotId}`,
+      );
+    });
+  painting
+    .command("clear")
+    .argument("<slotId>", "Wall slot id")
+    .option("--json", "Output JSON", false)
+    .action(async (slotId: string, opts: { json?: boolean }) => {
+      const normalizedSlotId = ensureWallArtSlotId(slotId);
+      const objects = await store.readOfficeObjects();
+      const nextObjects = objects.filter((entry) => entry.id !== `wall-art-${normalizedSlotId}`);
+      await store.writeOfficeObjects(nextObjects);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, slotId: normalizedSlotId },
+        `Cleared wall art slot ${normalizedSlotId}`,
+      );
+    });
 
   const theme = office.command("theme").description("Manage office style presets");
   theme
@@ -630,7 +1236,11 @@ export function registerOfficeCommands(program: Command): void {
     .action(async (preset: string, opts: { json?: boolean }) => {
       const normalized = ensureThemePreset(preset);
       await store.writeOfficeStylePreset(normalized);
-      formatOutput(opts.json ? "json" : "text", { ok: true, preset: normalized }, `Office theme set to ${normalized}`);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, preset: normalized },
+        `Office theme set to ${normalized}`,
+      );
     });
 
   theme.option("--json", "Output JSON", false).action(async (opts: { json?: boolean }) => {
@@ -642,4 +1252,3 @@ export function registerOfficeCommands(program: Command): void {
     console.log(`Current office theme: ${current}`);
   });
 }
-

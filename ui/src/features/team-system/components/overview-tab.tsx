@@ -67,6 +67,8 @@ interface OverviewTabProps {
   globalMode: boolean;
   hasBusinessConfig: boolean;
   currencyFormatter: Intl.NumberFormat;
+  aiBurn24hUsd: number;
+  aiUsageUnavailableText?: string | null;
 }
 
 export function OverviewTab({
@@ -83,6 +85,8 @@ export function OverviewTab({
   globalMode,
   hasBusinessConfig,
   currencyFormatter,
+  aiBurn24hUsd,
+  aiUsageUnavailableText,
 }: OverviewTabProps): JSX.Element {
   const setHighlightedEmployeeIds = useAppStore((state) => state.setHighlightedEmployeeIds);
   const highlightedEmployeeIds = useAppStore((state) => state.highlightedEmployeeIds);
@@ -112,6 +116,10 @@ export function OverviewTab({
     normalizedProjectGoal || "No goal set yet. Use the team CLI to define a clear business target.";
 
   const visibleEmployees = globalMode ? employees : teamEmployees;
+  const aiCurrencyFormatter = useMemo(
+    () => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }),
+    [],
+  );
 
   return (
     <ScrollArea className="h-full pr-3">
@@ -188,7 +196,7 @@ export function OverviewTab({
           </Card>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Members</CardTitle>
@@ -219,6 +227,24 @@ export function OverviewTab({
               className={`text-2xl font-semibold ${projectProfitCents >= 0 ? "text-emerald-500" : "text-red-500"}`}
             >
               {hasBusinessConfig ? currencyFormatter.format(projectProfitCents / 100) : "--"}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm">AI Burn 24h</CardTitle>
+                {aiUsageUnavailableText ? (
+                  <Badge variant="outline" className="text-[10px]">
+                    Partial
+                  </Badge>
+                ) : null}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              <p className="text-2xl font-semibold">{aiCurrencyFormatter.format(aiBurn24hUsd)}</p>
+              {aiUsageUnavailableText ? (
+                <p className="text-xs text-muted-foreground">{aiUsageUnavailableText}</p>
+              ) : null}
             </CardContent>
           </Card>
         </div>

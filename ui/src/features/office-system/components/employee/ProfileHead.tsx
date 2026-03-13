@@ -23,11 +23,13 @@ export const ProfileHead = memo(function ProfileHead({
   position,
   skinColor,
   hairColor,
+  useCompactOverlayMode = false,
 }: {
   imageUrl: string;
   position: [number, number, number];
   skinColor: string;
   hairColor: string;
+  useCompactOverlayMode?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
 
@@ -49,7 +51,7 @@ export const ProfileHead = memo(function ProfileHead({
         <meshStandardMaterial color={hairColor} />
       </Box>
 
-      {isValidUrl && !imageError && (
+      {isValidUrl && !imageError && !useCompactOverlayMode && (
         <Html
           position={[0, 0, HEAD_WIDTH / 2 + 0.005]}
           center

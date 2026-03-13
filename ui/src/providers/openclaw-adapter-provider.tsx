@@ -1,7 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { stateBase } from "@/lib/gateway-config";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { OpenClawAdapter } from "@/lib/openclaw-adapter";
 import { useGateway } from "@/providers/gateway-provider";
 
@@ -12,14 +11,16 @@ type OpenClawAdapterContextValue = {
 const OpenClawAdapterContext = createContext<OpenClawAdapterContextValue | null>(null);
 
 export function OpenClawAdapterProvider({ children }: { children: ReactNode }): JSX.Element {
-  const { client: wsClient } = useGateway();
+  const { client: wsClient, config } = useGateway();
   const value = useMemo(
     () => ({
-      adapter: new OpenClawAdapter("", stateBase, wsClient),
+      adapter: new OpenClawAdapter("", config.stateBase, wsClient),
     }),
-    [wsClient],
+    [config.stateBase, wsClient],
   );
-  return <OpenClawAdapterContext.Provider value={value}>{children}</OpenClawAdapterContext.Provider>;
+  return (
+    <OpenClawAdapterContext.Provider value={value}>{children}</OpenClawAdapterContext.Provider>
+  );
 }
 
 export function useOpenClawAdapter(): OpenClawAdapter {

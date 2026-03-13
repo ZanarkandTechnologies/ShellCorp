@@ -21,11 +21,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ProjectAccountEventModel, ProjectAccountModel } from "@/lib/openclaw-types";
+import type { TeamAiUsageSummary } from "@/lib/session-usage";
 import { BusinessAccountSummaryCard } from "./business-account-summary-card";
 
 interface LedgerTabPanelProps {
   account: ProjectAccountModel;
   events: ProjectAccountEventModel[];
+  aiUsageSummary: TeamAiUsageSummary;
+  aiUsageUnavailableText?: string | null;
   onRecordEvent: (input: {
     type: "credit" | "debit";
     amountCents: number;
@@ -37,6 +40,8 @@ interface LedgerTabPanelProps {
 export function LedgerTabPanel({
   account,
   events,
+  aiUsageSummary,
+  aiUsageUnavailableText,
   onRecordEvent,
 }: LedgerTabPanelProps): React.JSX.Element {
   const [source, setSource] = useState("");
@@ -47,6 +52,10 @@ export function LedgerTabPanel({
   const formatter = useMemo(
     () => new Intl.NumberFormat("en-US", { style: "currency", currency: account.currency }),
     [account.currency],
+  );
+  const aiFormatter = useMemo(
+    () => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }),
+    [],
   );
   const sortedEvents = useMemo(
     () =>
@@ -76,6 +85,42 @@ export function LedgerTabPanel({
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
       <BusinessAccountSummaryCard account={account} events={events} />
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-sm">AI Spend</CardTitle>
+            {aiUsageUnavailableText ? (
+              <span className="text-xs text-muted-foreground">{aiUsageUnavailableText}</span>
+            ) : null}
+          </div>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-3 text-sm md:grid-cols-4">
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">24h Burn</p>
+            <p className="text-lg font-semibold">{aiFormatter.format(aiUsageSummary.cost24hUsd)}</p>
+          </div>
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">7d Burn</p>
+            <p className="text-lg font-semibold">{aiFormatter.format(aiUsageSummary.cost7dUsd)}</p>
+          </div>
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Tracked Spend
+            </p>
+            <p className="text-lg font-semibold">
+              {aiFormatter.format(aiUsageSummary.totalTrackedCostUsd)}
+            </p>
+          </div>
+          <div className="rounded-md border bg-muted/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Tracked Tokens
+            </p>
+            <p className="text-lg font-semibold">
+              {new Intl.NumberFormat("en-US").format(aiUsageSummary.totalTokens)}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Funding Actions</CardTitle>

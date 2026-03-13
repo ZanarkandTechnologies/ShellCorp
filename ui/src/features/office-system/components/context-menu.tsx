@@ -15,6 +15,7 @@ export interface MenuAction {
     color?: string; // Tailwind color class base (e.g., "blue")
     position?: 'top' | 'right' | 'bottom' | 'left';
     onClick: () => void;
+    isHighlighted?: boolean;
     // Optional: handler that receives the mouse event for drag operations
     onMouseDown?: (e: React.MouseEvent) => void;
 }
@@ -163,7 +164,13 @@ export function ContextMenu({
                                 <Button
                                     variant="secondary"
                                     size="icon"
-                                    className={cn(buttonBaseClass, getColorClasses(action.color))}
+                                    className={cn(
+                                        buttonBaseClass,
+                                        getColorClasses(action.color),
+                                        action.isHighlighted
+                                          ? "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse"
+                                          : null,
+                                    )}
                                     onClick={(e) => handleActionClick(e, action)}
                                     onMouseDown={(e) => handleActionMouseDown(e, action)}
                                 >

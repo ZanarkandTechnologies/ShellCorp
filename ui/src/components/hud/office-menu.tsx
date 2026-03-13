@@ -20,12 +20,12 @@ import { useNavigate } from "react-router-dom";
 import { useAppStore } from "@/lib/app-store";
 import { FurnitureShop } from "./furniture-shop";
 import { ApprovalQueue } from "./approval-queue";
-import { UserTasksPanel } from "./user-tasks-panel";
 import { useChatActions } from "@/features/chat-system/chat-store";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { OrganizationPanel } from "./organization-panel";
 import { api } from "../../../../convex/_generated/api";
 import { isConvexEnabled } from "@/providers/convex-provider";
+import { countSc12PendingReviewTasks, resolveSc12BoardTasks } from "@/lib/sc12-board";
 
 interface SpeedDialProps {
   className?: string;
@@ -39,16 +39,20 @@ export function OfficeMenu({ className }: SpeedDialProps) {
   const setIsGlobalTeamPanelOpen = useAppStore((state) => state.setIsGlobalTeamPanelOpen);
   const setIsAgentSessionPanelOpen = useAppStore((state) => state.setIsAgentSessionPanelOpen);
   const setIsSkillsPanelOpen = useAppStore((state) => state.setIsSkillsPanelOpen);
+  const setSelectedSkillStudioSkillId = useAppStore((state) => state.setSelectedSkillStudioSkillId);
+  const setSkillStudioFocusAgentId = useAppStore((state) => state.setSkillStudioFocusAgentId);
   const setActiveTeamId = useAppStore((state) => state.setActiveTeamId);
   const setSelectedTeamId = useAppStore((state) => state.setSelectedTeamId);
   const setKanbanFocusAgentId = useAppStore((state) => state.setKanbanFocusAgentId);
   const setIsSettingsModalOpen = useAppStore((state) => state.setIsSettingsModalOpen);
   const placementMode = useAppStore((state) => state.placementMode);
-  const isUserTasksOpen = useAppStore((state) => state.isUserTasksModalOpen);
-  const setIsUserTasksOpen = useAppStore((state) => state.setIsUserTasksModalOpen);
   const setIsCeoWorkbenchOpen = useAppStore((state) => state.setIsCeoWorkbenchOpen);
+  const setCeoWorkbenchView = useAppStore((state) => state.setCeoWorkbenchView);
+  const isFurnitureShopOpen = useAppStore((state) => state.isFurnitureShopOpen);
+  const setIsFurnitureShopOpen = useAppStore((state) => state.setIsFurnitureShopOpen);
+  const isOfficeOnboardingVisible = useAppStore((state) => state.isOfficeOnboardingVisible);
+  const officeOnboardingStep = useAppStore((state) => state.officeOnboardingStep);
 
-  const [isFurnitureShopOpen, setIsFurnitureShopOpen] = useState(false);
   const [isApprovalQueueOpen, setIsApprovalQueueOpen] = useState(false);
   const [isOrganizationOpen, setIsOrganizationOpen] = useState(false);
   const [approvalCount, setApprovalCount] = useState(0);
@@ -56,14 +60,14 @@ export function OfficeMenu({ className }: SpeedDialProps) {
     api.board.getCompanyBoardTasks,
     convexEnabled ? { taskType: "team_proposal" } : "skip",
   );
-  const userTaskCount = useMemo(
-    () =>
-      (companyBoard?.tasks ?? []).filter(
-        (task) =>
-          task.approvalState === "pending_review" || task.approvalState === "changes_requested",
-      ).length,
-    [companyBoard?.tasks],
-  );
+  const userTaskCount = useMemo(() => {
+    const { tasks } = resolveSc12BoardTasks({
+      convexEnabled,
+      hasLoaded: companyBoard !== undefined,
+      rows: companyBoard?.tasks,
+    });
+    return countSc12PendingReviewTasks(tasks);
+  }, [companyBoard, convexEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,8 +96,7 @@ export function OfficeMenu({ className }: SpeedDialProps) {
     setIsFurnitureShopOpen(false);
     setIsApprovalQueueOpen(false);
     setIsOrganizationOpen(false);
-    setIsUserTasksOpen(false);
-  }, [placementMode.active, setIsUserTasksOpen]);
+  }, [placementMode.active]);
 
   const openGlobalTeamWorkspace = useCallback(() => {
     setActiveTeamId(null);
@@ -101,6 +104,16 @@ export function OfficeMenu({ className }: SpeedDialProps) {
     setKanbanFocusAgentId(null);
     setIsGlobalTeamPanelOpen(true);
   }, [setActiveTeamId, setIsGlobalTeamPanelOpen, setKanbanFocusAgentId, setSelectedTeamId]);
+
+  const shouldGuideMenu =
+    isOfficeOnboardingVisible &&
+    (officeOnboardingStep === "open-shop" || officeOnboardingStep === "open-team");
+  const highlightedMenuActionId =
+    officeOnboardingStep === "open-shop"
+      ? "office-shop"
+      : officeOnboardingStep === "open-team"
+        ? "team-workspace"
+        : null;
 
   const speedDialItems: SpeedDialItem[] = useMemo(
     () => [
@@ -124,6 +137,10 @@ export function OfficeMenu({ className }: SpeedDialProps) {
         label: "Team Workspace",
         onClick: openGlobalTeamWorkspace,
         color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
+        buttonClassName:
+          highlightedMenuActionId === "team-workspace"
+            ? "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse"
+            : undefined,
       },
       {
         id: "agent-session",
@@ -135,8 +152,12 @@ export function OfficeMenu({ className }: SpeedDialProps) {
       {
         id: "global-skills",
         icon: BookOpen,
-        label: "Global Skills",
-        onClick: () => setIsSkillsPanelOpen(true),
+        label: "Skill Studio",
+        onClick: () => {
+          setSelectedSkillStudioSkillId(null);
+          setSkillStudioFocusAgentId(null);
+          setIsSkillsPanelOpen(true);
+        },
         color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
       },
       {
@@ -152,14 +173,20 @@ export function OfficeMenu({ className }: SpeedDialProps) {
         id: "ceo-workbench",
         icon: BriefcaseBusiness,
         label: "CEO Workbench",
-        onClick: () => setIsCeoWorkbenchOpen(true),
+        onClick: () => {
+          setCeoWorkbenchView("board");
+          setIsCeoWorkbenchOpen(true);
+        },
         color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
       },
       {
         id: "user-tasks",
         icon: ClipboardList,
-        label: "User Tasks",
-        onClick: () => setIsUserTasksOpen(true),
+        label: "Human Review",
+        onClick: () => {
+          setCeoWorkbenchView("review");
+          setIsCeoWorkbenchOpen(true);
+        },
         badge: userTaskCount > 0 ? userTaskCount : undefined,
         color:
           userTaskCount > 0
@@ -180,9 +207,13 @@ export function OfficeMenu({ className }: SpeedDialProps) {
       {
         id: "office-shop",
         icon: ShoppingBag,
-        label: "Office Shop",
+        label: "Decoration",
         onClick: () => setIsFurnitureShopOpen(true),
         color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
+        buttonClassName:
+          highlightedMenuActionId === "office-shop"
+            ? "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse"
+            : undefined,
       },
       {
         id: "settings",
@@ -195,17 +226,20 @@ export function OfficeMenu({ className }: SpeedDialProps) {
     [
       navigate,
       openGlobalTeamWorkspace,
+      highlightedMenuActionId,
       setIsAgentSessionPanelOpen,
       setIsSkillsPanelOpen,
+      setSelectedSkillStudioSkillId,
+      setSkillStudioFocusAgentId,
       openEmployeeChat,
       setIsCeoWorkbenchOpen,
+      setCeoWorkbenchView,
       userTaskCount,
       approvalCount,
       setIsApprovalQueueOpen,
       setIsOrganizationOpen,
       setIsFurnitureShopOpen,
       setIsSettingsModalOpen,
-      setIsUserTasksOpen,
     ],
   );
 
@@ -217,6 +251,12 @@ export function OfficeMenu({ className }: SpeedDialProps) {
         direction="vertical"
         triggerIcon={Menu}
         triggerColor="bg-accent hover:bg-accent/90 text-accent-foreground"
+        triggerClassName={
+          shouldGuideMenu
+            ? "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse"
+            : undefined
+        }
+        forceOpen={shouldGuideMenu}
         className={className}
       />
       <OrganizationPanel
@@ -225,9 +265,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
         canOpenTeamManager={canOpenTeamManager}
         canOpenAgentManager={canOpenAgentManager}
       />
-      {isUserTasksOpen ? (
-        <UserTasksPanel isOpen={isUserTasksOpen} onOpenChange={setIsUserTasksOpen} />
-      ) : null}
       {isFurnitureShopOpen ? (
         <FurnitureShop isOpen={isFurnitureShopOpen} onOpenChange={setIsFurnitureShopOpen} />
       ) : null}

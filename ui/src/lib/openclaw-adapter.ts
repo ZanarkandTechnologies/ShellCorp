@@ -37,6 +37,11 @@ import type {
   RoleSlotModel,
   SkillStatusEntry,
   SkillStatusReport,
+  SkillStudioCatalogEntry,
+  SkillStudioDetail,
+  SkillStudioFileContent,
+  SkillDemoRunResult,
+  SkillManifest,
   TaskSyncState,
   ToolCatalogEntry,
   ToolCatalogGroup,
@@ -107,6 +112,10 @@ import {
   toCronStatus,
   toSkillStatusEntry,
   toSkillStatusReport,
+  toSkillStudioCatalogEntry,
+  toSkillStudioDetail,
+  toSkillStudioFileContent,
+  toSkillDemoRunResult,
   toOfficeSettings,
   toMeshAsset,
   toAgentMemoryEntry,
@@ -153,6 +162,7 @@ export {
   deriveAgentLiveStatus,
   toProjectArtefactIndex,
   toTask,
+  toTimeline,
   toFederationPolicy,
   hashSchemaVersion,
   toProviderIndexProfile,
@@ -181,6 +191,70 @@ export class OpenClawAdapter {
       throw new Error(`request_failed:${path}:${response.status}`);
     }
     return (await response.json()) as Json;
+  }
+
+  private async tryReadJson(
+    path: string,
+    baseUrl: string = this.stateUrl,
+  ): Promise<{ ok: true; payload: Json } | { ok: false; status?: number }> {
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: buildGatewayHeaders(),
+      });
+      if (!response.ok) {
+        return { ok: false, status: response.status };
+      }
+      return { ok: true, payload: (await response.json()) as Json };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  private getSkillStudioStateBases(): string[] {
+    const bases = [this.stateUrl];
+    if (typeof window !== "undefined") {
+      const currentOrigin = window.location.origin.trim();
+      if (currentOrigin && !bases.includes(currentOrigin)) {
+        bases.push(currentOrigin);
+      }
+    }
+    return bases;
+  }
+
+  private async readSkillStudioJson(path: string): Promise<Json> {
+    let lastStatus: number | undefined;
+    for (const baseUrl of this.getSkillStudioStateBases()) {
+      const result = await this.tryReadJson(path, baseUrl);
+      if (result.ok) {
+        return result.payload;
+      }
+      lastStatus = result.status ?? lastStatus;
+      if (result.status !== 404) {
+        break;
+      }
+    }
+    throw new Error(`request_failed:${path}:${lastStatus ?? "unreachable"}`);
+  }
+
+  private async postSkillStudioJson(path: string, body: Json): Promise<Json | null> {
+    for (const baseUrl of this.getSkillStudioStateBases()) {
+      try {
+        const response = await fetch(`${baseUrl}${path}`, {
+          method: "POST",
+          headers: buildGatewayHeaders({ "content-type": "application/json" }),
+          body: JSON.stringify(body),
+        });
+        if (response.ok) {
+          return (await response.json()) as Json;
+        }
+        if (response.status !== 404) {
+          return null;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return null;
   }
 
   private async invokeGatewayMethod(
@@ -588,6 +662,82 @@ export class OpenClawAdapter {
   async listSkills(): Promise<SkillItemModel[]> {
     const payload = await this.readJson("/openclaw/skills");
     return normalizeArray(payload.skills, toSkill);
+  }
+
+  async listSkillStudioCatalog(agentId?: string): Promise<SkillStudioCatalogEntry[]> {
+    const query = agentId ? `?agentId=${encodeURIComponent(agentId)}` : "";
+    const primaryPath = `/openclaw/skills/catalog${query}`;
+    for (const baseUrl of this.getSkillStudioStateBases()) {
+      const primary = await this.tryReadJson(primaryPath, baseUrl);
+      if (primary.ok) {
+        return normalizeArray(primary.payload.skills, toSkillStudioCatalogEntry);
+      }
+      if (primary.status !== 404) {
+        throw new Error(`request_failed:${primaryPath}:${primary.status ?? "unreachable"}`);
+      }
+    }
+    const legacyPath = `/openclaw/skills${query}`;
+    const legacy = await this.tryReadJson(legacyPath);
+    if (!legacy.ok) {
+      throw new Error(`request_failed:${primaryPath}:404`);
+    }
+    const catalog = normalizeArray(legacy.payload.skills, toSkillStudioCatalogEntry);
+    if (catalog.length > 0) {
+      return catalog;
+    }
+    return normalizeArray(legacy.payload.skills, toSkill).map((skill) => ({
+      skillId: skill.name,
+      packageKey: skill.name,
+      displayName: skill.name,
+      description: "",
+      category: skill.category,
+      scope: skill.scope,
+      sourcePath: skill.sourcePath,
+      updatedAt: skill.updatedAt,
+      hasManifest: false,
+      hasTests: false,
+      hasDiagram: false,
+      hasSkillMemory: false,
+    }));
+  }
+
+  async getSkillStudioDetail(skillId: string, agentId?: string): Promise<SkillStudioDetail | null> {
+    const query = agentId ? `?agentId=${encodeURIComponent(agentId)}` : "";
+    const payload = await this.readSkillStudioJson(
+      `/openclaw/skills/${encodeURIComponent(skillId)}${query}`,
+    );
+    return toSkillStudioDetail(payload.skill ?? payload);
+  }
+
+  async getSkillStudioFile(
+    skillId: string,
+    filePath: string,
+  ): Promise<SkillStudioFileContent | null> {
+    const payload = await this.readSkillStudioJson(
+      `/openclaw/skills/${encodeURIComponent(skillId)}/file?path=${encodeURIComponent(filePath)}`,
+    );
+    return toSkillStudioFileContent(payload.file ?? payload);
+  }
+
+  async runSkillStudioDemo(skillId: string, caseId: string): Promise<SkillDemoRunResult | null> {
+    const payload = await this.postSkillStudioJson(
+      `/openclaw/skills/${encodeURIComponent(skillId)}/demos/run`,
+      { caseId },
+    );
+    if (!payload) return null;
+    return toSkillDemoRunResult(payload.run ?? payload);
+  }
+
+  async saveSkillStudioManifest(
+    skillId: string,
+    input: { manifest?: SkillManifest; rawYaml?: string },
+  ): Promise<SkillStudioDetail | null> {
+    const payload = await this.postSkillStudioJson(
+      `/openclaw/skills/${encodeURIComponent(skillId)}/config`,
+      input as Json,
+    );
+    if (!payload) return null;
+    return toSkillStudioDetail(payload.skill ?? payload);
   }
 
   async listMemory(): Promise<MemoryItemModel[]> {
@@ -1431,7 +1581,7 @@ export class OpenClawAdapter {
       const payload = await this.readJson("/openclaw/office-settings");
       return toOfficeSettings(payload.settings ?? payload);
     } catch {
-      return { meshAssetDir: "" };
+      return toOfficeSettings({});
     }
   }
 

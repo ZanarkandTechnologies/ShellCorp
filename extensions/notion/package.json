@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@notionhq/client": "^5.9.0"
+  },
   "openclaw": {
     "extensions": [
       "./index.ts"

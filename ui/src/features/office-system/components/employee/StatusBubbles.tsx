@@ -35,6 +35,8 @@ type EmployeeStatusBubblesProps = {
   totalHeight: number;
   debugMode: boolean;
   debugDeskDecision: string;
+  onboardingPrompt?: string | null;
+  useCompactOverlayMode?: boolean;
 };
 
 export const EmployeeStatusBubbles = memo(function EmployeeStatusBubbles({
@@ -51,7 +53,11 @@ export const EmployeeStatusBubbles = memo(function EmployeeStatusBubbles({
   totalHeight,
   debugMode,
   debugDeskDecision,
+  onboardingPrompt,
+  useCompactOverlayMode = false,
 }: EmployeeStatusBubblesProps) {
+  const showRichEmployeeLabels = !useCompactOverlayMode;
+
   return (
     <>
       <StatusIndicator
@@ -65,9 +71,10 @@ export const EmployeeStatusBubbles = memo(function EmployeeStatusBubbles({
             : "single"
         }
         bubbles={heartbeatBubbles}
+        compactOnly={useCompactOverlayMode}
       />
 
-      {(isHovered || isHighlighted) && (
+      {showRichEmployeeLabels && (isHovered || isHighlighted) && (
         <Html
           position={[0, totalHeight + 0.5, 0]}
           center
@@ -90,7 +97,22 @@ export const EmployeeStatusBubbles = memo(function EmployeeStatusBubbles({
         </Html>
       )}
 
-      {debugMode && debugDeskDecision ? (
+      {showRichEmployeeLabels && onboardingPrompt ? (
+        <Html
+          position={[0, totalHeight + 1.05, 0]}
+          center
+          zIndexRange={[100, 0]}
+          style={{ pointerEvents: "none", userSelect: "none" }}
+        >
+          <div className="animate-in fade-in zoom-in-95 duration-200">
+            <div className="rounded-full border border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-semibold text-primary shadow-lg">
+              {onboardingPrompt}
+            </div>
+          </div>
+        </Html>
+      ) : null}
+
+      {showRichEmployeeLabels && debugMode && debugDeskDecision ? (
         <Html
           position={[0, totalHeight + 0.28, 0]}
           center

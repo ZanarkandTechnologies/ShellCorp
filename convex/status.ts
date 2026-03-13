@@ -1,5 +1,5 @@
-import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { query } from "./_generated/server";
 import { normalizeTeamId } from "./_utils";
 
 export const getAgentStatus = query({
@@ -70,6 +70,7 @@ export const getMultipleAgentStatuses = query({
             eventType: row.eventType,
             label: row.label,
             detail: row.detail,
+            skillId: row.skillId,
             occurredAt: row.occurredAt,
           }));
       }),
@@ -83,12 +84,14 @@ export const getMultipleAgentStatuses = query({
           state: string;
           statusText: string;
           bubbles: Array<{ id: string; label: string; weight: number }>;
+          currentSkillId?: string;
           sessionKey?: string;
           updatedAt?: number;
           recentEvents?: Array<{
             eventType: string;
             label: string;
             detail?: string;
+            skillId?: string;
             occurredAt: number;
           }>;
         }
@@ -117,6 +120,10 @@ export const getMultipleAgentStatuses = query({
             : fallbackStatusText,
         bubbles:
           Array.isArray(row?.bubbles) && row.bubbles.length > 0 ? row.bubbles : fallbackBubbles,
+        currentSkillId:
+          typeof row?.currentSkillId === "string" && row.currentSkillId.trim()
+            ? row.currentSkillId
+            : latestEvent?.skillId,
         sessionKey: typeof row?.sessionKey === "string" ? row.sessionKey : undefined,
         updatedAt: typeof row?.updatedAt === "number" ? row.updatedAt : latestEvent?.occurredAt,
         recentEvents: eventsForAgent,

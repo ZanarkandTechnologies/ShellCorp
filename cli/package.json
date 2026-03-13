@@ -1,0 +1,32 @@
+{
+  "name": "@shellcorp/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "shell": "tsx shellcorp-cli.ts",
+    "bundle": "esbuild shellcorp-cli.ts --bundle --platform=node --format=cjs --target=node20 --outfile=../dist/bundle/shellcorp-cli.cjs",
+    "typecheck": "tsc -p ../tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "latest",
+    "@mariozechner/pi-ai": "latest",
+    "@mariozechner/pi-coding-agent": "latest",
+    "@slack/bolt": "latest",
+    "@whiskeysockets/baileys": "^6.17.16",
+    "commander": "latest",
+    "convex": "^1.32.0",
+    "croner": "latest",
+    "discord.js": "latest",
+    "grammy": "latest",
+    "qrcode-terminal": "^0.12.0",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/qrcode-terminal": "^0.12.2",
+    "esbuild": "^0.27.3",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

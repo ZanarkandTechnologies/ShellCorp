@@ -81,6 +81,8 @@ describe("office object ui helpers", () => {
         skillBinding: {
           skillId: "world-monitor",
           label: "World Monitor",
+          effectMode: "random",
+          effectPool: ["ghost", "blink"],
         },
       }),
     ).toEqual({
@@ -95,6 +97,32 @@ describe("office object ui helpers", () => {
       skillBinding: {
         skillId: "world-monitor",
         label: "World Monitor",
+        effectMode: "random",
+        effectVariant: undefined,
+        effectPool: ["ghost", "blink"],
+      },
+    });
+  });
+
+  it("drops invalid skill effect variants", () => {
+    expect(
+      parseOfficeObjectInteractionConfig({
+        skillBinding: {
+          skillId: "world-monitor",
+          effectMode: "fixed",
+          effectVariant: "nope",
+          effectPool: ["ghost", "bad"],
+        },
+      }),
+    ).toEqual({
+      displayName: undefined,
+      uiBinding: { kind: "none" },
+      skillBinding: {
+        skillId: "world-monitor",
+        label: undefined,
+        effectMode: "fixed",
+        effectVariant: undefined,
+        effectPool: ["ghost"],
       },
     });
   });
