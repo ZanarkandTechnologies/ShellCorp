@@ -13,85 +13,128 @@
  *
  * MEMORY REFERENCES:
  * - MEM-0143
+ * - MEM-0168
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import * as THREE from 'three';
-import { getOfficeTheme } from '@/config/office-theme';
+import { useEffect, useMemo, useState } from "react";
+import * as THREE from "three";
+import { getOfficeTheme } from "@/config/office-theme";
+import type { OfficeSettingsModel } from "@/lib/openclaw-types";
+import { getOfficeSceneViewState, type OfficeSceneViewSettings } from "./view-profile";
 
 function useOfficeSceneIsDarkMode(): boolean {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
-    useEffect(() => {
-        if (typeof window === 'undefined') return undefined;
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
 
-        const root = document.documentElement;
-        const syncTheme = (): void => {
-            setIsDarkMode(root.classList.contains('dark'));
-        };
+    const root = document.documentElement;
+    const syncTheme = (): void => {
+      setIsDarkMode(root.classList.contains("dark"));
+    };
 
-        syncTheme();
+    syncTheme();
 
-        const observer = new MutationObserver(() => {
-            syncTheme();
-        });
+    const observer = new MutationObserver(() => {
+      syncTheme();
+    });
 
-        observer.observe(root, { attributes: true, attributeFilter: ['class'] });
-        return () => observer.disconnect();
-    }, []);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
-    return isDarkMode;
+  return isDarkMode;
 }
 
 export function useOfficeSceneBackground(): string {
-    const isDarkMode = useOfficeSceneIsDarkMode();
-    return useMemo(() => getOfficeTheme(isDarkMode).scene.background, [isDarkMode]);
+  const isDarkMode = useOfficeSceneIsDarkMode();
+  return useMemo(() => getOfficeTheme(isDarkMode).scene.background, [isDarkMode]);
 }
 
 export function useOfficeSceneTheme(): ReturnType<typeof getOfficeTheme> {
-    const isDarkMode = useOfficeSceneIsDarkMode();
-    return useMemo(() => getOfficeTheme(isDarkMode), [isDarkMode]);
+  const isDarkMode = useOfficeSceneIsDarkMode();
+  return useMemo(() => getOfficeTheme(isDarkMode), [isDarkMode]);
+}
+
+export function getInitialOfficeCameraConfig(
+  settings: Pick<OfficeSettingsModel, "viewProfile" | "orbitControlsEnabled" | "cameraOrientation">,
+): {
+  projection: "perspective" | "orthographic";
+  position: [number, number, number];
+  target: [number, number, number];
+  fov: number;
+  zoom: number;
+} {
+  const viewState = getOfficeSceneViewState({
+    isBuilderMode: false,
+    isDragging: false,
+    settings,
+  });
+  return {
+    projection: viewState.cameraProjection,
+    position: viewState.cameraPosition,
+    target: viewState.cameraTarget,
+    fov: viewState.cameraFov,
+    zoom: viewState.cameraZoom,
+  };
 }
 
 export function useOfficeSceneCameraTransition(params: {
-    isBuilderMode: boolean;
-    orbitControlsRef: React.RefObject<{
-        object: THREE.Camera;
-        update: () => void;
-    } | null>;
-    setAnimatingCamera: (value: boolean) => void;
+  isBuilderMode: boolean;
+  settings: OfficeSceneViewSettings;
+  orbitControlsRef: React.RefObject<{
+    object: THREE.Camera;
+    target: THREE.Vector3;
+    update: () => void;
+  } | null>;
+  setAnimatingCamera: (value: boolean) => void;
 }): void {
-    const { isBuilderMode, orbitControlsRef, setAnimatingCamera } = params;
+  const { isBuilderMode, settings, orbitControlsRef, setAnimatingCamera } = params;
 
-    useEffect(() => {
-        const controls = orbitControlsRef.current;
-        if (!controls) return;
+  useEffect(() => {
+    const controls = orbitControlsRef.current;
+    if (!controls) return;
 
-        const camera = controls.object;
-        const startPos = camera.position.clone();
-        const endPos = isBuilderMode
-            ? new THREE.Vector3(0, 50, 0)
-            : new THREE.Vector3(0, 25, 30);
-        const duration = 500;
-        const startTime = performance.now();
+    const camera = controls.object;
+    const startPos = camera.position.clone();
+    const startTarget = controls.target.clone();
+    const nextViewState = getOfficeSceneViewState({
+      isBuilderMode,
+      isDragging: false,
+      settings,
+    });
+    const endPos = new THREE.Vector3(...nextViewState.cameraPosition);
+    const endTarget = new THREE.Vector3(...nextViewState.cameraTarget);
+    if (
+      startPos.distanceToSquared(endPos) < 0.0001 &&
+      startTarget.distanceToSquared(endTarget) < 0.0001
+    ) {
+      setAnimatingCamera(false);
+      return;
+    }
 
-        const animateCamera = (): void => {
-            const elapsed = performance.now() - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const eased = 1 - Math.pow(1 - progress, 3);
+    setAnimatingCamera(true);
+    const duration = 500;
+    const startTime = performance.now();
 
-            camera.position.lerpVectors(startPos, endPos, eased);
-            camera.lookAt(0, 0, 0);
-            camera.updateProjectionMatrix();
-            controls.update();
+    const animateCamera = (): void => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
 
-            if (progress < 1) {
-                requestAnimationFrame(animateCamera);
-            } else {
-                setAnimatingCamera(false);
-            }
-        };
+      camera.position.lerpVectors(startPos, endPos, eased);
+      controls.target.lerpVectors(startTarget, endTarget, eased);
+      camera.lookAt(controls.target);
+      camera.updateProjectionMatrix();
+      controls.update();
 
-        animateCamera();
-    }, [isBuilderMode, orbitControlsRef, setAnimatingCamera]);
+      if (progress < 1) {
+        requestAnimationFrame(animateCamera);
+      } else {
+        setAnimatingCamera(false);
+      }
+    };
+
+    animateCamera();
+  }, [isBuilderMode, orbitControlsRef, setAnimatingCamera, settings]);
 }

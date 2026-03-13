@@ -356,7 +356,8 @@ export interface CompanyOfficeObjectModel {
     | "bookshelf"
     | "pantry"
     | "glass-wall"
-    | "custom-mesh";
+    | "custom-mesh"
+    | "wall-art";
   position: [number, number, number];
   rotation?: [number, number, number];
   scale?: [number, number, number];
@@ -376,6 +377,17 @@ export interface OfficeObjectSidecarModel {
 
 export interface OfficeSettingsModel {
   meshAssetDir: string;
+  officeFootprint: {
+    width: number;
+    depth: number;
+  };
+  decor: {
+    floorPatternId: "sandstone_tiles" | "graphite_grid" | "walnut_parquet";
+    wallColorId: "gallery_cream" | "sage_mist" | "harbor_blue" | "clay_rose";
+  };
+  viewProfile: "free_orbit_3d" | "fixed_2_5d";
+  orbitControlsEnabled: boolean;
+  cameraOrientation: "north_east" | "north_west" | "south_east" | "south_west";
 }
 
 export interface MeshAssetModel {
@@ -884,6 +896,144 @@ export interface SkillStatusReport {
   workspaceDir: string;
   managedSkillsDir: string;
   skills: SkillStatusEntry[];
+}
+
+export type SkillStateMode = "stateless" | "agent_memory" | "skill_memory";
+
+export interface SkillManifestToolDependency {
+  type: string;
+  value: string;
+  description?: string;
+  transport?: string;
+  url?: string;
+}
+
+export interface SkillManifestInterface {
+  displayName: string;
+  shortDescription: string;
+  iconSmall?: string;
+  iconLarge?: string;
+  brandColor?: string;
+  defaultPrompt?: string;
+}
+
+export interface SkillManifestPolicy {
+  allowImplicitInvocation: boolean;
+}
+
+export interface SkillManifestDependencies {
+  tools: SkillManifestToolDependency[];
+  skills: string[];
+  docs: string[];
+}
+
+export interface SkillManifestState {
+  mode: SkillStateMode;
+  memoryFile?: string;
+}
+
+export interface SkillManifestPaths {
+  read: string[];
+  write: string[];
+}
+
+export interface SkillManifestVisualization {
+  mermaid?: string;
+}
+
+export interface SkillManifestDemos {
+  defaultCaseId?: string;
+  labels: Record<string, string>;
+}
+
+export interface SkillManifest {
+  interface: SkillManifestInterface;
+  policy: SkillManifestPolicy;
+  dependencies: SkillManifestDependencies;
+  state: SkillManifestState;
+  paths: SkillManifestPaths;
+  visualization: SkillManifestVisualization;
+  references: string[];
+  demos: SkillManifestDemos;
+}
+
+export interface SkillStudioCatalogEntry {
+  skillId: string;
+  packageKey: string;
+  displayName: string;
+  description: string;
+  category: string;
+  scope: "shared" | "agent";
+  sourcePath: string;
+  updatedAt?: number;
+  hasManifest: boolean;
+  hasTests: boolean;
+  hasDiagram: boolean;
+  hasSkillMemory: boolean;
+  runtimeStatus?: Pick<SkillStatusEntry, "eligible" | "blockedByAllowlist" | "disabled" | "source">;
+}
+
+export interface SkillStudioFileEntry {
+  path: string;
+  kind: "skill" | "config" | "test" | "memory" | "fixture" | "asset" | "reference";
+  isText: boolean;
+}
+
+export interface SkillStudioFileContent {
+  path: string;
+  kind: SkillStudioFileEntry["kind"];
+  isText: boolean;
+  content?: string;
+  sizeBytes?: number;
+}
+
+export interface SkillDemoCase {
+  id: string;
+  title: string;
+  filePath: string;
+  stepCount: number;
+  relativePath: string;
+}
+
+export interface SkillDemoRunStepResult {
+  run: string[];
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  passed: boolean;
+  failures: string[];
+}
+
+export interface SkillDemoRunResult {
+  caseId: string;
+  caseName: string;
+  passed: boolean;
+  durationMs: number;
+  stdout: string;
+  stderr: string;
+  filesChecked: string[];
+  steps: SkillDemoRunStepResult[];
+}
+
+export interface SkillStudioDetail {
+  skillId: string;
+  packageKey: string;
+  displayName: string;
+  description: string;
+  category: string;
+  scope: "shared" | "agent";
+  sourcePath: string;
+  updatedAt?: number;
+  manifest: SkillManifest;
+  manifestPath: string;
+  hasManifest: boolean;
+  overviewMarkdown: string;
+  mermaid?: string;
+  relatedSkills: string[];
+  fileEntries: SkillStudioFileEntry[];
+  demoCases: SkillDemoCase[];
+  runtimeStatus?: SkillStatusEntry;
+  focusAgentId?: string;
 }
 
 export interface TeamBusinessSkillSyncPreviewRow {

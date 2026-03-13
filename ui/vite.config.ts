@@ -4,6 +4,13 @@ import { mkdir, readdir, readFile, writeFile, stat } from "node:fs/promises";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import {
+  getSkillStudioDetail,
+  listSkillStudioCatalog,
+  readSkillStudioFile,
+  runSkillStudioDemo,
+  saveSkillStudioManifest,
+} from "./skill-studio-state";
 
 type JsonObject = Record<string, unknown>;
 type MemoryEntryType = "discovery" | "decision" | "problem" | "solution" | "pattern" | "warning" | "success" | "refactor" | "bugfix" | "feature";
@@ -15,6 +22,8 @@ type BusinessEquipMode = "replace_minimum" | "append_only";
 
 const OPENCLAW_HOME = process.env.OPENCLAW_STATE_DIR || path.join(process.env.HOME || "", ".openclaw");
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || path.join(OPENCLAW_HOME, "openclaw.json");
+const REPO_ROOT = path.resolve(__dirname, "..");
+const SKILLS_ROOT = path.join(REPO_ROOT, "skills");
 const COMPANY_MODEL_PATH = path.join(OPENCLAW_HOME, "company.json");
 const OFFICE_OBJECTS_PATH = path.join(OPENCLAW_HOME, "office-objects.json");
 const OFFICE_SETTINGS_PATH = path.join(OPENCLAW_HOME, "office.json");
@@ -33,6 +42,17 @@ const MESH_PREVIEW_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 interface OfficeSettings {
   meshAssetDir?: string;
+  officeFootprint?: {
+    width?: number;
+    depth?: number;
+  };
+  decor?: {
+    floorPatternId?: "sandstone_tiles" | "graphite_grid" | "walnut_parquet";
+    wallColorId?: "gallery_cream" | "sage_mist" | "harbor_blue" | "clay_rose";
+  };
+  viewProfile?: "free_orbit_3d" | "fixed_2_5d";
+  orbitControlsEnabled?: boolean;
+  cameraOrientation?: "north_east" | "north_west" | "south_east" | "south_west";
 }
 
 interface SessionUsageTotals {
@@ -114,11 +134,61 @@ function normalizeOfficeSettings(input: unknown): OfficeSettings {
     typeof row.meshAssetDir === "string" && row.meshAssetDir.trim()
       ? path.resolve(row.meshAssetDir.trim())
       : DEFAULT_MESH_ASSET_DIR;
-  return { meshAssetDir };
+  const rawFootprint =
+    row.officeFootprint && typeof row.officeFootprint === "object"
+      ? (row.officeFootprint as JsonObject)
+      : {};
+  const normalizeAxis = (value: unknown, fallback: number): number => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+    const rounded = Math.round(value);
+    const bounded = Math.max(15, rounded);
+    return bounded % 2 === 0 ? bounded + 1 : bounded;
+  };
+  const rawDecor = row.decor && typeof row.decor === "object" ? (row.decor as JsonObject) : {};
+  const viewProfile = row.viewProfile === "fixed_2_5d" ? "fixed_2_5d" : "free_orbit_3d";
+  const orbitControlsEnabled = row.orbitControlsEnabled !== false;
+  const cameraOrientation =
+    row.cameraOrientation === "north_east" ||
+    row.cameraOrientation === "north_west" ||
+    row.cameraOrientation === "south_west"
+      ? row.cameraOrientation
+      : "south_east";
+  return {
+    meshAssetDir,
+    officeFootprint: {
+      width: normalizeAxis(rawFootprint.width, 35),
+      depth: normalizeAxis(rawFootprint.depth, 35),
+    },
+    decor: {
+      floorPatternId:
+        rawDecor.floorPatternId === "graphite_grid" || rawDecor.floorPatternId === "walnut_parquet"
+          ? rawDecor.floorPatternId
+          : "sandstone_tiles",
+      wallColorId:
+        rawDecor.wallColorId === "sage_mist" ||
+        rawDecor.wallColorId === "harbor_blue" ||
+        rawDecor.wallColorId === "clay_rose"
+          ? rawDecor.wallColorId
+          : "gallery_cream",
+    },
+    viewProfile,
+    orbitControlsEnabled,
+    cameraOrientation,
+  };
 }
 
 async function readOfficeSettings(): Promise<OfficeSettings> {
-  const raw = await readJsonFile<OfficeSettings>(OFFICE_SETTINGS_PATH, { meshAssetDir: DEFAULT_MESH_ASSET_DIR });
+  const raw = await readJsonFile<OfficeSettings>(OFFICE_SETTINGS_PATH, {
+    meshAssetDir: DEFAULT_MESH_ASSET_DIR,
+    officeFootprint: { width: 35, depth: 35 },
+    decor: {
+      floorPatternId: "sandstone_tiles",
+      wallColorId: "gallery_cream",
+    },
+    viewProfile: "free_orbit_3d",
+    orbitControlsEnabled: true,
+    cameraOrientation: "south_east",
+  });
   return normalizeOfficeSettings(raw);
 }
 
@@ -1283,12 +1353,97 @@ function shellcorpStateBridge() {
         }
 
         if (method === "GET" && pathname === "/openclaw/skills") {
-          writeJson(res, 200, { skills: [] });
+          const catalog = await listSkillStudioCatalog(SKILLS_ROOT, REPO_ROOT);
+          writeJson(res, 200, {
+            skills: catalog.map((entry) => ({
+              name: entry.skillId,
+              category: entry.category,
+              scope: entry.scope,
+              sourcePath: entry.sourcePath,
+              updatedAt: entry.updatedAt,
+            })),
+          });
+          return;
+        }
+
+        if (method === "GET" && pathname === "/openclaw/skills/catalog") {
+          const skills = await listSkillStudioCatalog(SKILLS_ROOT, REPO_ROOT);
+          writeJson(res, 200, { skills });
           return;
         }
 
         if (method === "GET" && pathname === "/openclaw/memory") {
           writeJson(res, 200, { memory: [] });
+          return;
+        }
+
+        const skillDetailMatch = pathname.match(/^\/openclaw\/skills\/([^/]+)$/);
+        if (method === "GET" && skillDetailMatch) {
+          const skillId = decodeURIComponent(skillDetailMatch[1]);
+          const skill = await getSkillStudioDetail(SKILLS_ROOT, REPO_ROOT, skillId, [], url.searchParams.get("agentId") ?? undefined);
+          if (!skill) {
+            writeJson(res, 404, { error: "skill_not_found" });
+            return;
+          }
+          writeJson(res, 200, { skill });
+          return;
+        }
+
+        const skillFileMatch = pathname.match(/^\/openclaw\/skills\/([^/]+)\/file$/);
+        if (method === "GET" && skillFileMatch) {
+          const skillId = decodeURIComponent(skillFileMatch[1]);
+          const filePath = url.searchParams.get("path") ?? "";
+          if (!filePath.trim()) {
+            writeJson(res, 400, { error: "skill_file_path_required" });
+            return;
+          }
+          const file = await readSkillStudioFile(SKILLS_ROOT, REPO_ROOT, skillId, filePath);
+          if (!file) {
+            writeJson(res, 404, { error: "skill_file_not_found" });
+            return;
+          }
+          writeJson(res, 200, { file });
+          return;
+        }
+
+        const skillDemoRunMatch = pathname.match(/^\/openclaw\/skills\/([^/]+)\/demos\/run$/);
+        if (method === "POST" && skillDemoRunMatch) {
+          const skillId = decodeURIComponent(skillDemoRunMatch[1]);
+          const body = (await readBody(req)) as JsonObject;
+          const caseId = String(body.caseId ?? "").trim();
+          if (!caseId) {
+            writeJson(res, 400, { error: "skill_demo_case_required" });
+            return;
+          }
+          const run = await runSkillStudioDemo(SKILLS_ROOT, REPO_ROOT, skillId, caseId);
+          if (!run) {
+            writeJson(res, 404, { error: "skill_demo_not_found" });
+            return;
+          }
+          writeJson(res, 200, { run });
+          return;
+        }
+
+        const skillConfigMatch = pathname.match(/^\/openclaw\/skills\/([^/]+)\/config$/);
+        if (method === "POST" && skillConfigMatch) {
+          if (!hasBridgeWriteAccess(req)) {
+            writeJson(res, 403, { error: "forbidden" });
+            return;
+          }
+          const skillId = decodeURIComponent(skillConfigMatch[1]);
+          const body = (await readBody(req)) as JsonObject;
+          const skill = await saveSkillStudioManifest(SKILLS_ROOT, REPO_ROOT, skillId, {
+            manifest:
+              body.manifest && typeof body.manifest === "object"
+                ? (body.manifest as Record<string, unknown> as never)
+                : undefined,
+            rawYaml: typeof body.rawYaml === "string" ? body.rawYaml : undefined,
+          });
+          if (!skill) {
+            writeJson(res, 404, { error: "skill_not_found" });
+            return;
+          }
+          writeJson(res, 200, { skill });
           return;
         }
 

@@ -1,13 +1,27 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
-import { HALF_FLOOR } from "@/constants";
-import { getAbsoluteDeskPosition, getDeskRotation, getEmployeePositionAtDesk } from "@/features/office-system/utils/layout";
+import {
+  getAbsoluteDeskPosition,
+  getDeskRotation,
+  getEmployeePositionAtDesk,
+} from "@/features/office-system/utils/layout";
 import { normalizeOfficeObjectId } from "@/features/office-system/components/office-object-id";
 import type { OpenClawAdapter } from "@/lib/openclaw-adapter";
 import type { Company, DeskLayoutData, EmployeeData, OfficeObject, TeamData } from "@/lib/types";
-import { computeBusinessReadinessIssues, projectToBusinessBuilderDraft } from "@/lib/business-builder";
+import {
+  computeBusinessReadinessIssues,
+  projectToBusinessBuilderDraft,
+} from "@/lib/business-builder";
 import type {
   AgentCardModel,
   AgentLiveStatus,
@@ -19,9 +33,16 @@ import type {
   ProjectWorkloadSummary,
   ReconciliationWarning,
   UnifiedOfficeModel,
+  OfficeSettingsModel,
 } from "@/lib/openclaw-types";
 import { useAgentLiveStatuses } from "@/hooks/use-agent-live-status";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
+import {
+  DEFAULT_OFFICE_FOOTPRINT,
+  clampPositionToOfficeFootprint,
+  getManagementAnchorFromFootprint,
+  type OfficeFootprint,
+} from "@/lib/office-footprint";
 
 interface OfficeDataContextType {
   company: Company | null;
@@ -29,13 +50,21 @@ interface OfficeDataContextType {
   employees: EmployeeData[];
   officeObjects: OfficeObject[];
   desks: DeskLayoutData[];
+  officeSettings: OfficeSettingsModel;
   companyModel: CompanyModel | null;
   workload: ProjectWorkloadSummary[];
   warnings: ReconciliationWarning[];
   refresh: () => Promise<void>;
-  manualResync: (projectId: string, provider?: FederatedTaskProvider) => Promise<{ ok: boolean; error?: string }>;
-  upsertFederationPolicy: (policy: FederationProjectPolicy) => Promise<{ ok: boolean; error?: string }>;
-  upsertProviderIndexProfile: (profile: ProviderIndexProfile) => Promise<{ ok: boolean; error?: string }>;
+  manualResync: (
+    projectId: string,
+    provider?: FederatedTaskProvider,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  upsertFederationPolicy: (
+    policy: FederationProjectPolicy,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  upsertProviderIndexProfile: (
+    profile: ProviderIndexProfile,
+  ) => Promise<{ ok: boolean; error?: string }>;
   isLoading: boolean;
 }
 
@@ -44,21 +73,15 @@ const CLUSTER_MARGIN = 2;
 
 const demoCompany: Company = { _id: "company-demo", name: "Shell Company" };
 
-function clampClusterPosition(position: [number, number, number]): { position: [number, number, number]; clamped: boolean } {
-  const limit = HALF_FLOOR - CLUSTER_MARGIN;
-  const clampedX = Math.max(-limit, Math.min(limit, position[0]));
-  const clampedZ = Math.max(-limit, Math.min(limit, position[2]));
-  const didClamp = clampedX !== position[0] || clampedZ !== position[2];
-  return { position: [clampedX, position[1], clampedZ], clamped: didClamp };
-}
-
-function deriveCeoAnchor(objects: UnifiedOfficeModel["officeObjects"]): [number, number, number] {
-  const glassWalls = objects.filter((object) => object.meshType === "glass-wall");
-  if (glassWalls.length === 0) return [0, 0, 15];
-  const avgX = glassWalls.reduce((sum, object) => sum + object.position[0], 0) / glassWalls.length;
-  const maxZ = glassWalls.reduce((max, object) => Math.max(max, object.position[2]), -Infinity);
-  const anchored: [number, number, number] = [avgX, 0, Number.isFinite(maxZ) ? maxZ : 15];
-  return clampClusterPosition(anchored).position;
+function clampClusterPositionForFootprint(
+  position: [number, number, number],
+  footprint: OfficeFootprint,
+): { position: [number, number, number]; clamped: boolean } {
+  const next = clampPositionToOfficeFootprint(position, footprint, CLUSTER_MARGIN);
+  return {
+    position: next,
+    clamped: next[0] !== position[0] || next[2] !== position[2],
+  };
 }
 
 function shouldReplaceCanonicalSidecarObject(
@@ -90,10 +113,17 @@ function dedupeCanonicalSidecarObjects(
   return [...byCanonicalId.values()];
 }
 
-function resolveTeamClusterTeamId(object: UnifiedOfficeModel["officeObjects"][number]): string | null {
-  const metadataTeamId = object.metadata && typeof object.metadata.teamId === "string" ? object.metadata.teamId.trim() : "";
+function resolveTeamClusterTeamId(
+  object: UnifiedOfficeModel["officeObjects"][number],
+): string | null {
+  const metadataTeamId =
+    object.metadata && typeof object.metadata.teamId === "string"
+      ? object.metadata.teamId.trim()
+      : "";
   if (metadataTeamId) return metadataTeamId;
-  const candidates = [object.id, object.identifier].filter((value): value is string => typeof value === "string");
+  const candidates = [object.id, object.identifier].filter(
+    (value): value is string => typeof value === "string",
+  );
   for (const candidate of candidates) {
     const trimmed = candidate.trim();
     if (trimmed.startsWith("cluster-team-")) {
@@ -107,9 +137,27 @@ function buildDefaultFurnitureObjects(companyId: string): OfficeObject[] {
   return [
     { _id: "plant-1", companyId, meshType: "plant", position: [-14, 0, -14], rotation: [0, 0, 0] },
     { _id: "plant-2", companyId, meshType: "plant", position: [14, 0, -14], rotation: [0, 0, 0] },
-    { _id: "bookshelf-1", companyId, meshType: "bookshelf", position: [0, 0, -15], rotation: [0, 0, 0] },
-    { _id: "couch-1", companyId, meshType: "couch", position: [12, 0, -14], rotation: [0, Math.PI, 0] },
-    { _id: "pantry-1", companyId, meshType: "pantry", position: [-12, 0, -14], rotation: [0, 0, 0] },
+    {
+      _id: "bookshelf-1",
+      companyId,
+      meshType: "bookshelf",
+      position: [0, 0, -15],
+      rotation: [0, 0, 0],
+    },
+    {
+      _id: "couch-1",
+      companyId,
+      meshType: "couch",
+      position: [12, 0, -14],
+      rotation: [0, Math.PI, 0],
+    },
+    {
+      _id: "pantry-1",
+      companyId,
+      meshType: "pantry",
+      position: [-12, 0, -14],
+      rotation: [0, 0, 0],
+    },
   ];
 }
 
@@ -165,6 +213,17 @@ function fallbackData(): OfficeDataContextType {
     employees,
     officeObjects,
     desks,
+    officeSettings: {
+      meshAssetDir: "",
+      officeFootprint: DEFAULT_OFFICE_FOOTPRINT,
+      decor: {
+        floorPatternId: "sandstone_tiles",
+        wallColorId: "gallery_cream",
+      },
+      viewProfile: "free_orbit_3d",
+      orbitControlsEnabled: true,
+      cameraOrientation: "south_east",
+    },
     companyModel: null,
     workload: [],
     warnings: [],
@@ -235,7 +294,9 @@ function buildDeskSignature(desks: DeskLayoutData[]): string {
   return desks.map((desk) => `${desk.id}|${desk.deskIndex}|${desk.team}`).join("||");
 }
 
-function buildHeartbeatBubbleSignature(bubbles: Array<{ label: string; weight?: number }> | undefined): string {
+function buildHeartbeatBubbleSignature(
+  bubbles: Array<{ label: string; weight?: number }> | undefined,
+): string {
   return (bubbles ?? []).map((bubble) => `${bubble.label}:${bubble.weight ?? ""}`).join(",");
 }
 
@@ -278,33 +339,75 @@ function buildOfficeObjectSignature(officeObjects: OfficeObject[]): string {
         buildPositionSignature(officeObject.position),
         buildPositionSignature(officeObject.rotation),
         buildPositionSignature(officeObject.scale),
-        typeof officeObject.metadata?.displayName === "string" ? officeObject.metadata.displayName : "",
+        typeof officeObject.metadata?.displayName === "string"
+          ? officeObject.metadata.displayName
+          : "",
         typeof officeObject.metadata?.teamId === "string" ? officeObject.metadata.teamId : "",
-        typeof officeObject.metadata?.meshPublicPath === "string" ? officeObject.metadata.meshPublicPath : "",
-        typeof officeObject.metadata?.uiBinding?.kind === "string" ? officeObject.metadata.uiBinding.kind : "",
-        typeof officeObject.metadata?.uiBinding?.title === "string" ? officeObject.metadata.uiBinding.title : "",
-        typeof officeObject.metadata?.uiBinding?.url === "string" ? officeObject.metadata.uiBinding.url : "",
-        typeof officeObject.metadata?.uiBinding?.aspectRatio === "string" ? officeObject.metadata.uiBinding.aspectRatio : "",
-        typeof officeObject.metadata?.uiBinding?.openMode === "string" ? officeObject.metadata.uiBinding.openMode : "",
+        typeof officeObject.metadata?.meshPublicPath === "string"
+          ? officeObject.metadata.meshPublicPath
+          : "",
+        typeof officeObject.metadata?.uiBinding?.kind === "string"
+          ? officeObject.metadata.uiBinding.kind
+          : "",
+        typeof officeObject.metadata?.uiBinding?.title === "string"
+          ? officeObject.metadata.uiBinding.title
+          : "",
+        typeof officeObject.metadata?.uiBinding?.url === "string"
+          ? officeObject.metadata.uiBinding.url
+          : "",
+        typeof officeObject.metadata?.uiBinding?.aspectRatio === "string"
+          ? officeObject.metadata.uiBinding.aspectRatio
+          : "",
+        typeof officeObject.metadata?.uiBinding?.openMode === "string"
+          ? officeObject.metadata.uiBinding.openMode
+          : "",
       ].join("|"),
     )
     .join("||");
 }
 
-function stabilizeOfficeData(current: OfficeDataContextType, next: OfficeDataContextType): OfficeDataContextType {
+function buildOfficeSettingsSignature(settings: OfficeDataContextType["officeSettings"]): string {
+  return [
+    settings.meshAssetDir,
+    settings.officeFootprint.width,
+    settings.officeFootprint.depth,
+    settings.viewProfile,
+    settings.orbitControlsEnabled ? "orbit-on" : "orbit-off",
+    settings.cameraOrientation,
+  ].join("|");
+}
+
+function stabilizeOfficeData(
+  current: OfficeDataContextType,
+  next: OfficeDataContextType,
+): OfficeDataContextType {
   // These compact signatures are intentionally cheaper than JSON.stringify on every polling tick.
   const stabilizedCompany =
-    buildCompanySignature(current.company) === buildCompanySignature(next.company) ? current.company : next.company;
+    buildCompanySignature(current.company) === buildCompanySignature(next.company)
+      ? current.company
+      : next.company;
   const stabilizedTeams =
-    buildTeamSignature(current.teams) === buildTeamSignature(next.teams) ? current.teams : next.teams;
+    buildTeamSignature(current.teams) === buildTeamSignature(next.teams)
+      ? current.teams
+      : next.teams;
   const stabilizedEmployees =
-    buildEmployeeSignature(current.employees) === buildEmployeeSignature(next.employees) ? current.employees : next.employees;
+    buildEmployeeSignature(current.employees) === buildEmployeeSignature(next.employees)
+      ? current.employees
+      : next.employees;
   const stabilizedOfficeObjects =
-    buildOfficeObjectSignature(current.officeObjects) === buildOfficeObjectSignature(next.officeObjects)
+    buildOfficeObjectSignature(current.officeObjects) ===
+    buildOfficeObjectSignature(next.officeObjects)
       ? current.officeObjects
       : next.officeObjects;
   const stabilizedDesks =
-    buildDeskSignature(current.desks) === buildDeskSignature(next.desks) ? current.desks : next.desks;
+    buildDeskSignature(current.desks) === buildDeskSignature(next.desks)
+      ? current.desks
+      : next.desks;
+  const stabilizedOfficeSettings =
+    buildOfficeSettingsSignature(current.officeSettings) ===
+    buildOfficeSettingsSignature(next.officeSettings)
+      ? current.officeSettings
+      : next.officeSettings;
 
   if (
     current.isLoading === next.isLoading &&
@@ -313,6 +416,7 @@ function stabilizeOfficeData(current: OfficeDataContextType, next: OfficeDataCon
     current.employees === stabilizedEmployees &&
     current.officeObjects === stabilizedOfficeObjects &&
     current.desks === stabilizedDesks &&
+    current.officeSettings === stabilizedOfficeSettings &&
     current.companyModel === next.companyModel &&
     current.workload === next.workload &&
     current.warnings === next.warnings
@@ -327,11 +431,13 @@ function stabilizeOfficeData(current: OfficeDataContextType, next: OfficeDataCon
     employees: stabilizedEmployees,
     officeObjects: stabilizedOfficeObjects,
     desks: stabilizedDesks,
+    officeSettings: stabilizedOfficeSettings,
   };
 }
 
 function toOfficeData(
   unified: UnifiedOfficeModel,
+  officeSettings: OfficeDataContextType["officeSettings"],
   pendingApprovals: PendingApprovalModel[] = [],
   liveStatusByAgent: Record<string, AgentLiveStatus> = {},
 ): OfficeDataContextType {
@@ -341,6 +447,7 @@ function toOfficeData(
   const companyModel = unified.company;
   const workload = unified.workload;
   const warnings = unified.warnings;
+  const officeFootprint = officeSettings.officeFootprint;
   const agents: AgentCardModel[] = configuredAgents.length > 0 ? configuredAgents : runtimeAgents;
   if (agents.length === 0) return fallbackData();
 
@@ -349,21 +456,26 @@ function toOfficeData(
   const companyAgentsById = new Map(companyModel.agents.map((agent) => [agent.agentId, agent]));
   const projectToTeamId = new Map<string, string>();
   const teams: TeamData[] = [];
-  const projectList = (companyModel.projects ?? []).filter((project) => project.status !== "archived");
+  const projectList = (companyModel.projects ?? []).filter(
+    (project) => project.status !== "archived",
+  );
   const companyAgents = companyModel.agents ?? [];
   const teamClusterAnchorsByTeamId = new Map<string, [number, number, number]>();
   for (const object of sidecarObjects.filter((entry) => entry.meshType === "team-cluster")) {
     const resolvedTeamId = resolveTeamClusterTeamId(object);
     if (!resolvedTeamId) continue;
-    teamClusterAnchorsByTeamId.set(resolvedTeamId, clampClusterPosition(object.position).position);
+    teamClusterAnchorsByTeamId.set(
+      resolvedTeamId,
+      clampClusterPositionForFootprint(object.position, officeFootprint).position,
+    );
   }
-  const ceoAnchor = deriveCeoAnchor(sidecarObjects);
+  const ceoAnchor = getManagementAnchorFromFootprint(officeFootprint);
 
   teams.push({
     _id: "team-management",
     companyId,
     name: "Management",
-    description: "Executive control desk inside the glass panel zone.",
+    description: "Executive control desk inside the dedicated management zone.",
     deskCount: 1,
     clusterPosition: ceoAnchor,
     employees: [],
@@ -382,7 +494,9 @@ function toOfficeData(
         .filter((entry) => entry.type === "cost")
         .reduce((total, entry) => total + Math.max(0, Math.round(entry.amount)), 0);
       const fallbackAnchor: [number, number, number] = [projectIndex * 9 - 4, 0, 8];
-      const clusterPosition = teamClusterAnchorsByTeamId.get(teamId) ?? clampClusterPosition(fallbackAnchor).position;
+      const clusterPosition =
+        teamClusterAnchorsByTeamId.get(teamId) ??
+        clampClusterPositionForFootprint(fallbackAnchor, officeFootprint).position;
       const resources = (project.resources ?? []).map((resource) => {
         const softLimit = resource.policy.softLimit;
         const hardLimit = resource.policy.hardLimit;
@@ -403,7 +517,9 @@ function toOfficeData(
           health,
         };
       });
-      const readinessIssues = computeBusinessReadinessIssues(projectToBusinessBuilderDraft(project)).map((issue) => issue.message);
+      const readinessIssues = computeBusinessReadinessIssues(
+        projectToBusinessBuilderDraft(project),
+      ).map((issue) => issue.message);
       teams.push({
         _id: teamId,
         companyId,
@@ -446,11 +562,19 @@ function toOfficeData(
   }
 
   const desks: DeskLayoutData[] = teams.flatMap((team) =>
-    Array.from({ length: team.name === "Management" ? Math.max(team.deskCount ?? 1, 1) : Math.max(team.deskCount ?? 0, 1) }, (_, deskIndex) => ({
-      id: `desk-${team._id}-${deskIndex}`,
-      deskIndex,
-      team: team.name,
-    })),
+    Array.from(
+      {
+        length:
+          team.name === "Management"
+            ? Math.max(team.deskCount ?? 1, 1)
+            : Math.max(team.deskCount ?? 0, 1),
+      },
+      (_, deskIndex) => ({
+        id: `desk-${team._id}-${deskIndex}`,
+        deskIndex,
+        team: team.name,
+      }),
+    ),
   );
 
   const normalizedDeskLayoutsByTeamId = new Map<
@@ -470,7 +594,9 @@ function toOfficeData(
         persistedIndex: Number.isFinite(desk.deskIndex) ? desk.deskIndex : Number.MAX_SAFE_INTEGER,
       }))
       .sort((a, b) =>
-        a.persistedIndex === b.persistedIndex ? a.originalIndex - b.originalIndex : a.persistedIndex - b.persistedIndex,
+        a.persistedIndex === b.persistedIndex
+          ? a.originalIndex - b.originalIndex
+          : a.persistedIndex - b.persistedIndex,
       )
       .map(({ desk }, layoutIndex, ordered) => ({
         deskId: desk.id,
@@ -486,7 +612,14 @@ function toOfficeData(
   for (const approval of pendingApprovals) {
     const existing = approvalsByAgent.get(approval.agentId) ?? { count: 0, maxRisk: 0 };
     existing.count += 1;
-    const riskValue = approval.riskLevel === "critical" ? 3 : approval.riskLevel === "high" ? 3 : approval.riskLevel === "medium" ? 2 : 1;
+    const riskValue =
+      approval.riskLevel === "critical"
+        ? 3
+        : approval.riskLevel === "high"
+          ? 3
+          : approval.riskLevel === "medium"
+            ? 2
+            : 1;
     existing.maxRisk = Math.max(existing.maxRisk, riskValue);
     approvalsByAgent.set(approval.agentId, existing);
   }
@@ -499,29 +632,38 @@ function toOfficeData(
     const teamId = isMainAgent
       ? "team-management"
       : companyAgent?.projectId
-        ? projectToTeamId.get(companyAgent.projectId) ?? "team-openclaw"
+        ? (projectToTeamId.get(companyAgent.projectId) ?? "team-openclaw")
         : "team-openclaw";
     const team = teams.find((item) => item._id === teamId);
-    const heartbeat = companyModel.heartbeatProfiles.find((item) => item.id === companyAgent?.heartbeatProfileId);
+    const heartbeat = companyModel.heartbeatProfiles.find(
+      (item) => item.id === companyAgent?.heartbeatProfileId,
+    );
     const liveStatus = liveStatusByAgent[agent.agentId];
-    const pressure = companyAgent?.projectId ? workload.find((item) => item.projectId === companyAgent.projectId)?.queuePressure : undefined;
+    const pressure = companyAgent?.projectId
+      ? workload.find((item) => item.projectId === companyAgent.projectId)?.queuePressure
+      : undefined;
     const teamCenter = team?.clusterPosition ?? [0, 0, 8];
-    const teamDeskLayouts = team ? normalizedDeskLayoutsByTeamId.get(team._id) ?? [] : [];
+    const teamDeskLayouts = team ? (normalizedDeskLayoutsByTeamId.get(team._id) ?? []) : [];
     const currentDeskCursor = teamDeskCursor.get(teamId) ?? 0;
     const initialDeskLayout =
-      teamDeskLayouts.length > 0 ? teamDeskLayouts[Math.min(currentDeskCursor, teamDeskLayouts.length - 1)] : null;
+      teamDeskLayouts.length > 0
+        ? teamDeskLayouts[Math.min(currentDeskCursor, teamDeskLayouts.length - 1)]
+        : null;
     if (teamDeskLayouts.length > 0) {
       teamDeskCursor.set(teamId, currentDeskCursor + 1);
     }
     const deskPosition = initialDeskLayout
       ? getAbsoluteDeskPosition(teamCenter, initialDeskLayout.layoutIndex, initialDeskLayout.total)
       : null;
-    const deskRotation = initialDeskLayout ? getDeskRotation(initialDeskLayout.layoutIndex, initialDeskLayout.total) : null;
-    const initialPosition: [number, number, number] = isMainAgent && initialDeskLayout == null
-      ? ceoAnchor
-      : deskPosition && deskRotation != null
-        ? getEmployeePositionAtDesk(deskPosition, deskRotation)
-        : teamCenter;
+    const deskRotation = initialDeskLayout
+      ? getDeskRotation(initialDeskLayout.layoutIndex, initialDeskLayout.total)
+      : null;
+    const initialPosition: [number, number, number] =
+      isMainAgent && initialDeskLayout == null
+        ? ceoAnchor
+        : deskPosition && deskRotation != null
+          ? getEmployeePositionAtDesk(deskPosition, deskRotation)
+          : teamCenter;
     const agentApprovals = approvalsByAgent.get(agent.agentId);
     const heartbeatStatus =
       liveStatus?.state === "error"
@@ -530,15 +672,15 @@ function toOfficeData(
           ? "warning"
           : liveStatus?.state === "done"
             ? "success"
-        : liveStatus?.state === "ok"
-          ? "success"
-          : liveStatus?.state === "running"
-            ? "info"
-          : liveStatus?.state === "planning" || liveStatus?.state === "executing"
-            ? "info"
-            : liveStatus?.state === "no_work"
-              ? "info"
-              : undefined;
+            : liveStatus?.state === "ok"
+              ? "success"
+              : liveStatus?.state === "running"
+                ? "info"
+                : liveStatus?.state === "planning" || liveStatus?.state === "executing"
+                  ? "info"
+                  : liveStatus?.state === "no_work"
+                    ? "info"
+                    : undefined;
     return {
       _id: `employee-${agent.agentId}`,
       companyId,
@@ -556,40 +698,53 @@ function toOfficeData(
         companyAgent?.role === "ceo" ||
         isMainAgent ||
         index === 0,
-      jobTitle: companyAgent?.role ? `${companyAgent.role} (${agent.agentId})` : `Configured Agent (${agent.agentId})`,
+      jobTitle: companyAgent?.role
+        ? `${companyAgent.role} (${agent.agentId})`
+        : `Configured Agent (${agent.agentId})`,
       status:
         heartbeatStatus ??
-        (!isRuntimeRunning ? "warning" : pressure === "high" ? "warning" : (runtimeAgent?.sessionCount ?? 0) > 0 ? "success" : "info"),
+        (!isRuntimeRunning
+          ? "warning"
+          : pressure === "high"
+            ? "warning"
+            : (runtimeAgent?.sessionCount ?? 0) > 0
+              ? "success"
+              : "info"),
       statusMessage: liveStatus?.statusText ?? heartbeat?.goal ?? "Idle",
       notificationCount: agentApprovals?.count,
       notificationPriority: agentApprovals?.maxRisk,
       heartbeatState: liveStatus?.state,
-      heartbeatBubbles: liveStatus?.bubbles?.map((bubble) => ({ label: bubble.label, weight: bubble.weight })) ?? [],
+      heartbeatBubbles:
+        liveStatus?.bubbles?.map((bubble) => ({ label: bubble.label, weight: bubble.weight })) ??
+        [],
     };
   });
 
   const clusterObjects: OfficeObject[] = teams
     .filter((team) => team.name !== "Management")
     .map((team, index) => ({
-    _id: `cluster-${team._id}`,
-    companyId,
-    meshType: "team-cluster",
-    position: team.clusterPosition ?? [index * 9 - 4, 0, 8],
-    rotation: [0, 0, 0],
-    metadata: { teamId: team._id },
-  }));
+      _id: `cluster-${team._id}`,
+      companyId,
+      meshType: "team-cluster",
+      position: team.clusterPosition ?? [index * 9 - 4, 0, 8],
+      rotation: [0, 0, 0],
+      metadata: { teamId: team._id },
+    }));
   const sidecarFurniture: OfficeObject[] = sidecarObjects
     .filter((item) => item.meshType !== "team-cluster")
     .map((item) => ({
       _id: normalizeOfficeObjectId(item.id),
       companyId,
       meshType: item.meshType,
-      position: item.position,
+      position: clampPositionToOfficeFootprint(item.position, officeFootprint, 1),
       rotation: item.rotation ?? [0, 0, 0],
       scale: item.scale,
       metadata: { ...(item.metadata ?? {}) },
     }));
-  const officeObjects = [...clusterObjects, ...(sidecarFurniture.length > 0 ? sidecarFurniture : buildDefaultFurnitureObjects(companyId))];
+  const officeObjects = [
+    ...clusterObjects,
+    ...(sidecarFurniture.length > 0 ? sidecarFurniture : buildDefaultFurnitureObjects(companyId)),
+  ];
 
   return {
     company: demoCompany,
@@ -597,6 +752,7 @@ function toOfficeData(
     employees,
     officeObjects,
     desks,
+    officeSettings,
     companyModel: unified.company,
     workload,
     warnings,
@@ -623,12 +779,20 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
     const adapter = adapterRef.current;
     if (!adapter) return;
     try {
-      const [unified, pendingApprovals] = await Promise.all([
+      const [unified, pendingApprovals, officeSettings] = await Promise.all([
         adapter.getUnifiedOfficeModel(),
         adapter.getPendingApprovals(),
+        adapter.getOfficeSettings(),
       ]);
-      const nextAgentIds = [...new Set([...unified.runtimeAgents.map((item) => item.agentId), ...unified.configuredAgents.map((item) => item.agentId)])];
-      setAgentIds((current) => (areStringArraysEqual(current, nextAgentIds) ? current : nextAgentIds));
+      const nextAgentIds = [
+        ...new Set([
+          ...unified.runtimeAgents.map((item) => item.agentId),
+          ...unified.configuredAgents.map((item) => item.agentId),
+        ]),
+      ];
+      setAgentIds((current) =>
+        areStringArraysEqual(current, nextAgentIds) ? current : nextAgentIds,
+      );
 
       let statusByAgent: Record<string, AgentLiveStatus> = {};
       if (liveStatusByConvex && Object.keys(liveStatusByConvex).length > 0) {
@@ -642,7 +806,10 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       latestApprovalsRef.current = pendingApprovals;
       if (cancelledRef.current) return;
       setValue((current) => {
-        const next = stabilizeOfficeData(current, toOfficeData(unified, pendingApprovals, statusByAgent));
+        const next = stabilizeOfficeData(
+          current,
+          toOfficeData(unified, officeSettings, pendingApprovals, statusByAgent),
+        );
         // Returning the same object lets React skip a provider broadcast for status refreshes that changed nothing material.
         if (next === current) return current;
         return {
@@ -674,7 +841,10 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
     const pendingApprovals = latestApprovalsRef.current;
     latestLiveStatusSignatureRef.current = nextStatusSignature;
     setValue((current) => {
-      const next = stabilizeOfficeData(current, toOfficeData(unified, pendingApprovals, liveStatusByConvex));
+      const next = stabilizeOfficeData(
+        current,
+        toOfficeData(unified, current.officeSettings, pendingApprovals, liveStatusByConvex),
+      );
       // Keep live-status polling from invalidating the whole office tree when derived data is unchanged.
       if (next === current) return current;
       return {
@@ -695,7 +865,10 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       await load();
     }
 
-    async function manualResync(projectId: string, provider?: FederatedTaskProvider): Promise<{ ok: boolean; error?: string }> {
+    async function manualResync(
+      projectId: string,
+      provider?: FederatedTaskProvider,
+    ): Promise<{ ok: boolean; error?: string }> {
       const adapter = adapterRef.current;
       if (!adapter) return { ok: false, error: "adapter_unavailable" };
       const result = await adapter.manualResync(projectId, provider);
@@ -703,7 +876,9 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       return result;
     }
 
-    async function upsertFederationPolicy(policy: FederationProjectPolicy): Promise<{ ok: boolean; error?: string }> {
+    async function upsertFederationPolicy(
+      policy: FederationProjectPolicy,
+    ): Promise<{ ok: boolean; error?: string }> {
       const adapter = adapterRef.current;
       if (!adapter) return { ok: false, error: "adapter_unavailable" };
       const result = await adapter.upsertFederationPolicy(policy);
@@ -711,7 +886,9 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       return { ok: result.ok, error: result.error };
     }
 
-    async function upsertProviderIndexProfile(profile: ProviderIndexProfile): Promise<{ ok: boolean; error?: string }> {
+    async function upsertProviderIndexProfile(
+      profile: ProviderIndexProfile,
+    ): Promise<{ ok: boolean; error?: string }> {
       const adapter = adapterRef.current;
       if (!adapter) return { ok: false, error: "adapter_unavailable" };
       const result = await adapter.upsertProviderIndexProfile(profile);

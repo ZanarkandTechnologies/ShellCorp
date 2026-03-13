@@ -15,84 +15,81 @@
  * - MEM-0143
  */
 
-import { useMemo } from 'react';
-import type { DeskLayoutData, EmployeeData, TeamData } from '../../lib/types';
-import { getAbsoluteDeskPosition, getDeskRotation } from '../../features/office-system/utils/layout';
+import { useMemo } from "react";
+import type { DeskLayoutData, EmployeeData, TeamData } from "../../lib/types";
 import {
-    assignRandomStatuses,
-    buildDesksByTeamId,
-    buildTeamWanderLocks,
-    getCeoAnchorFromGlassWalls,
-} from './derived-data-utils';
+  getAbsoluteDeskPosition,
+  getDeskRotation,
+} from "../../features/office-system/utils/layout";
+import type { OfficeSceneViewSettings } from "./view-profile";
+import {
+  assignRandomStatuses,
+  buildDesksByTeamId,
+  buildTeamWanderLocks,
+} from "./derived-data-utils";
+import { getOfficePresentationRotationY } from "./view-profile";
 
 export type OfficeSceneDerivedData = {
-    ceoDeskData: (DeskLayoutData & {
+  ceoDeskData:
+    | (DeskLayoutData & {
         position: [number, number, number];
         rotationY: number;
-    }) | null;
-    employeesForScene: Array<EmployeeData & { position: [number, number, number] }>;
-    teamById: Map<string, TeamData>;
-    desksByTeamId: Map<string, DeskLayoutData[]>;
-    teamWanderLocks: Map<string, number | undefined>;
+      })
+    | null;
+  employeesForScene: Array<EmployeeData & { position: [number, number, number] }>;
+  teamById: Map<string, TeamData>;
+  desksByTeamId: Map<string, DeskLayoutData[]>;
+  teamWanderLocks: Map<string, number | undefined>;
 };
 
-export {
-    assignRandomStatuses,
-    buildDesksByTeamId,
-    buildTeamWanderLocks,
-    getCeoAnchorFromGlassWalls,
-};
+export { assignRandomStatuses, buildDesksByTeamId, buildTeamWanderLocks };
 
 export function useOfficeSceneDerivedData(params: {
-    teams: TeamData[];
-    employees: EmployeeData[];
-    desks: DeskLayoutData[];
-    glassWallObjects: Array<{ position: [number, number, number] }>;
+  teams: TeamData[];
+  employees: EmployeeData[];
+  desks: DeskLayoutData[];
+  officeViewSettings: OfficeSceneViewSettings;
 }): OfficeSceneDerivedData {
-    const { teams, employees, desks, glassWallObjects } = params;
+  const { teams, employees, desks, officeViewSettings } = params;
 
-    const ceoAnchorFromGlassWalls = useMemo(
-        () => getCeoAnchorFromGlassWalls(glassWallObjects),
-        [glassWallObjects],
+  const ceoDeskData = useMemo(() => {
+    const ceoDesk = desks.find(
+      (desk) => desk.id.startsWith("desk-team-management-") || desk.id === "ceo-desk",
     );
+    if (!ceoDesk) return null;
 
-    const ceoDeskData = useMemo(() => {
-        const ceoDesk = desks.find((desk) => desk.id.startsWith('desk-team-management-') || desk.id === 'ceo-desk');
-        if (!ceoDesk) return null;
+    const managementTeam = teams.find((team) => team.name === "Management");
+    if (!managementTeam) return null;
 
-        const managementTeam = teams.find((team) => team.name === 'Management');
-        if (!managementTeam) return null;
-
-        const managementDesks = desks.filter((desk) => desk.id.startsWith('desk-team-management-'));
-        const clusterPosition = managementTeam.clusterPosition || ceoAnchorFromGlassWalls;
-
-        return {
-            ...ceoDesk,
-            position: getAbsoluteDeskPosition(
-                clusterPosition,
-                ceoDesk.deskIndex,
-                managementDesks.length,
-            ),
-            rotationY: getDeskRotation(ceoDesk.deskIndex, managementDesks.length),
-        };
-    }, [ceoAnchorFromGlassWalls, desks, teams]);
-
-    const teamById = useMemo(() => new Map(teams.map((team) => [team._id, team])), [teams]);
-    const desksByTeamId = useMemo(() => buildDesksByTeamId(desks), [desks]);
-    const teamWanderLocks = useMemo(() => buildTeamWanderLocks(teams), [teams]);
-
-    const employeesForScene = useMemo(() => {
-        return assignRandomStatuses(employees, teamWanderLocks).map((employee) => ({
-            ...employee,
-            position: employee.initialPosition,
-        }));
-    }, [employees, teamWanderLocks]);
+    const managementDesks = desks.filter((desk) => desk.id.startsWith("desk-team-management-"));
+    const clusterPosition = managementTeam.clusterPosition;
 
     return {
-        ceoDeskData,
-        employeesForScene,
-        teamById,
-        desksByTeamId,
-        teamWanderLocks,
+      ...ceoDesk,
+      position: getAbsoluteDeskPosition(clusterPosition, ceoDesk.deskIndex, managementDesks.length),
+      rotationY:
+        officeViewSettings.viewProfile === "fixed_2_5d"
+          ? getOfficePresentationRotationY(officeViewSettings.cameraOrientation)
+          : getDeskRotation(ceoDesk.deskIndex, managementDesks.length),
     };
+  }, [desks, officeViewSettings.cameraOrientation, officeViewSettings.viewProfile, teams]);
+
+  const teamById = useMemo(() => new Map(teams.map((team) => [team._id, team])), [teams]);
+  const desksByTeamId = useMemo(() => buildDesksByTeamId(desks), [desks]);
+  const teamWanderLocks = useMemo(() => buildTeamWanderLocks(teams), [teams]);
+
+  const employeesForScene = useMemo(() => {
+    return assignRandomStatuses(employees, teamWanderLocks).map((employee) => ({
+      ...employee,
+      position: employee.initialPosition,
+    }));
+  }, [employees, teamWanderLocks]);
+
+  return {
+    ceoDeskData,
+    employeesForScene,
+    teamById,
+    desksByTeamId,
+    teamWanderLocks,
+  };
 }

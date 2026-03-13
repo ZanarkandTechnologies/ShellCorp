@@ -40,6 +40,14 @@ import type {
   RoleSlotModel,
   SkillStatusEntry,
   SkillStatusReport,
+  SkillStudioCatalogEntry,
+  SkillStudioDetail,
+  SkillStudioFileContent,
+  SkillStudioFileEntry,
+  SkillDemoCase,
+  SkillDemoRunResult,
+  SkillManifest,
+  SkillManifestToolDependency,
   TaskSyncState,
   ToolCatalogEntry,
   ToolCatalogGroup,
@@ -72,6 +80,8 @@ import type {
   TeamBusinessSkillSyncResult,
   TeamProposalModel,
 } from "../openclaw-types";
+import { normalizeOfficeDecorSettings } from "../office-decor";
+import { DEFAULT_OFFICE_FOOTPRINT, normalizeOfficeFootprint } from "../office-footprint";
 
 type Json = Record<string, unknown>;
 const HEARTBEAT_START_PATTERN = /read\s+heartbeat\.md[\s\S]*current\s+time:/i;
@@ -188,7 +198,7 @@ export function toTimeline(
               cacheWriteTokens: usageSummary.sessionTotals.cacheWriteTokens,
               estimatedCostUsd: usageSummary.sessionTotals.estimatedCostUsd,
             }
-        : undefined,
+          : undefined,
     usageSummary,
     events,
   };
@@ -230,13 +240,9 @@ function normalizeUsageSummary(entry: Json): SessionTimelineModel["usageSummary"
       ? (entry.lastResponse as Json)
       : null;
   const last24HoursRaw =
-    entry.last24Hours && typeof entry.last24Hours === "object"
-      ? (entry.last24Hours as Json)
-      : null;
+    entry.last24Hours && typeof entry.last24Hours === "object" ? (entry.last24Hours as Json) : null;
   const last7DaysRaw =
-    entry.last7Days && typeof entry.last7Days === "object"
-      ? (entry.last7Days as Json)
-      : null;
+    entry.last7Days && typeof entry.last7Days === "object" ? (entry.last7Days as Json) : null;
   return {
     sessionTotals: normalizeUsageTotals(totalsRaw),
     ...(lastResponseRaw ? { lastResponse: normalizeUsageSnapshot(lastResponseRaw) } : {}),
@@ -814,6 +820,249 @@ export function toSkillStatusEntry(entry: unknown): SkillStatusEntry | null {
   };
 }
 
+function toSkillManifestToolDependency(entry: unknown): SkillManifestToolDependency | null {
+  if (!entry || typeof entry !== "object") return null;
+  const row = entry as Json;
+  const type = String(row.type ?? "").trim();
+  const value = String(row.value ?? "").trim();
+  if (!type || !value) return null;
+  return {
+    type,
+    value,
+    description: typeof row.description === "string" ? row.description : undefined,
+    transport: typeof row.transport === "string" ? row.transport : undefined,
+    url: typeof row.url === "string" ? row.url : undefined,
+  };
+}
+
+function toSkillManifest(entry: unknown): SkillManifest {
+  const row = entry && typeof entry === "object" ? (entry as Json) : {};
+  const interfaceRow =
+    row.interface && typeof row.interface === "object" ? (row.interface as Json) : {};
+  const policyRow = row.policy && typeof row.policy === "object" ? (row.policy as Json) : {};
+  const dependenciesRow =
+    row.dependencies && typeof row.dependencies === "object" ? (row.dependencies as Json) : {};
+  const stateRow = row.state && typeof row.state === "object" ? (row.state as Json) : {};
+  const pathsRow = row.paths && typeof row.paths === "object" ? (row.paths as Json) : {};
+  const visualizationRow =
+    row.visualization && typeof row.visualization === "object" ? (row.visualization as Json) : {};
+  const demosRow = row.demos && typeof row.demos === "object" ? (row.demos as Json) : {};
+  const labelsRow =
+    demosRow.labels && typeof demosRow.labels === "object" ? (demosRow.labels as Json) : {};
+
+  return {
+    interface: {
+      displayName: String(interfaceRow.displayName ?? ""),
+      shortDescription: String(interfaceRow.shortDescription ?? ""),
+      iconSmall: typeof interfaceRow.iconSmall === "string" ? interfaceRow.iconSmall : undefined,
+      iconLarge: typeof interfaceRow.iconLarge === "string" ? interfaceRow.iconLarge : undefined,
+      brandColor: typeof interfaceRow.brandColor === "string" ? interfaceRow.brandColor : undefined,
+      defaultPrompt:
+        typeof interfaceRow.defaultPrompt === "string" ? interfaceRow.defaultPrompt : undefined,
+    },
+    policy: {
+      allowImplicitInvocation: policyRow.allowImplicitInvocation !== false,
+    },
+    dependencies: {
+      tools: normalizeArray(dependenciesRow.tools, toSkillManifestToolDependency),
+      skills: Array.isArray(dependenciesRow.skills)
+        ? dependenciesRow.skills.filter((value): value is string => typeof value === "string")
+        : [],
+      docs: Array.isArray(dependenciesRow.docs)
+        ? dependenciesRow.docs.filter((value): value is string => typeof value === "string")
+        : [],
+    },
+    state: {
+      mode:
+        stateRow.mode === "agent_memory" ||
+        stateRow.mode === "skill_memory" ||
+        stateRow.mode === "stateless"
+          ? stateRow.mode
+          : "stateless",
+      memoryFile: typeof stateRow.memoryFile === "string" ? stateRow.memoryFile : undefined,
+    },
+    paths: {
+      read: Array.isArray(pathsRow.read)
+        ? pathsRow.read.filter((value): value is string => typeof value === "string")
+        : [],
+      write: Array.isArray(pathsRow.write)
+        ? pathsRow.write.filter((value): value is string => typeof value === "string")
+        : [],
+    },
+    visualization: {
+      mermaid: typeof visualizationRow.mermaid === "string" ? visualizationRow.mermaid : undefined,
+    },
+    references: Array.isArray(row.references)
+      ? row.references.filter((value): value is string => typeof value === "string")
+      : [],
+    demos: {
+      defaultCaseId:
+        typeof demosRow.defaultCaseId === "string" ? demosRow.defaultCaseId : undefined,
+      labels: Object.fromEntries(
+        Object.entries(labelsRow).filter(([, value]) => typeof value === "string"),
+      ) as Record<string, string>,
+    },
+  };
+}
+
+export function toSkillStudioCatalogEntry(entry: unknown): SkillStudioCatalogEntry | null {
+  if (!entry || typeof entry !== "object") return null;
+  const row = entry as Json;
+  const skillId = String(row.skillId ?? "").trim();
+  if (!skillId) return null;
+  const runtimeStatus =
+    row.runtimeStatus && typeof row.runtimeStatus === "object" ? (row.runtimeStatus as Json) : null;
+  return {
+    skillId,
+    packageKey: String(row.packageKey ?? skillId),
+    displayName: String(row.displayName ?? skillId),
+    description: String(row.description ?? ""),
+    category: String(row.category ?? "workflow"),
+    scope: row.scope === "agent" ? "agent" : "shared",
+    sourcePath: String(row.sourcePath ?? ""),
+    updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : undefined,
+    hasManifest: row.hasManifest === true,
+    hasTests: row.hasTests === true,
+    hasDiagram: row.hasDiagram === true,
+    hasSkillMemory: row.hasSkillMemory === true,
+    runtimeStatus: runtimeStatus
+      ? {
+          eligible: runtimeStatus.eligible !== false,
+          blockedByAllowlist: runtimeStatus.blockedByAllowlist === true,
+          disabled: runtimeStatus.disabled === true,
+          source: typeof runtimeStatus.source === "string" ? runtimeStatus.source : "",
+        }
+      : undefined,
+  };
+}
+
+export function toSkillStudioFileContent(entry: unknown): SkillStudioFileContent | null {
+  if (!entry || typeof entry !== "object") return null;
+  const row = entry as Json;
+  const filePath = String(row.path ?? "").trim();
+  if (!filePath) return null;
+  const kind =
+    row.kind === "config" ||
+    row.kind === "test" ||
+    row.kind === "memory" ||
+    row.kind === "fixture" ||
+    row.kind === "asset" ||
+    row.kind === "reference"
+      ? row.kind
+      : "skill";
+  return {
+    path: filePath,
+    kind,
+    isText: row.isText !== false,
+    content: typeof row.content === "string" ? row.content : undefined,
+    sizeBytes: typeof row.sizeBytes === "number" ? row.sizeBytes : undefined,
+  };
+}
+
+function toSkillDemoCase(entry: unknown): SkillDemoCase | null {
+  if (!entry || typeof entry !== "object") return null;
+  const row = entry as Json;
+  const id = String(row.id ?? "").trim();
+  if (!id) return null;
+  return {
+    id,
+    title: String(row.title ?? id),
+    filePath: String(row.filePath ?? ""),
+    stepCount: typeof row.stepCount === "number" ? row.stepCount : 0,
+    relativePath: String(row.relativePath ?? ""),
+  };
+}
+
+export function toSkillDemoRunResult(entry: unknown): SkillDemoRunResult | null {
+  if (!entry || typeof entry !== "object") return null;
+  const row = entry as Json;
+  const caseId = String(row.caseId ?? "").trim();
+  if (!caseId) return null;
+  return {
+    caseId,
+    caseName: String(row.caseName ?? caseId),
+    passed: row.passed === true,
+    durationMs: typeof row.durationMs === "number" ? row.durationMs : 0,
+    stdout: String(row.stdout ?? ""),
+    stderr: String(row.stderr ?? ""),
+    filesChecked: Array.isArray(row.filesChecked)
+      ? row.filesChecked.filter((value): value is string => typeof value === "string")
+      : [],
+    steps: Array.isArray(row.steps)
+      ? row.steps
+          .map((value) => {
+            if (!value || typeof value !== "object") return null;
+            const step = value as Json;
+            return {
+              run: Array.isArray(step.run)
+                ? step.run.filter((item): item is string => typeof item === "string")
+                : [],
+              stdout: String(step.stdout ?? ""),
+              stderr: String(step.stderr ?? ""),
+              durationMs: typeof step.durationMs === "number" ? step.durationMs : 0,
+              passed: step.passed === true,
+              failures: Array.isArray(step.failures)
+                ? step.failures.filter((item): item is string => typeof item === "string")
+                : [],
+            };
+          })
+          .filter((value): value is NonNullable<typeof value> => value !== null)
+      : [],
+  };
+}
+
+export function toSkillStudioDetail(entry: unknown): SkillStudioDetail | null {
+  if (!entry || typeof entry !== "object") return null;
+  const row = entry as Json;
+  const skillId = String(row.skillId ?? "").trim();
+  if (!skillId) return null;
+  return {
+    skillId,
+    packageKey: String(row.packageKey ?? skillId),
+    displayName: String(row.displayName ?? skillId),
+    description: String(row.description ?? ""),
+    category: String(row.category ?? "workflow"),
+    scope: row.scope === "agent" ? "agent" : "shared",
+    sourcePath: String(row.sourcePath ?? ""),
+    updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : undefined,
+    manifest: toSkillManifest(row.manifest),
+    manifestPath: String(row.manifestPath ?? ""),
+    hasManifest: row.hasManifest === true,
+    overviewMarkdown: String(row.overviewMarkdown ?? ""),
+    mermaid: typeof row.mermaid === "string" ? row.mermaid : undefined,
+    relatedSkills: Array.isArray(row.relatedSkills)
+      ? row.relatedSkills.filter((value): value is string => typeof value === "string")
+      : [],
+    fileEntries: Array.isArray(row.fileEntries)
+      ? row.fileEntries
+          .map((value) => {
+            if (!value || typeof value !== "object") return null;
+            const file = value as Json;
+            const filePath = String(file.path ?? "").trim();
+            if (!filePath) return null;
+            const kind =
+              file.kind === "config" ||
+              file.kind === "test" ||
+              file.kind === "memory" ||
+              file.kind === "fixture" ||
+              file.kind === "asset" ||
+              file.kind === "reference"
+                ? file.kind
+                : "skill";
+            return {
+              path: filePath,
+              kind,
+              isText: file.isText !== false,
+            };
+          })
+          .filter((value): value is NonNullable<typeof value> => value !== null)
+      : [],
+    demoCases: normalizeArray(row.demoCases, toSkillDemoCase),
+    runtimeStatus: toSkillStatusEntry(row.runtimeStatus),
+    focusAgentId: typeof row.focusAgentId === "string" ? row.focusAgentId : undefined,
+  };
+}
+
 export function toSkillStatusReport(entry: unknown): SkillStatusReport | null {
   if (!entry || typeof entry !== "object") return null;
   const row = entry as Json;
@@ -828,7 +1077,22 @@ export function toOfficeSettings(entry: unknown): OfficeSettingsModel {
   const row = entry && typeof entry === "object" ? (entry as Json) : {};
   const meshAssetDir =
     typeof row.meshAssetDir === "string" && row.meshAssetDir.trim() ? row.meshAssetDir.trim() : "";
-  return { meshAssetDir };
+  const viewProfile = row.viewProfile === "fixed_2_5d" ? "fixed_2_5d" : "free_orbit_3d";
+  const orbitControlsEnabled = row.orbitControlsEnabled !== false;
+  const cameraOrientation =
+    row.cameraOrientation === "north_east" ||
+    row.cameraOrientation === "north_west" ||
+    row.cameraOrientation === "south_west"
+      ? row.cameraOrientation
+      : "south_east";
+  return {
+    meshAssetDir,
+    officeFootprint: normalizeOfficeFootprint(row.officeFootprint ?? DEFAULT_OFFICE_FOOTPRINT),
+    decor: normalizeOfficeDecorSettings(row.decor),
+    viewProfile,
+    orbitControlsEnabled,
+    cameraOrientation,
+  };
 }
 
 export function toMeshAsset(entry: unknown): MeshAssetModel | null {
@@ -1695,7 +1959,8 @@ export function toOfficeObject(entry: unknown): CompanyOfficeObjectModel | null 
     meshType !== "bookshelf" &&
     meshType !== "pantry" &&
     meshType !== "glass-wall" &&
-    meshType !== "custom-mesh"
+    meshType !== "custom-mesh" &&
+    meshType !== "wall-art"
   ) {
     return null;
   }
@@ -1745,7 +2010,8 @@ export function toOfficeObjectSidecar(entry: unknown): OfficeObjectSidecarModel 
     meshType !== "bookshelf" &&
     meshType !== "pantry" &&
     meshType !== "glass-wall" &&
-    meshType !== "custom-mesh"
+    meshType !== "custom-mesh" &&
+    meshType !== "wall-art"
   ) {
     return null;
   }

@@ -71,6 +71,7 @@ export interface EmployeeProps {
   heartbeatState?: AgentState;
   heartbeatBubbles?: Array<{ label: string; weight?: number }>;
   profileImageUrl?: string;
+  useCompactOverlayMode?: boolean;
 }
 
 const Employee = memo(function Employee({
@@ -93,6 +94,7 @@ const Employee = memo(function Employee({
   notificationPriority = 0,
   heartbeatState,
   heartbeatBubbles = [],
+  useCompactOverlayMode = false,
 }: EmployeeProps) {
   const employeeIdString = `employee-${id}`;
   const isSelected = useAppStore((state) => state.selectedObjectId === employeeIdString);
@@ -367,6 +369,7 @@ const Employee = memo(function Employee({
               position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT / 2, 0]}
               skinColor={finalColors.skin}
               hairColor={finalColors.hair}
+              useCompactOverlayMode={useCompactOverlayMode}
             />
           ) : (
             <Box
@@ -416,6 +419,7 @@ const Employee = memo(function Employee({
           debugMode={debugMode}
           debugDeskDecision={debugDeskDecision}
           onboardingPrompt={onboardingPrompt}
+          useCompactOverlayMode={useCompactOverlayMode}
         />
 
         <ContextMenu
