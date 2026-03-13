@@ -25,6 +25,9 @@ export type AgentRole = "ceo" | "builder" | "growth_marketer" | "pm" | "biz_pm" 
 export type AgentLifecycleState = "active" | "idle" | "pending_spawn" | "retired";
 export type SpawnPolicy = "queue_pressure" | "manual";
 export type OfficeStylePreset = "default" | "pixel" | "brutalist" | "cozy";
+export type OfficeFloorPatternId = "sandstone_tiles" | "graphite_grid" | "walnut_parquet";
+export type OfficeWallColorId = "gallery_cream" | "sage_mist" | "harbor_blue" | "clay_rose";
+export type OfficeBackgroundId = "shell_haze" | "midnight_tide" | "kelp_fog" | "estuary_glow";
 export type CapabilityCategory = "measure" | "execute" | "distribute";
 export type LedgerEntryType = "revenue" | "cost";
 export type AccountEventType = "credit" | "debit";
@@ -211,6 +214,22 @@ export interface OfficeObjectModel {
   metadata?: Record<string, unknown>;
 }
 
+export interface OfficeSettingsModel {
+  meshAssetDir?: string;
+  officeFootprint: {
+    width: number;
+    depth: number;
+  };
+  decor: {
+    floorPatternId: OfficeFloorPatternId;
+    wallColorId: OfficeWallColorId;
+    backgroundId: OfficeBackgroundId;
+  };
+  viewProfile: "free_orbit_3d" | "fixed_2_5d";
+  orbitControlsEnabled: boolean;
+  cameraOrientation: "north_east" | "north_west" | "south_east" | "south_west";
+}
+
 function asObject(value: unknown): JsonObject {
   return value && typeof value === "object" ? (value as JsonObject) : {};
 }
@@ -220,7 +239,9 @@ function asString(value: unknown, fallback = ""): string {
 }
 
 function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
 }
 
 function asNumber(value: unknown, fallback: number): number {
@@ -271,7 +292,10 @@ function normalizeStringRecord(value: unknown): Record<string, string> {
   return out;
 }
 
-function normalizeCapabilitySlot(value: unknown, fallback: CapabilityCategory): CapabilitySlotModel {
+function normalizeCapabilitySlot(
+  value: unknown,
+  fallback: CapabilityCategory,
+): CapabilitySlotModel {
   const row = asObject(value);
   const skillId = asString(row.skillId).trim();
   return {
@@ -326,7 +350,12 @@ function normalizeOfficeStylePreset(value: unknown): OfficeStylePreset | undefin
 }
 
 function normalizeResourceType(value: unknown): ResourceType {
-  if (value === "cash_budget" || value === "api_quota" || value === "distribution_slots" || value === "custom") {
+  if (
+    value === "cash_budget" ||
+    value === "api_quota" ||
+    value === "distribution_slots" ||
+    value === "custom"
+  ) {
     return value;
   }
   return "custom";
@@ -376,8 +405,12 @@ function normalizeCompanyModel(input: unknown): CompanyModel {
             status: normalizeProjectStatus(obj.status),
             goal: asString(obj.goal),
             kpis: asStringArray(obj.kpis),
-            ...(asString(obj.trackingContext).trim() ? { trackingContext: asString(obj.trackingContext).trim() } : {}),
-            ...(normalizeBusinessConfig(obj.businessConfig) ? { businessConfig: normalizeBusinessConfig(obj.businessConfig) } : {}),
+            ...(asString(obj.trackingContext).trim()
+              ? { trackingContext: asString(obj.trackingContext).trim() }
+              : {}),
+            ...(normalizeBusinessConfig(obj.businessConfig)
+              ? { businessConfig: normalizeBusinessConfig(obj.businessConfig) }
+              : {}),
             ...(() => {
               const accountObj = asObject(obj.account);
               const accountId = asString(accountObj.id).trim();
@@ -417,7 +450,9 @@ function normalizeCompanyModel(input: unknown): CompanyModel {
                       type: normalizeAccountEventType(eventObj.type),
                       amountCents: Number.isFinite(amountCents) ? Math.round(amountCents) : 0,
                       source,
-                      balanceAfterCents: Number.isFinite(balanceAfterCents) ? Math.round(balanceAfterCents) : 0,
+                      balanceAfterCents: Number.isFinite(balanceAfterCents)
+                        ? Math.round(balanceAfterCents)
+                        : 0,
                       ...(note ? { note } : {}),
                     } satisfies ProjectAccountEventModel;
                   })
@@ -513,7 +548,10 @@ function normalizeCompanyModel(input: unknown): CompanyModel {
                     const remaining = asNumber(resourceObj.remaining, 0);
                     const limit = asNumber(resourceObj.limit, 0);
                     const reserved = asNumber(resourceObj.reserved, Number.NaN);
-                    const refreshCadenceMinutes = asNumber(resourceObj.refreshCadenceMinutes, Number.NaN);
+                    const refreshCadenceMinutes = asNumber(
+                      resourceObj.refreshCadenceMinutes,
+                      Number.NaN,
+                    );
                     const policyObj = asObject(resourceObj.policy);
                     const metadata = normalizeStringRecord(resourceObj.metadata);
                     return {
@@ -563,7 +601,9 @@ function normalizeCompanyModel(input: unknown): CompanyModel {
                       delta: asNumber(eventObj.delta, 0),
                       remainingAfter: asNumber(eventObj.remainingAfter, 0),
                       source,
-                      ...(asString(eventObj.note).trim() ? { note: asString(eventObj.note).trim() } : {}),
+                      ...(asString(eventObj.note).trim()
+                        ? { note: asString(eventObj.note).trim() }
+                        : {}),
                     } satisfies ResourceEventModel;
                   })
                   .filter((entry): entry is ResourceEventModel => entry !== null)
@@ -635,9 +675,13 @@ function normalizeCompanyModel(input: unknown): CompanyModel {
     tasks: Array.isArray(row.tasks) ? row.tasks : [],
     channelBindings: Array.isArray(row.channelBindings) ? row.channelBindings : [],
     federationPolicies: Array.isArray(row.federationPolicies) ? row.federationPolicies : [],
-    providerIndexProfiles: Array.isArray(row.providerIndexProfiles) ? row.providerIndexProfiles : [],
+    providerIndexProfiles: Array.isArray(row.providerIndexProfiles)
+      ? row.providerIndexProfiles
+      : [],
     heartbeatRuntime: asObject(row.heartbeatRuntime),
-    ...(normalizeOfficeStylePreset(row.officeStylePreset) ? { officeStylePreset: normalizeOfficeStylePreset(row.officeStylePreset) } : {}),
+    ...(normalizeOfficeStylePreset(row.officeStylePreset)
+      ? { officeStylePreset: normalizeOfficeStylePreset(row.officeStylePreset) }
+      : {}),
   };
 }
 
@@ -652,8 +696,14 @@ function normalizeOfficeObjects(input: unknown): OfficeObjectModel[] {
       if (!id || !identifier || !meshType) return null;
       const position = Array.isArray(obj.position) ? obj.position : [];
       if (position.length !== 3 || position.some((value) => typeof value !== "number")) return null;
-      const rotation = Array.isArray(obj.rotation) && obj.rotation.length === 3 ? (obj.rotation as [number, number, number]) : undefined;
-      const scale = Array.isArray(obj.scale) && obj.scale.length === 3 ? (obj.scale as [number, number, number]) : undefined;
+      const rotation =
+        Array.isArray(obj.rotation) && obj.rotation.length === 3
+          ? (obj.rotation as [number, number, number])
+          : undefined;
+      const scale =
+        Array.isArray(obj.scale) && obj.scale.length === 3
+          ? (obj.scale as [number, number, number])
+          : undefined;
       const metadata = asObject(obj.metadata);
       return {
         id,
@@ -666,6 +716,58 @@ function normalizeOfficeObjects(input: unknown): OfficeObjectModel[] {
       } satisfies OfficeObjectModel;
     })
     .filter((entry): entry is OfficeObjectModel => entry !== null);
+}
+
+function normalizeOfficeFloorPatternId(value: unknown): OfficeFloorPatternId {
+  const text = asString(value, "sandstone_tiles");
+  return text === "graphite_grid" || text === "walnut_parquet" ? text : "sandstone_tiles";
+}
+
+function normalizeOfficeWallColorId(value: unknown): OfficeWallColorId {
+  const text = asString(value, "gallery_cream");
+  if (text === "sage_mist" || text === "harbor_blue" || text === "clay_rose") return text;
+  return "gallery_cream";
+}
+
+function normalizeOfficeBackgroundId(value: unknown): OfficeBackgroundId {
+  const text = asString(value, "shell_haze");
+  if (text === "midnight_tide" || text === "kelp_fog" || text === "estuary_glow") return text;
+  return "shell_haze";
+}
+
+function normalizeOfficeSettings(input: unknown): OfficeSettingsModel {
+  const row = asObject(input);
+  const footprint = asObject(row.officeFootprint);
+  const decor = asObject(row.decor);
+  const normalizeAxis = (value: unknown, fallback: number): number => {
+    const rounded = Math.round(asNumber(value, fallback));
+    const bounded = Math.max(15, rounded);
+    return bounded % 2 === 0 ? bounded + 1 : bounded;
+  };
+  const viewProfile = asString(row.viewProfile, "free_orbit_3d");
+  const cameraOrientation = asString(row.cameraOrientation, "south_east");
+  return {
+    ...(asString(row.meshAssetDir).trim()
+      ? { meshAssetDir: asString(row.meshAssetDir).trim() }
+      : {}),
+    officeFootprint: {
+      width: normalizeAxis(footprint.width, 35),
+      depth: normalizeAxis(footprint.depth, 35),
+    },
+    decor: {
+      floorPatternId: normalizeOfficeFloorPatternId(decor.floorPatternId),
+      wallColorId: normalizeOfficeWallColorId(decor.wallColorId),
+      backgroundId: normalizeOfficeBackgroundId(decor.backgroundId),
+    },
+    viewProfile: viewProfile === "fixed_2_5d" ? "fixed_2_5d" : "free_orbit_3d",
+    orbitControlsEnabled: row.orbitControlsEnabled !== false,
+    cameraOrientation:
+      cameraOrientation === "north_east" ||
+      cameraOrientation === "north_west" ||
+      cameraOrientation === "south_west"
+        ? cameraOrientation
+        : "south_east",
+  };
 }
 
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
@@ -687,11 +789,14 @@ async function writeJsonAtomic(filePath: string, payload: unknown): Promise<void
 export interface SidecarStore {
   companyPath: string;
   officeObjectsPath: string;
+  officeSettingsPath: string;
   openclawConfigPath: string;
   readCompanyModel: () => Promise<CompanyModel>;
   writeCompanyModel: (model: CompanyModel) => Promise<void>;
   readOfficeObjects: () => Promise<OfficeObjectModel[]>;
   writeOfficeObjects: (objects: OfficeObjectModel[]) => Promise<void>;
+  readOfficeSettings: () => Promise<OfficeSettingsModel>;
+  writeOfficeSettings: (settings: OfficeSettingsModel) => Promise<void>;
   readOpenclawConfig: () => Promise<JsonObject>;
   writeOpenclawConfig: (config: JsonObject) => Promise<void>;
   readOfficeStylePreset: () => Promise<OfficeStylePreset>;
@@ -699,10 +804,11 @@ export interface SidecarStore {
 }
 
 export function generateObjectId(meshType: string): string {
-  const slug = asString(meshType, "object")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "object";
+  const slug =
+    asString(meshType, "object")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "object";
   const nonce = Math.random().toString(36).slice(2, 8);
   return `${slug}-${nonce}`;
 }
@@ -718,15 +824,35 @@ export function createSidecarStore(): SidecarStore {
   const openclawHome = resolveOpenclawHome();
   const companyPath = path.join(openclawHome, "company.json");
   const officeObjectsPath = path.join(openclawHome, "office-objects.json");
+  const officeSettingsPath = path.join(openclawHome, "office.json");
   const openclawConfigPath = path.join(openclawHome, "openclaw.json");
   return {
     companyPath,
     officeObjectsPath,
+    officeSettingsPath,
     openclawConfigPath,
     readCompanyModel: async () => normalizeCompanyModel(await readJsonFile(companyPath, {})),
     writeCompanyModel: async (model) => writeJsonAtomic(companyPath, normalizeCompanyModel(model)),
-    readOfficeObjects: async () => normalizeOfficeObjects(await readJsonFile(officeObjectsPath, [])),
-    writeOfficeObjects: async (objects) => writeJsonAtomic(officeObjectsPath, normalizeOfficeObjects(objects)),
+    readOfficeObjects: async () =>
+      normalizeOfficeObjects(await readJsonFile(officeObjectsPath, [])),
+    writeOfficeObjects: async (objects) =>
+      writeJsonAtomic(officeObjectsPath, normalizeOfficeObjects(objects)),
+    readOfficeSettings: async () =>
+      normalizeOfficeSettings(
+        await readJsonFile(officeSettingsPath, {
+          officeFootprint: { width: 35, depth: 35 },
+          decor: {
+            floorPatternId: "sandstone_tiles",
+            wallColorId: "gallery_cream",
+            backgroundId: "shell_haze",
+          },
+          viewProfile: "free_orbit_3d",
+          orbitControlsEnabled: true,
+          cameraOrientation: "south_east",
+        }),
+      ),
+    writeOfficeSettings: async (settings) =>
+      writeJsonAtomic(officeSettingsPath, normalizeOfficeSettings(settings)),
     readOpenclawConfig: async () => asObject(await readJsonFile(openclawConfigPath, {})),
     writeOpenclawConfig: async (config) => writeJsonAtomic(openclawConfigPath, asObject(config)),
     readOfficeStylePreset: async () => {
@@ -742,4 +868,3 @@ export function createSidecarStore(): SidecarStore {
     },
   };
 }
-
