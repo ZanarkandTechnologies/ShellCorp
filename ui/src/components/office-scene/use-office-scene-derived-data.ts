@@ -19,6 +19,7 @@ import { useMemo } from "react";
 import type { DeskLayoutData, EmployeeData, TeamData } from "../../lib/types";
 import {
   getAbsoluteDeskPosition,
+  getDeskPosition,
   getDeskRotation,
 } from "../../features/office-system/utils/layout";
 import type { OfficeSceneViewSettings } from "./view-profile";
@@ -32,6 +33,8 @@ import { getOfficePresentationRotationY } from "./view-profile";
 export type OfficeSceneDerivedData = {
   ceoDeskData:
     | (DeskLayoutData & {
+        anchorPosition: [number, number, number];
+        localPosition: [number, number, number];
         position: [number, number, number];
         rotationY: number;
       })
@@ -44,6 +47,36 @@ export type OfficeSceneDerivedData = {
 
 export { assignRandomStatuses, buildDesksByTeamId, buildTeamWanderLocks };
 
+export function buildCeoDeskData(params: {
+  teams: TeamData[];
+  desks: DeskLayoutData[];
+  officeViewSettings: OfficeSceneViewSettings;
+}): OfficeSceneDerivedData["ceoDeskData"] {
+  const { teams, desks, officeViewSettings } = params;
+  const ceoDesk = desks.find(
+    (desk) => desk.id.startsWith("desk-team-management-") || desk.id === "ceo-desk",
+  );
+  if (!ceoDesk) return null;
+
+  const managementTeam = teams.find((team) => team.name === "Management");
+  if (!managementTeam?.clusterPosition) return null;
+
+  const managementDesks = desks.filter((desk) => desk.id.startsWith("desk-team-management-"));
+  const clusterPosition = managementTeam.clusterPosition;
+  const localPosition = getDeskPosition([0, 0, 0], ceoDesk.deskIndex, managementDesks.length);
+
+  return {
+    ...ceoDesk,
+    anchorPosition: clusterPosition,
+    localPosition,
+    position: getAbsoluteDeskPosition(clusterPosition, ceoDesk.deskIndex, managementDesks.length),
+    rotationY:
+      officeViewSettings.viewProfile === "fixed_2_5d"
+        ? getOfficePresentationRotationY(officeViewSettings.cameraOrientation)
+        : getDeskRotation(ceoDesk.deskIndex, managementDesks.length),
+  };
+}
+
 export function useOfficeSceneDerivedData(params: {
   teams: TeamData[];
   employees: EmployeeData[];
@@ -52,27 +85,10 @@ export function useOfficeSceneDerivedData(params: {
 }): OfficeSceneDerivedData {
   const { teams, employees, desks, officeViewSettings } = params;
 
-  const ceoDeskData = useMemo(() => {
-    const ceoDesk = desks.find(
-      (desk) => desk.id.startsWith("desk-team-management-") || desk.id === "ceo-desk",
-    );
-    if (!ceoDesk) return null;
-
-    const managementTeam = teams.find((team) => team.name === "Management");
-    if (!managementTeam) return null;
-
-    const managementDesks = desks.filter((desk) => desk.id.startsWith("desk-team-management-"));
-    const clusterPosition = managementTeam.clusterPosition;
-
-    return {
-      ...ceoDesk,
-      position: getAbsoluteDeskPosition(clusterPosition, ceoDesk.deskIndex, managementDesks.length),
-      rotationY:
-        officeViewSettings.viewProfile === "fixed_2_5d"
-          ? getOfficePresentationRotationY(officeViewSettings.cameraOrientation)
-          : getDeskRotation(ceoDesk.deskIndex, managementDesks.length),
-    };
-  }, [desks, officeViewSettings.cameraOrientation, officeViewSettings.viewProfile, teams]);
+  const ceoDeskData = useMemo(
+    () => buildCeoDeskData({ teams, desks, officeViewSettings }),
+    [desks, officeViewSettings, teams],
+  );
 
   const teamById = useMemo(() => new Map(teams.map((team) => [team._id, team])), [teams]);
   const desksByTeamId = useMemo(() => buildDesksByTeamId(desks), [desks]);

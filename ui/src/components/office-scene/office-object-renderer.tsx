@@ -16,16 +16,17 @@
  */
 
 import type * as THREE from "three";
-import type { DeskLayoutData, OfficeId, OfficeObject, TeamData } from "@/lib/types";
-import type { OfficeFootprint } from "@/lib/office-footprint";
-import Plant from "@/features/office-system/components/plant";
-import Couch from "@/features/office-system/components/couch";
+import type { ThreeEvent } from "@react-three/fiber";
 import Bookshelf from "@/features/office-system/components/bookshelf";
-import Pantry from "@/features/office-system/components/pantry";
+import Couch from "@/features/office-system/components/couch";
 import CustomMeshObject from "@/features/office-system/components/custom-mesh-object";
-import TeamCluster from "@/features/office-system/components/team-cluster";
 import GlassWall from "@/features/office-system/components/glass-wall";
+import Pantry from "@/features/office-system/components/pantry";
+import Plant from "@/features/office-system/components/plant";
+import TeamCluster from "@/features/office-system/components/team-cluster";
 import WallArt from "@/features/office-system/components/wall-art";
+import type { OfficeFootprint } from "@/lib/office-footprint";
+import type { DeskLayoutData, OfficeId, OfficeObject, TeamData } from "@/lib/types";
 
 export function OfficeObjectRenderer(props: {
   officeObjects: OfficeObject[];
@@ -34,6 +35,7 @@ export function OfficeObjectRenderer(props: {
   desksByTeamId: Map<string, DeskLayoutData[]>;
   officeFootprint: OfficeFootprint;
   handleTeamClick: (team: TeamData) => Promise<void>;
+  handleManagementClick: (event: ThreeEvent<MouseEvent>) => void;
   getObjectRef: (objectId: string) => React.RefObject<THREE.Group | null>;
   createRegisteredObjectRef: (
     objectId: string,
@@ -47,6 +49,7 @@ export function OfficeObjectRenderer(props: {
     desksByTeamId,
     officeFootprint,
     handleTeamClick,
+    handleManagementClick,
     getObjectRef,
     createRegisteredObjectRef,
   } = props;
@@ -129,6 +132,7 @@ export function OfficeObjectRenderer(props: {
               team={team}
               desks={teamDesks}
               handleTeamClick={handleTeamClick}
+              onPrimaryAction={team._id === "team-management" ? handleManagementClick : undefined}
               companyId={companyId}
               objectId={object._id}
               position={object.position as [number, number, number]}

@@ -296,7 +296,9 @@ function toOfficeData(
     name: "Management",
     description: "Executive control desk inside the dedicated management zone.",
     deskCount: 1,
-    clusterPosition: ceoAnchor,
+    // MEM-0176 decision: builder movement persists through the management cluster anchor;
+    // the CEO desk stays derived from desk layout instead of owning a second transform path.
+    clusterPosition: teamClusterAnchorsByTeamId.get("team-management") ?? ceoAnchor,
     employees: [],
   });
 
@@ -444,7 +446,6 @@ function toOfficeData(
   }
 
   const clusterObjects: OfficeObject[] = teams
-    .filter((team) => team.name !== "Management")
     .map((team, index) => ({
       _id: `cluster-${team._id}`,
       companyId,

@@ -23,7 +23,6 @@ import { DestinationDebugger } from "@/components/debug/destination-debugger";
 import { SmartGrid } from "@/components/debug/unified-grid-helper";
 import { PlacementHandler } from "@/components/placement-handler";
 import type { StatusType } from "@/features/nav-system/components/status-indicator";
-import Desk from "@/features/office-system/components/desk";
 import { Employee } from "@/features/office-system/components/employee";
 import { useAppStore } from "@/lib/app-store";
 import { OfficeLayoutEditor } from "./office-layout-editor";
@@ -71,19 +70,18 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
     settings: officeViewSettings,
   });
 
-  const { ceoDeskData, employeesForScene, teamById, desksByTeamId } = useOfficeSceneDerivedData({
+  const { employeesForScene, teamById, desksByTeamId } = useOfficeSceneDerivedData({
     teams,
     employees,
     desks,
     officeViewSettings,
   });
 
-  const { orbitControlsRef, floorRef, ceoDeskRef, createRegisteredObjectRef, getObjectRef } =
+  const { orbitControlsRef, floorRef, createRegisteredObjectRef, getObjectRef } =
     useOfficeSceneBootstrap({
       officeLayout,
       officeObjectCount:
         officeObjects?.filter((object) => object.meshType !== "wall-art").length ?? 0,
-      hasCeoDesk: Boolean(ceoDeskData),
       onNavigationReady,
     });
 
@@ -106,8 +104,8 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
         teamById={teamById}
         desksByTeamId={desksByTeamId}
         officeFootprint={officeFootprint}
-        officeLayout={officeLayout}
         handleTeamClick={handleTeamClick}
+        handleManagementClick={handleCeoDeskClick}
         getObjectRef={getObjectRef}
         createRegisteredObjectRef={createRegisteredObjectRef}
       />
@@ -118,7 +116,6 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
     desksByTeamId,
     getObjectRef,
     handleTeamClick,
-    officeLayout,
     officeFootprint,
     officeObjects,
     teamById,
@@ -154,20 +151,6 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
         onBackgroundClick={handleBackgroundClick}
       />
       <OfficeLayoutEditor />
-
-      {ceoDeskData && (
-        <group ref={ceoDeskRef} name="obstacle-ceoDeskGroup">
-          <Desk
-            key={ceoDeskData.id}
-            deskId={ceoDeskData.id}
-            position={ceoDeskData.position}
-            rotationY={ceoDeskData.rotationY}
-            isHovered={false}
-            onClick={handleCeoDeskClick}
-          />
-        </group>
-      )}
-
       {!sceneBuilderMode &&
         employeesForScene.map((employee) => (
           <Employee

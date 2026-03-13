@@ -1,7 +1,7 @@
 /**
  * OFFICE SCENE BOOTSTRAP
  * ======================
- * Ref and initialization wiring for office objects, CEO desk registration, and nav-grid startup.
+ * Ref and initialization wiring for office objects and nav-grid startup.
  *
  * KEY CONCEPTS:
  * - Scene bootstrap is coordinated once here instead of being scattered through render branches.
@@ -26,22 +26,19 @@ import type { OfficeLayoutModel } from '@/lib/office-layout';
 export function useOfficeSceneBootstrap(params: {
     officeLayout: OfficeLayoutModel;
     officeObjectCount: number;
-    hasCeoDesk: boolean;
     onNavigationReady?: () => void;
 }): {
     orbitControlsRef: React.RefObject<React.ElementRef<typeof OrbitControls> | null>;
     floorRef: React.RefObject<THREE.Mesh | null>;
-    ceoDeskRef: React.RefObject<THREE.Group | null>;
     createRegisteredObjectRef: (
         objectId: string,
         objectRef: React.MutableRefObject<THREE.Group | null>,
     ) => (element: THREE.Group | null) => void;
     getObjectRef: (objectId: string) => React.RefObject<THREE.Group | null>;
 } {
-    const { officeLayout, officeObjectCount, hasCeoDesk, onNavigationReady } = params;
+    const { officeLayout, officeObjectCount, onNavigationReady } = params;
     const orbitControlsRef = useRef<React.ElementRef<typeof OrbitControls>>(null);
     const floorRef = useRef<THREE.Mesh>(null);
-    const ceoDeskRef = useRef<THREE.Group>(null);
     const officeObjectRefs = useRef<Map<string, React.RefObject<THREE.Group | null>>>(new Map());
 
     const registerObject = useObjectRegistrationStore((state) => state.registerObject);
@@ -71,16 +68,9 @@ export function useOfficeSceneBootstrap(params: {
     );
 
     useEffect(() => {
-        if (ceoDeskRef.current) {
-            registerObject('ceo-desk', ceoDeskRef.current);
-        }
-        return () => unregisterObject('ceo-desk');
-    }, [registerObject, unregisterObject]);
-
-    useEffect(() => {
         const timer = setTimeout(() => {
             const objects = getObjects();
-            const expectedCount = officeObjectCount + (hasCeoDesk ? 1 : 0);
+            const expectedCount = officeObjectCount;
 
             if (expectedCount > 0 && objects.length > 0) {
                 initializeGrid(officeLayout, objects, 2, 3);
@@ -97,12 +87,11 @@ export function useOfficeSceneBootstrap(params: {
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [getObjects, hasCeoDesk, officeLayout, officeObjectCount, onNavigationReady, registeredObjectCount]);
+    }, [getObjects, officeLayout, officeObjectCount, onNavigationReady, registeredObjectCount]);
 
     return {
         orbitControlsRef,
         floorRef,
-        ceoDeskRef,
         createRegisteredObjectRef,
         getObjectRef,
     };

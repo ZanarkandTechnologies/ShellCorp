@@ -10,6 +10,7 @@
 - Office object registration and nav-grid initialization stay coupled through one bootstrap hook.
 - Pure derived scene data should remain testable without mounting React Three Fiber.
 - View switching is settings-backed and presentation-only: camera/profile changes may alter render-time orientation, but they must not rewrite persisted office-object transforms.
+- CEO desk builder movement persists through the Management team-cluster anchor; keep the desk pose derived from management layout instead of inventing a second CEO-only transform record. `MEM-0176`
 - Room decor is split by responsibility: floor pattern and wall color live in `officeSettings.decor`, while wall paintings stay as fixed-slot `wall-art` objects so resizing the office re-anchors cosmetics without blocking navigation.
 - Room shape is tile-backed under `officeSettings.officeLayout`; any builder/nav/render change must derive occupancy and exposed walls from that layout, while `officeFootprint` remains only a derived bounding box for compatibility. `MEM-0172`
 - Builder-mode drag editing must rasterize every crossed tile and the visible builder grid must stay 1:1 with office layout tiles, otherwise preview/fill behavior becomes misleading. `MEM-0173`

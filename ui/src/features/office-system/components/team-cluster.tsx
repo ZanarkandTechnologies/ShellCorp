@@ -60,6 +60,7 @@ interface TeamClusterProps {
   team: TeamData;
   desks: DeskLayoutData[]; // Desk records from database with real IDs
   handleTeamClick: (team: TeamData) => void;
+  onPrimaryAction?: (event: ThreeEvent<MouseEvent>) => void;
   objectId: Id<"officeObjects">;
   position?: [number, number, number];
   rotation?: [number, number, number];
@@ -71,6 +72,7 @@ export default function TeamCluster({
   team,
   desks,
   handleTeamClick,
+  onPrimaryAction,
   objectId,
   position,
   rotation,
@@ -135,8 +137,12 @@ export default function TeamCluster({
     // Priority 2: Builder Mode → Let InteractiveObject handle selection
     if (isBuilderMode) return;
 
-    // Priority 3: Default Mode → Open team chat
+    // Priority 3: Default Mode → Open the configured primary surface
     event.stopPropagation();
+    if (onPrimaryAction) {
+      onPrimaryAction(event);
+      return;
+    }
     handleTeamClick(team);
   };
 
@@ -181,7 +187,8 @@ export default function TeamCluster({
   }, [desksWithPositions.length]);
 
   // Render conditions
-  const showFlag = desks.length === 0;
+  const isManagementCluster = team.name === "Management";
+  const showFlag = desks.length === 0 && !isManagementCluster;
   const showCircle = isBuilderMode || placementMode.active;
   return (
     <InteractiveObject
@@ -248,7 +255,7 @@ export default function TeamCluster({
           )}
 
           {/* Mini Signboard Banner - Always visible (except for CEO/Management team) */}
-          {team.name !== "CEO" && (
+          {!isManagementCluster && team.name !== "CEO" && (
             <group name="team-signboard" position={signboardPosition}>
               {/* Signboard Post */}
               <mesh position={[0, 0, 0]} castShadow>

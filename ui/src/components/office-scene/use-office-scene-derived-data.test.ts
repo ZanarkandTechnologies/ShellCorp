@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { assignRandomStatuses, buildDesksByTeamId } from "./derived-data-utils";
+import { buildCeoDeskData } from "./use-office-scene-derived-data";
 import { getOfficePresentationRotationY } from "./view-profile";
 
 describe("office scene derived data", () => {
@@ -61,5 +62,29 @@ describe("office scene derived data", () => {
   it("resolves deterministic presentation yaw for fixed 2.5D orientations", () => {
     expect(getOfficePresentationRotationY("south_east")).toBeCloseTo(Math.PI / 4);
     expect(getOfficePresentationRotationY("north_west")).toBeCloseTo((-3 * Math.PI) / 4);
+  });
+
+  it("keeps CEO desk placement derived from the management anchor", () => {
+    const ceoDeskData = buildCeoDeskData({
+      teams: [
+        {
+          _id: "team-management",
+          name: "Management",
+          description: "Executive team",
+          clusterPosition: [12, 0, -6],
+          employees: [],
+        },
+      ],
+      desks: [{ id: "desk-team-management-0", deskIndex: 0, team: "Management" }],
+      officeViewSettings: {
+        viewProfile: "free_orbit_3d",
+        orbitControlsEnabled: true,
+        cameraOrientation: "south_east",
+      },
+    });
+
+    expect(ceoDeskData?.anchorPosition).toEqual([12, 0, -6]);
+    expect(ceoDeskData?.position).toEqual([12, 0, -6]);
+    expect(ceoDeskData?.localPosition).toEqual([0, 0, 0]);
   });
 });
