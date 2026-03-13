@@ -55,13 +55,14 @@ export function useOfficeSceneTheme(): ReturnType<typeof getOfficeTheme> {
 
 export function useOfficeSceneCameraTransition(params: {
     isBuilderMode: boolean;
+    officeView2_5D: boolean;
     orbitControlsRef: React.RefObject<{
         object: THREE.Camera;
         update: () => void;
     } | null>;
     setAnimatingCamera: (value: boolean) => void;
 }): void {
-    const { isBuilderMode, orbitControlsRef, setAnimatingCamera } = params;
+    const { isBuilderMode, officeView2_5D, orbitControlsRef, setAnimatingCamera } = params;
 
     useEffect(() => {
         const controls = orbitControlsRef.current;
@@ -69,9 +70,12 @@ export function useOfficeSceneCameraTransition(params: {
 
         const camera = controls.object;
         const startPos = camera.position.clone();
-        const endPos = isBuilderMode
-            ? new THREE.Vector3(0, 50, 0)
-            : new THREE.Vector3(0, 25, 30);
+        const endPos = officeView2_5D
+            // Isometric-ish angle: corner facing camera
+            ? new THREE.Vector3(30, 30, 30)
+            : isBuilderMode
+                ? new THREE.Vector3(0, 50, 0)
+                : new THREE.Vector3(0, 25, 30);
         const duration = 500;
         const startTime = performance.now();
 
@@ -93,5 +97,5 @@ export function useOfficeSceneCameraTransition(params: {
         };
 
         animateCamera();
-    }, [isBuilderMode, orbitControlsRef, setAnimatingCamera]);
+    }, [isBuilderMode, officeView2_5D, orbitControlsRef, setAnimatingCamera]);
 }

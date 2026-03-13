@@ -1,10 +1,9 @@
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEffect, useMemo, useState } from "react";
-import { Settings } from "lucide-react";
 import { useAppStore } from "@/lib/app-store";
 import { getGatewayUiConfig, saveGatewayUiConfig } from "@/lib/gateway-config";
 import { useGateway } from "@/providers/gateway-provider";
@@ -22,8 +21,6 @@ export default function SettingsDialog({ trigger, open, onOpenChange }: Settings
     const setDialogOpen = onOpenChange ?? setUncontrolledOpen;
     const debugMode = useAppStore(state => state.debugMode);
     const setDebugMode = useAppStore(state => state.setDebugMode);
-    const isBuilderMode = useAppStore(state => state.isBuilderMode);
-    const setBuilderMode = useAppStore(state => state.setBuilderMode);
     const { connected } = useGateway();
     const gatewayConfig = useMemo(() => getGatewayUiConfig(), []);
     const [gatewayBaseInput, setGatewayBaseInput] = useState(gatewayConfig.gatewayBase);
@@ -91,20 +88,6 @@ export default function SettingsDialog({ trigger, open, onOpenChange }: Settings
                             size="sm"
                         >
                             {debugMode ? 'On' : 'Off'}
-                        </Button>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                        <div className="flex flex-col gap-1">
-                            <Label>Builder Mode</Label>
-                            <span className="text-xs text-muted-foreground">Move furniture and arrange office</span>
-                        </div>
-                        <Button
-                            onClick={() => setBuilderMode(!isBuilderMode)}
-                            variant={isBuilderMode ? "default" : "outline"}
-                            size="sm"
-                        >
-                            {isBuilderMode ? 'On' : 'Off'}
                         </Button>
                     </div>
 

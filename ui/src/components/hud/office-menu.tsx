@@ -4,7 +4,6 @@ import { useMemo, useCallback, useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import {
   Menu,
-  Hammer,
   Home,
   MessageSquare,
   BookOpen,
@@ -37,10 +36,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
   const convexEnabled = isConvexEnabled();
   const navigate = useNavigate();
   // Use selectors to prevent unnecessary re-renders
-  const isBuilderMode = useAppStore((state) => state.isBuilderMode);
-  const setBuilderMode = useAppStore((state) => state.setBuilderMode);
-  const isAnimatingCamera = useAppStore((state) => state.isAnimatingCamera);
-  const setAnimatingCamera = useAppStore((state) => state.setAnimatingCamera);
   const setIsGlobalTeamPanelOpen = useAppStore((state) => state.setIsGlobalTeamPanelOpen);
   const setIsAgentSessionPanelOpen = useAppStore((state) => state.setIsAgentSessionPanelOpen);
   const setIsSkillsPanelOpen = useAppStore((state) => state.setIsSkillsPanelOpen);
@@ -99,14 +94,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
     setIsOrganizationOpen(false);
     setIsUserTasksOpen(false);
   }, [placementMode.active, setIsUserTasksOpen]);
-
-  // Handle builder mode toggle - let the scene handle animation
-  const handleBuilderModeToggle = useCallback(() => {
-    if (isAnimatingCamera) return; // Prevent clicks during animation
-
-    setAnimatingCamera(true); // Start animation state
-    setBuilderMode(!isBuilderMode); // This will trigger the animation in OfficeScene
-  }, [isAnimatingCamera, isBuilderMode, setAnimatingCamera, setBuilderMode]);
 
   const openGlobalTeamWorkspace = useCallback(() => {
     setActiveTeamId(null);
@@ -191,14 +178,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
             : "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
       },
       {
-        id: "builder-mode",
-        icon: Hammer,
-        label: "Builder Mode",
-        onClick: handleBuilderModeToggle,
-        color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-        disabled: isAnimatingCamera,
-      },
-      {
         id: "office-shop",
         icon: ShoppingBag,
         label: "Office Shop",
@@ -223,8 +202,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
       userTaskCount,
       approvalCount,
       setIsApprovalQueueOpen,
-      handleBuilderModeToggle,
-      isAnimatingCamera,
       setIsOrganizationOpen,
       setIsFurnitureShopOpen,
       setIsSettingsModalOpen,

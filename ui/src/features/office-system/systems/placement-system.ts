@@ -82,12 +82,19 @@ export function usePlacementSystem() {
         }
     }
 
+    const BUILT_IN_MESH_TYPES = [
+      "couch", "bookshelf", "pantry", "plant", "lamp",
+      "water-dispenser", "marble-table", "dining-table", "modern-desk",
+    ] as const;
+
     async function placeGenericObject(input: {
         type: string;
         position: [number, number, number];
         data: Record<string, unknown> | null;
     }): Promise<void> {
         const timestamp = Date.now();
+        const isBuiltIn = BUILT_IN_MESH_TYPES.includes(input.type as (typeof BUILT_IN_MESH_TYPES)[number]);
+        const meshType = isBuiltIn ? input.type : "custom-mesh";
         const idBase =
             typeof input.data?.meshAssetId === "string" && input.data.meshAssetId.trim()
                 ? input.data.meshAssetId.trim().replace(/[^a-zA-Z0-9-_]/g, "-")
@@ -118,7 +125,7 @@ export function usePlacementSystem() {
         const result = await adapter.upsertOfficeObject({
             id: objectId,
             identifier: objectId,
-            meshType: "custom-mesh",
+            meshType,
             position: input.position,
             rotation,
             ...(scale ? { scale } : {}),

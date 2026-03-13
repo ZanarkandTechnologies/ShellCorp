@@ -18,14 +18,32 @@ import { GameObjectDefinition } from "../definitions";
 import { DeskPrefab } from "../prefabs/desk-prefab";
 import { TeamClusterPrefab } from "../prefabs/team-cluster-prefab";
 import { CustomMeshPrefab } from "../prefabs/custom-mesh-prefab";
+import {
+  CouchPrefab,
+  BookshelfPrefab,
+  PantryPrefab,
+  PlantPrefab,
+  LampPrefab,
+  WaterDispenserPrefab,
+  MarbleTablePrefab,
+  DiningTablePrefab,
+  ModernDeskPrefab,
+} from "../prefabs/built-in-furniture-prefabs.tsx";
 
 // Registry mapping item types to their full Prefab Definitions
 export const OBJECT_REGISTRY: Record<string, GameObjectDefinition> = {
-    "desk": DeskPrefab,
-    "team-cluster": TeamClusterPrefab,
-    "custom-mesh": CustomMeshPrefab,
-    // Add new items here:
-    // "plant": PlantPrefab,
+  "desk": DeskPrefab,
+  "team-cluster": TeamClusterPrefab,
+  "custom-mesh": CustomMeshPrefab,
+  "couch": CouchPrefab,
+  "bookshelf": BookshelfPrefab,
+  "pantry": PantryPrefab,
+  "plant": PlantPrefab,
+  "lamp": LampPrefab,
+  "water-dispenser": WaterDispenserPrefab,
+  "marble-table": MarbleTablePrefab,
+  "dining-table": DiningTablePrefab,
+  "modern-desk": ModernDeskPrefab,
 };
 
 export function getGameObjectDefinition(type: string | null): GameObjectDefinition | null {

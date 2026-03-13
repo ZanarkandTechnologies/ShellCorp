@@ -22,24 +22,42 @@ import { useMemo } from 'react';
 import { useAppStore } from '@/lib/app-store';
 import { Employee } from '@/features/office-system/components/employee';
 import Desk from '@/features/office-system/components/desk';
+import { ContextMenu } from '@/features/office-system/components/context-menu';
+import { Trash2 } from 'lucide-react';
 import { SmartGrid } from '@/components/debug/unified-grid-helper';
 import { DestinationDebugger } from '@/components/debug/destination-debugger';
 import { PlacementHandler } from '@/components/placement-handler';
 import type { StatusType } from '@/features/nav-system/components/status-indicator';
+import { HALF_FLOOR } from '@/constants';
+import type { OfficeObject } from '@/lib/types';
 import { OfficeLighting } from './office-lighting';
 import { OfficeRoomShell } from './office-room-shell';
 import { OfficeObjectRenderer } from './office-object-renderer';
+import { CameraDistanceUpdater } from './camera-distance-updater';
+import { Starfield } from './starfield';
 import { useOfficeSceneTheme, useOfficeSceneCameraTransition } from './use-office-scene-camera';
 import { useOfficeSceneInteractions } from './use-office-scene-interactions';
 import { useOfficeSceneBootstrap } from './use-office-scene-bootstrap';
 import { useOfficeSceneDerivedData } from './use-office-scene-derived-data';
 import type { OfficeSceneProps } from './types';
 
+function filterOfficeObjectsInBounds(objects: OfficeObject[] | undefined): OfficeObject[] {
+    if (!objects?.length) return [];
+    return objects.filter((obj) => {
+        const pos = obj.position;
+        if (!Array.isArray(pos) || pos.length < 3) return false;
+        const x = pos[0];
+        const z = pos[2];
+        return Math.abs(x) <= HALF_FLOOR && Math.abs(z) <= HALF_FLOOR;
+    });
+}
+
 export function SceneContents(props: OfficeSceneProps): JSX.Element {
     const { teams, employees, desks, officeObjects, companyId, onNavigationReady } = props;
     const enableOfficeObjects = import.meta.env.VITE_ENABLE_OFFICE_OBJECTS !== 'false';
 
     const isBuilderMode = useAppStore((state) => state.isBuilderMode);
+    const officeView2_5D = useAppStore((state) => state.officeView2_5D);
     const debugMode = useAppStore((state) => state.debugMode);
     const isAnimatingCamera = useAppStore((state) => state.isAnimatingCamera);
     const setAnimatingCamera = useAppStore((state) => state.setAnimatingCamera);
@@ -48,13 +66,24 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
 
     const officeTheme = useOfficeSceneTheme();
     const sceneBuilderMode = isAnimatingCamera ? false : isBuilderMode;
+    const cameraDistance = useAppStore((state) => state.cameraDistance);
+    const roomAppearance = useAppStore((state) => state.roomAppearance);
+    const ceoDeskHidden = useAppStore((state) => state.ceoDeskHidden);
+    const setCeoDeskHidden = useAppStore((state) => state.setCeoDeskHidden);
+    const selectedObjectId = useAppStore((state) => state.selectedObjectId);
+    const setSelectedObjectId = useAppStore((state) => state.setSelectedObjectId);
+
+    const officeObjectsInBounds = useMemo(
+        () => filterOfficeObjectsInBounds(officeObjects),
+        [officeObjects],
+    );
 
     const glassWallObjects = useMemo(
         () =>
-            (officeObjects ?? [])
+            officeObjectsInBounds
                 .filter((object) => object.meshType === 'glass-wall')
                 .map((object) => ({ position: object.position as [number, number, number] })),
-        [officeObjects],
+        [officeObjectsInBounds],
     );
 
     const {
@@ -76,7 +105,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
         createRegisteredObjectRef,
         getObjectRef,
     } = useOfficeSceneBootstrap({
-        officeObjectCount: officeObjects?.length ?? 0,
+        officeObjectCount: officeObjectsInBounds.length,
         hasCeoDesk: Boolean(ceoDeskData),
         onNavigationReady,
     });
@@ -90,6 +119,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
 
     useOfficeSceneCameraTransition({
         isBuilderMode,
+        officeView2_5D,
         orbitControlsRef,
         setAnimatingCamera,
     });
@@ -98,7 +128,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
         if (!enableOfficeObjects) return null;
         return (
             <OfficeObjectRenderer
-                officeObjects={officeObjects}
+                officeObjects={officeObjectsInBounds}
                 companyId={companyId}
                 teamById={teamById}
                 desksByTeamId={desksByTeamId}
@@ -114,40 +144,77 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
         enableOfficeObjects,
         getObjectRef,
         handleTeamClick,
-        officeObjects,
+        officeObjectsInBounds,
         teamById,
     ]);
 
     return (
         <>
+            <Starfield />
             <OfficeLighting officeTheme={officeTheme} sceneBuilderMode={sceneBuilderMode} />
 
             <OrbitControls
                 ref={orbitControlsRef}
                 enabled={!isDragging}
-                enableRotate={!isDragging}
-                enablePan={!isDragging}
+                enableRotate={!officeView2_5D && !isDragging}
+                enablePan={!officeView2_5D && !isDragging}
                 enableZoom
-                maxPolarAngle={sceneBuilderMode ? Math.PI / 3 : Math.PI}
-                minPolarAngle={0}
+                minDistance={officeView2_5D ? 8 : 5}
+                maxDistance={officeView2_5D ? 40 : 200}
+                minPolarAngle={officeView2_5D ? Math.PI / 3 : 0}
+                maxPolarAngle={officeView2_5D ? Math.PI / 3 : sceneBuilderMode ? Math.PI / 3 : Math.PI}
+                minAzimuthAngle={officeView2_5D ? Math.PI / 4 : undefined}
+                maxAzimuthAngle={officeView2_5D ? Math.PI / 4 : undefined}
             />
+
+            <CameraDistanceUpdater controlsRef={orbitControlsRef} />
 
             <OfficeRoomShell
                 floorRef={floorRef}
                 officeTheme={officeTheme}
                 onBackgroundClick={handleBackgroundClick}
+                cameraDistance={cameraDistance}
+                roomAppearance={roomAppearance}
             />
 
-            {ceoDeskData && (
+            {ceoDeskData && !ceoDeskHidden && (
                 <group ref={ceoDeskRef} name="obstacle-ceoDeskGroup">
-                    <Desk
-                        key={ceoDeskData.id}
-                        deskId={ceoDeskData.id}
+                    <group
                         position={ceoDeskData.position}
-                        rotationY={ceoDeskData.rotationY}
-                        isHovered={false}
-                        onClick={handleCeoDeskClick}
-                    />
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (sceneBuilderMode) {
+                                setSelectedObjectId(selectedObjectId === 'ceo-desk' ? null : 'ceo-desk');
+                            } else {
+                                handleCeoDeskClick(e);
+                            }
+                        }}
+                    >
+                        <Desk
+                            key={ceoDeskData.id}
+                            deskId={ceoDeskData.id}
+                            position={[0, 0, 0]}
+                            rotationY={ceoDeskData.rotationY}
+                            isHovered={false}
+                            onClick={undefined}
+                        />
+                        <ContextMenu
+                            isOpen={sceneBuilderMode && selectedObjectId === 'ceo-desk'}
+                            onClose={() => setSelectedObjectId(null)}
+                            actions={[
+                                {
+                                    id: 'delete',
+                                    label: 'Remove',
+                                    icon: Trash2,
+                                    onClick: () => {
+                                        setCeoDeskHidden(true);
+                                        setSelectedObjectId(null);
+                                    },
+                                },
+                            ]}
+                            title="CEO desk"
+                        />
+                    </group>
                 </group>
             )}
 

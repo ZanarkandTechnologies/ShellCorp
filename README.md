@@ -10,6 +10,7 @@ Read in this order:
 2. `docs/progress.md`
 3. `docs/openclaw-adapter-contracts.md` (UI adapter contract reference)
 4. `docs/prd.md`
+5. `docs/office-furniture.md` (office furniture storage, move/remove, and adding more)
 
 ## Multi-Agent Heartbeat Proof Loop
 

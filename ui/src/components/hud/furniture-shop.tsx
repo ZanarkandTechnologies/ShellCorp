@@ -50,8 +50,15 @@ import {
   Sofa,
   Library,
   Briefcase,
+  Leaf,
+  Lamp as LampIcon,
+  Droplets,
+  Square,
+  RectangleHorizontal,
+  LayoutPanelTop,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getGameObjectDefinition } from "@/features/office-system/components/object-registry";
 
 type TabId = "catalog" | "custom" | "import";
 
@@ -61,36 +68,92 @@ interface BuiltInCatalogItem {
   description: string;
   category: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** Optional image URL for the card. Falls back to icon. */
+  imageUrl?: string;
+  /** Background color for the image/icon area when no image. */
+  imageBg?: string;
 }
 
 const BUILT_IN_ITEMS: BuiltInCatalogItem[] = [
   {
     id: "desk",
-    name: "Office Desk",
-    description: "Standard workstation desk included with the core office kit.",
-    category: "Furniture",
+    name: "Team Desk",
+    description: "Add to a team cluster for workstations.",
+    category: "Workstations",
     icon: Monitor,
+    imageBg: "bg-slate-500/20",
+  },
+  {
+    id: "modern-desk",
+    name: "Modern Desk",
+    description: "Sleek desk with large screen and keyboard.",
+    category: "Workstations",
+    icon: LayoutPanelTop,
+    imageBg: "bg-slate-600/20",
   },
   {
     id: "couch",
-    name: "Lounge Couch",
-    description: "Minimal waiting area couch for team collaboration spaces.",
+    name: "Lounge Sofa",
+    description: "Low-profile modern sofa for breakout areas.",
     category: "Lounge",
     icon: Sofa,
+    imageBg: "bg-stone-400/30",
+  },
+  {
+    id: "marble-table",
+    name: "Marble Coffee Table",
+    description: "Thin marble top with metal legs.",
+    category: "Tables",
+    icon: Square,
+    imageBg: "bg-zinc-300/30",
+  },
+  {
+    id: "dining-table",
+    name: "Dining Table",
+    description: "Large table for meetings and meals.",
+    category: "Tables",
+    icon: RectangleHorizontal,
+    imageBg: "bg-amber-800/20",
   },
   {
     id: "bookshelf",
-    name: "Bookshelf",
-    description: "Neutral storage shelf for office props and decor scenes.",
+    name: "Open Shelving",
+    description: "Light wood open shelves.",
     category: "Storage",
     icon: Library,
+    imageBg: "bg-amber-900/20",
   },
   {
     id: "pantry",
-    name: "Pantry Counter",
-    description: "Pantry module for kitchen corners and social zones.",
-    category: "Utility",
+    name: "Break Counter",
+    description: "Coffee and counter for kitchen area.",
+    category: "Kitchen",
     icon: Briefcase,
+    imageBg: "bg-sky-600/20",
+  },
+  {
+    id: "water-dispenser",
+    name: "Water Dispenser",
+    description: "Modern water cooler for the team.",
+    category: "Kitchen",
+    icon: Droplets,
+    imageBg: "bg-cyan-500/20",
+  },
+  {
+    id: "plant",
+    name: "Plant",
+    description: "Modern planter for a touch of green.",
+    category: "Decor",
+    icon: Leaf,
+    imageBg: "bg-emerald-600/20",
+  },
+  {
+    id: "lamp",
+    name: "Desk Lamp",
+    description: "Minimal desk lamp.",
+    category: "Lighting",
+    icon: LampIcon,
+    imageBg: "bg-amber-500/20",
   },
 ];
 
@@ -216,13 +279,24 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     });
   };
 
+  const startCatalogPlacement = (itemId: string) => {
+    if (!company) return;
+    const prefab = getGameObjectDefinition(itemId);
+    if (!prefab) return;
+    onOpenChange(false);
+    startPlacement(itemId, { companyId: company._id });
+  };
+
   const renderCatalog = () => (
     <div className="space-y-6">
       <div className="rounded-lg border bg-card text-card-foreground p-5">
         <div>
           <h3 className="font-semibold text-lg">Built-in Catalog</h3>
           <p className="text-sm text-muted-foreground">
-            Static assets bundled with ShellCorp. These are fast to load and always available.
+            Click &quot;Place in office&quot; then click on the floor inside the room to add furniture.
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            To <strong>move</strong> or <strong>remove</strong> furniture: turn on <strong>Builder</strong> (top right), then click any placed piece—use <strong>Move</strong> (drag) or <strong>Delete</strong> from the menu.
           </p>
         </div>
       </div>
@@ -235,18 +309,40 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
               key={item.id}
               className="flex flex-col overflow-hidden border-border/70 shadow-none"
             >
-              <div className="h-28 bg-muted/40 flex items-center justify-center border-b">
-                <item.icon className="w-10 h-10 text-muted-foreground/50" />
+              <div
+                className={cn(
+                  "h-28 flex items-center justify-center border-b",
+                  item.imageBg ?? "bg-muted/40"
+                )}
+              >
+                {item.imageUrl ? (
+                  <img
+                    src={item.imageUrl}
+                    alt=""
+                    className="h-full w-full object-cover object-center"
+                  />
+                ) : (
+                  <item.icon className="w-12 h-12 text-foreground/70" />
+                )}
               </div>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">{item.name}</CardTitle>
                 <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
               </CardHeader>
-              <CardContent className="pt-0 pb-4 mt-auto">
+              <CardContent className="pt-0 pb-2 mt-auto">
                 <span className="inline-flex rounded-md border px-2 py-1 text-xs text-muted-foreground">
                   {item.category}
                 </span>
               </CardContent>
+              <CardFooter className="pt-0">
+                <Button
+                  className="w-full"
+                  onClick={() => startCatalogPlacement(item.id)}
+                  disabled={!company}
+                >
+                  Place in office
+                </Button>
+              </CardFooter>
             </Card>
           ))}
         </div>

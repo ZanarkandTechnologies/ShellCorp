@@ -27,7 +27,7 @@ export function getOfficeTheme(isDarkMode: boolean): OfficeTheme {
     scene: {
       floor: "#d9dddc",
       walls: "#d9dddc",
-      background: isDarkMode ? "#1a1612" : "#e8dcc4",
+      background: isDarkMode ? "#000000" : "#e8dcc4",
     },
     lighting: {
       ambient: "#ffffff",

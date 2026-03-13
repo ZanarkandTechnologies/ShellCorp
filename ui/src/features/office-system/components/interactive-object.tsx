@@ -7,6 +7,7 @@ import { ContextMenu, MenuAction } from './context-menu';
 import { Move, RotateCw, RotateCcw, Trash2, Settings, ZoomIn, ZoomOut } from 'lucide-react';
 import { DraggableController } from '../controllers/draggable-controller';
 import { resolvePersistedOfficeObjectId } from './office-object-id';
+import { ROOM_PLACE_MIN, ROOM_PLACE_MAX } from '@/constants';
 import { OFFICE_INTERACTION_COLORS } from '@/config/office-theme';
 import { useOpenClawAdapter } from '@/providers/openclaw-adapter-provider';
 import { parseOfficeObjectInteractionConfig } from '../office-object-ui';
@@ -92,7 +93,19 @@ export function InteractiveObject({
         const payload = {
             id: persistedId,
             identifier: existing?.identifier ?? persistedId,
-            meshType: (existing?.meshType ?? objectType) as "team-cluster" | "plant" | "couch" | "bookshelf" | "pantry" | "glass-wall" | "custom-mesh",
+            meshType: (existing?.meshType ?? objectType) as
+              | "team-cluster"
+              | "plant"
+              | "couch"
+              | "bookshelf"
+              | "pantry"
+              | "lamp"
+              | "water-dispenser"
+              | "marble-table"
+              | "dining-table"
+              | "modern-desk"
+              | "glass-wall"
+              | "custom-mesh",
             position: input.position,
             rotation: input.rotation ?? existing?.rotation ?? initialRotation,
             scale: input.scale ?? existing?.scale ?? initialScale,
@@ -121,7 +134,9 @@ export function InteractiveObject({
         if (!groupRef.current || !isDragEnabled) return;
 
         const handleDragEnd = async (newPosition: THREE.Vector3) => {
-            const newPosArray: [number, number, number] = [newPosition.x, newPosition.y, newPosition.z];
+            const x = Math.max(ROOM_PLACE_MIN, Math.min(ROOM_PLACE_MAX, newPosition.x));
+            const z = Math.max(ROOM_PLACE_MIN, Math.min(ROOM_PLACE_MAX, newPosition.z));
+            const newPosArray: [number, number, number] = [x, newPosition.y, z];
             setLocalPosition(newPosArray);
 
             try {

@@ -6,6 +6,7 @@ import { LogsDrawer } from './hud/logs-drawer';
 import { LogsToggleButton } from './hud/logs-toggle-button';
 import { GatewayStatusPill } from './hud/gateway-status-pill';
 import { OfficeMenu } from './hud/office-menu';
+import { OfficeTopBar } from './hud/office-top-bar';
 import { CeoWorkbenchPanel } from './hud/ceo-workbench-panel';
 import { useOfficeDataContext } from '@/providers/office-data-provider';
 import { useAppStore } from '@/lib/app-store';
@@ -164,6 +165,10 @@ export default function OfficeSimulation() {
                         <div className="pointer-events-auto">
                             <OfficeMenu />
                         </div>
+                    </div>
+
+                    <div className="pointer-events-none absolute top-4 right-4 z-[70]">
+                        <OfficeTopBar />
                     </div>
 
                     <div className="pointer-events-none absolute bottom-4 right-4 z-[65]">

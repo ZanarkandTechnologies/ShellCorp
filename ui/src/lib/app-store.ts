@@ -56,6 +56,10 @@ interface AppState {
   setDebugMode: (enabled: boolean) => void;
   isBuilderMode: boolean;
   setBuilderMode: (enabled: boolean) => void;
+  officeView2_5D: boolean;
+  setOfficeView2_5D: (enabled: boolean) => void;
+  cameraDistance: number;
+  setCameraDistance: (d: number) => void;
   isDragging: boolean;
   setIsDragging: (enabled: boolean) => void;
   isAnimatingCamera: boolean;
@@ -105,6 +109,24 @@ interface AppState {
   setSelectedSessionKey: (sessionKey: string | null) => void;
   isSettingsModalOpen: boolean;
   setIsSettingsModalOpen: (isOpen: boolean) => void;
+
+  roomAppearance: {
+    floorType: "wood" | "tile" | "concrete";
+    floorColor: string;
+    wallColor: string;
+    windows: boolean;
+    paintings: boolean;
+    door: boolean;
+    carpet: boolean;
+    carpetColor: string;
+  };
+  setRoomAppearance: (patch: Partial<AppState["roomAppearance"]>) => void;
+
+  useHumanoidAvatar: boolean;
+  setUseHumanoidAvatar: (enabled: boolean) => void;
+
+  ceoDeskHidden: boolean;
+  setCeoDeskHidden: (hidden: boolean) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -125,6 +147,10 @@ export const useAppStore = create<AppState>()(
     setDebugMode: (enabled) => set({ debugMode: enabled }),
     isBuilderMode: false,
     setBuilderMode: (enabled) => set({ isBuilderMode: enabled }),
+    officeView2_5D: false,
+    setOfficeView2_5D: (enabled) => set({ officeView2_5D: enabled }),
+    cameraDistance: 35,
+    setCameraDistance: (d) => set((s) => (Math.abs(s.cameraDistance - d) < 0.5 ? s : { cameraDistance: d })),
     isDragging: false,
     setIsDragging: (enabled) => set({ isDragging: enabled }),
     isAnimatingCamera: false,
@@ -186,6 +212,25 @@ export const useAppStore = create<AppState>()(
     setSelectedSessionKey: (sessionKey) => set({ selectedSessionKey: sessionKey }),
     isSettingsModalOpen: false,
     setIsSettingsModalOpen: (isOpen) => set({ isSettingsModalOpen: isOpen }),
+
+    roomAppearance: {
+      floorType: "wood",
+      floorColor: "#c4b5a0",
+      wallColor: "#e8e4df",
+      windows: true,
+      paintings: true,
+      door: true,
+      carpet: true,
+      carpetColor: "#3d3d3d",
+    },
+    setRoomAppearance: (patch) =>
+      set((s) => ({ roomAppearance: { ...s.roomAppearance, ...patch } })),
+
+    useHumanoidAvatar: false,
+    setUseHumanoidAvatar: (enabled) => set({ useHumanoidAvatar: enabled }),
+
+    ceoDeskHidden: false,
+    setCeoDeskHidden: (hidden) => set({ ceoDeskHidden: hidden }),
   })),
 );
 

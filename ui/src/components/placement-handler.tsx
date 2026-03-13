@@ -25,7 +25,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { usePlacementSystem } from "@/features/office-system/systems/placement-system";
 import { getGameObjectDefinition } from "@/features/office-system/components/object-registry";
 import { AlertCircle } from "lucide-react";
-import { FLOOR_SIZE } from "@/constants";
+import { FLOOR_SIZE, ROOM_PLACE_MIN, ROOM_PLACE_MAX } from "@/constants";
 
 type PlacementCoordinates = [number, number, number] | null;
 
@@ -80,6 +80,8 @@ export function PlacementHandler() {
         target.x = Math.round(target.x / snap) * snap;
         target.z = Math.round(target.z / snap) * snap;
         target.y = 0;
+        target.x = Math.max(ROOM_PLACE_MIN, Math.min(ROOM_PLACE_MAX, target.x));
+        target.z = Math.max(ROOM_PLACE_MIN, Math.min(ROOM_PLACE_MAX, target.z));
         hoverPositionRef.current = [target.x, target.y, target.z];
 
         if (ghostRef.current) {
@@ -91,7 +93,13 @@ export function PlacementHandler() {
     const handlePlacementSurfaceClick = useCallback((event: ThreeEvent<MouseEvent>) => {
         if (!isCoordinatePlacement || pendingPosition || !hoverPositionRef.current) return;
         event.stopPropagation();
-        setPendingPosition([...hoverPositionRef.current] as [number, number, number]);
+        const [x, y, z] = hoverPositionRef.current;
+        const clamped: [number, number, number] = [
+            Math.max(ROOM_PLACE_MIN, Math.min(ROOM_PLACE_MAX, x)),
+            y,
+            Math.max(ROOM_PLACE_MIN, Math.min(ROOM_PLACE_MAX, z)),
+        ];
+        setPendingPosition(clamped);
     }, [isCoordinatePlacement, pendingPosition]);
 
     const handleConfirm = async () => {

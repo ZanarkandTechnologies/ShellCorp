@@ -14,7 +14,7 @@
  */
 import { memo, useCallback, useMemo, useState } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
-import { Box, Edges } from "@react-three/drei";
+import { Box, Edges, Sphere } from "@react-three/drei";
 import * as THREE from "three";
 import { Book, Brain, CheckSquare, MessageSquare, Monitor, UserCog } from "lucide-react";
 import {
@@ -95,6 +95,7 @@ const Employee = memo(function Employee({
   const employeeIdString = `employee-${id}`;
   const isSelected = useAppStore((state) => state.selectedObjectId === employeeIdString);
   const setSelectedObjectId = useAppStore((state) => state.setSelectedObjectId);
+  const useHumanoidAvatar = useAppStore((state) => state.useHumanoidAvatar);
   const setManageAgentEmployeeId = useAppStore((state) => state.setManageAgentEmployeeId);
   const setViewComputerEmployeeId = useAppStore((state) => state.setViewComputerEmployeeId);
   const viewComputerEmployeeId = useAppStore((state) => state.viewComputerEmployeeId);
@@ -132,16 +133,24 @@ const Employee = memo(function Employee({
   );
 
   const finalColors = useMemo(
-    () =>
-      isCEO
-        ? {
-            hair: "#FFD700",
-            skin: "#FF5722",
-            shirt: "#CC2200",
-            pants: "#8B0000",
-          }
-        : colors,
-    [isCEO, colors],
+    () => {
+      if (isCEO)
+        return {
+          hair: "#FFD700",
+          skin: "#FF5722",
+          shirt: "#CC2200",
+          pants: "#8B0000",
+        };
+      if (useHumanoidAvatar)
+        return {
+          hair: "#5c5c5c",
+          skin: "#8b8685",
+          shirt: "#6b6b6b",
+          pants: "#4a4a4a",
+        };
+      return colors;
+    },
+    [isCEO, useHumanoidAvatar, colors],
   );
 
   const { currentStatus, effectiveNotificationCount } = useMemo(() => {
@@ -329,6 +338,14 @@ const Employee = memo(function Employee({
             skinColor={finalColors.skin}
             hairColor={finalColors.hair}
           />
+        ) : useHumanoidAvatar ? (
+          <Sphere
+            args={[HEAD_WIDTH / 2, 16, 16]}
+            position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT / 2, 0]}
+            castShadow
+          >
+            <meshStandardMaterial color={finalColors.skin} />
+          </Sphere>
         ) : (
           <Box
             args={[HEAD_WIDTH, HEAD_HEIGHT, HEAD_WIDTH]}
@@ -339,16 +356,27 @@ const Employee = memo(function Employee({
           </Box>
         )}
 
-        <group position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT + HAIR_HEIGHT / 2, 0]}>
-          <Box args={[HAIR_WIDTH, HAIR_HEIGHT, HAIR_WIDTH]} castShadow>
-            <meshStandardMaterial color={finalColors.hair} />
-          </Box>
-          {isSupervisor ? <SupervisorHat /> : null}
-        </group>
+        {!useHumanoidAvatar && (
+          <group position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT + HAIR_HEIGHT / 2, 0]}>
+            <Box args={[HAIR_WIDTH, HAIR_HEIGHT, HAIR_WIDTH]} castShadow>
+              <meshStandardMaterial color={finalColors.hair} />
+            </Box>
+            {isSupervisor ? <SupervisorHat /> : null}
+          </group>
+        )}
+        {useHumanoidAvatar && isSupervisor ? (
+          <group position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT, 0]}>
+            <SupervisorHat />
+          </group>
+        ) : null}
 
-        <LobsterClaws color={finalColors.shirt} />
-        <LobsterAntennae />
-        <LobsterEyes />
+        {!useHumanoidAvatar && (
+          <>
+            <LobsterClaws color={finalColors.shirt} />
+            <LobsterAntennae />
+            <LobsterEyes />
+          </>
+        )}
         <TeamPlumbob teamId={teamId} />
 
         {(isHovered || isSelected) && (

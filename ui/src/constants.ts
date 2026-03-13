@@ -8,9 +8,14 @@ export const COMPUTER_HEIGHT = 0.4;
 export const EMPLOYEE_RADIUS = 0.2;
 export const WALL_HEIGHT = 2.5;
 export const WALL_THICKNESS = 0.2;
-export const FLOOR_SIZE = 35;
-export const FLOOR_SIZE_FOR_DECOR = 35;
+// Shrink the office footprint to feel like a small starter room (~8x smaller area)
+export const FLOOR_SIZE = 8;
+export const FLOOR_SIZE_FOR_DECOR = 8;
 export const HALF_FLOOR = FLOOR_SIZE_FOR_DECOR / 2;
+/** Inset from walls when placing furniture so objects stay inside the room. */
+export const ROOM_PLACEMENT_MARGIN = 0.5;
+export const ROOM_PLACE_MIN = -HALF_FLOOR + ROOM_PLACEMENT_MARGIN;
+export const ROOM_PLACE_MAX = HALF_FLOOR - ROOM_PLACEMENT_MARGIN;
 
 // OpenClaw lobster-themed color palette
 export const HAIR_COLORS = ["#FF4500", "#FF6347", "#E84020", "#D4380D", "#CC3300"]; // Shell crown accents
@@ -40,12 +45,12 @@ export const HEAD_WIDTH = BODY_WIDTH * 0.8;
 export const HAIR_WIDTH = HEAD_WIDTH * 1.05;
 
 export const IDLE_DESTINATIONS: THREE.Vector3[] = [
-  new THREE.Vector3(0, 0, -HALF_FLOOR + 2),
-  new THREE.Vector3(-5, 0, -HALF_FLOOR + 2),
-  new THREE.Vector3(5, 0, -HALF_FLOOR + 2),
-  new THREE.Vector3(10.25, 0, -HALF_FLOOR + 2),
-  new THREE.Vector3(-10.25, 0, -HALF_FLOOR + 1),
+  new THREE.Vector3(0, 0, -HALF_FLOOR + 1.5),
+  new THREE.Vector3(-2, 0, -HALF_FLOOR + 1.5),
+  new THREE.Vector3(2, 0, -HALF_FLOOR + 1.5),
+  new THREE.Vector3(-2, 0, HALF_FLOOR - 1.5),
+  new THREE.Vector3(2, 0, HALF_FLOOR - 1.5),
   new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(10, 0, 10),
-  new THREE.Vector3(-10, 0, 10),
+  new THREE.Vector3(HALF_FLOOR - 1.5, 0, 0),
+  new THREE.Vector3(-HALF_FLOOR + 1.5, 0, 0),
 ];
