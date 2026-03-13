@@ -8,12 +8,18 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
+import {
+  collectMeshDiagnostics,
+  formatMeshDiagnosticsSummary,
+  type MeshDiagnostics,
+} from "./mesh-diagnostics";
 
 export interface CachedMesh {
   scene: THREE.Object3D;
   boundingBox: THREE.Box3;
   /** Y offset to apply so the mesh bottom sits on y=0 */
   groundOffset: number;
+  diagnostics: MeshDiagnostics;
 }
 
 type CacheEntry =
@@ -23,6 +29,7 @@ type CacheEntry =
 
 const cache = new Map<string, CacheEntry>();
 const loader = new GLTFLoader();
+const warnedMeshUrls = new Set<string>();
 
 function computeGroundOffset(scene: THREE.Object3D): { box: THREE.Box3; offset: number } {
   const box = new THREE.Box3().setFromObject(scene);
@@ -36,7 +43,16 @@ function loadMesh(url: string): Promise<CachedMesh> {
       url,
       (gltf) => {
         const { box, offset } = computeGroundOffset(gltf.scene);
-        resolve({ scene: gltf.scene, boundingBox: box, groundOffset: offset });
+        const diagnostics = collectMeshDiagnostics(gltf.scene, box);
+        if (import.meta.env.DEV && diagnostics.warnings.length > 0 && !warnedMeshUrls.has(url)) {
+          warnedMeshUrls.add(url);
+          console.warn("[office-mesh] risky mesh loaded", {
+            url,
+            summary: formatMeshDiagnosticsSummary(diagnostics),
+            diagnostics,
+          });
+        }
+        resolve({ scene: gltf.scene, boundingBox: box, groundOffset: offset, diagnostics });
       },
       undefined,
       (err) => reject(err instanceof Error ? err : new Error(String(err))),
@@ -79,4 +95,5 @@ export async function preloadMeshes(urls: string[]): Promise<void> {
 
 export function clearMeshCache(): void {
   cache.clear();
+  warnedMeshUrls.clear();
 }
