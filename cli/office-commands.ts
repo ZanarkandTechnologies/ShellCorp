@@ -26,6 +26,7 @@ import {
   type CompanyModel,
   createSidecarStore,
   generateObjectId,
+  type OfficeBackgroundId,
   type OfficeFloorPatternId,
   type OfficeObjectModel,
   type OfficeSettingsModel,
@@ -89,6 +90,28 @@ const OFFICE_WALL_COLORS = [
     description: "Warm clay wall tone for estuary sunset rooms.",
   },
 ];
+const OFFICE_BACKGROUNDS = [
+  {
+    id: "shell_haze" as const,
+    label: "Shell Haze",
+    description: "Warm shell-toned void that stays soft in light and dark mode.",
+  },
+  {
+    id: "midnight_tide" as const,
+    label: "Midnight Tide",
+    description: "Cool harbor backdrop for the darker clam-cabinet moods.",
+  },
+  {
+    id: "kelp_fog" as const,
+    label: "Kelp Fog",
+    description: "Muted environmental backdrop with a mossy underground feel.",
+  },
+  {
+    id: "estuary_glow" as const,
+    label: "Estuary Glow",
+    description: "Warmer dusk-toned backdrop for softer atmospheric offices.",
+  },
+] as const;
 const OFFICE_PAINTINGS = [
   {
     id: "sunrise_blocks",
@@ -113,6 +136,7 @@ const OFFICE_DECOR_PACKS = [
     description: "Soft shell walls with warm stone flooring. Calm and slightly coastal.",
     floorPatternId: "sandstone_tiles" as const,
     wallColorId: "gallery_cream" as const,
+    backgroundId: "shell_haze" as const,
   },
   {
     id: "clam-cabinet",
@@ -120,6 +144,7 @@ const OFFICE_DECOR_PACKS = [
     description: "Blue-grey walls with graphite flooring for a cool crustacean control room.",
     floorPatternId: "graphite_grid" as const,
     wallColorId: "harbor_blue" as const,
+    backgroundId: "midnight_tide" as const,
   },
   {
     id: "underclaw-burrow",
@@ -127,6 +152,7 @@ const OFFICE_DECOR_PACKS = [
     description: "Muted sage walls with walnut floor tones for an underground den feel.",
     floorPatternId: "walnut_parquet" as const,
     wallColorId: "sage_mist" as const,
+    backgroundId: "kelp_fog" as const,
   },
   {
     id: "estuary-sunset",
@@ -134,6 +160,7 @@ const OFFICE_DECOR_PACKS = [
     description: "Clay walls with warm tile flooring for a softer environmental room.",
     floorPatternId: "sandstone_tiles" as const,
     wallColorId: "clay_rose" as const,
+    backgroundId: "estuary_glow" as const,
   },
 ] as const;
 const WALL_ART_SLOTS = [
@@ -258,6 +285,19 @@ function ensureWallColorId(wallColorId: string): OfficeWallColorId {
     return normalized;
   }
   fail(`invalid_wall_color:${wallColorId}`);
+}
+
+function ensureBackgroundId(backgroundId: string): OfficeBackgroundId {
+  const normalized = backgroundId.trim();
+  if (
+    normalized === "shell_haze" ||
+    normalized === "midnight_tide" ||
+    normalized === "kelp_fog" ||
+    normalized === "estuary_glow"
+  ) {
+    return normalized;
+  }
+  fail(`invalid_background:${backgroundId}`);
 }
 
 function ensurePaintingPresetId(presetId: string): string {
@@ -896,10 +936,16 @@ export function registerOfficeCommands(program: Command): void {
     .action((opts: { json?: boolean }) => {
       const examples = [
         "shellcorp office decor",
+        "shellcorp office decor list",
         "shellcorp office decor pack list",
+        "shellcorp office decor floor list",
+        "shellcorp office decor wall list",
+        "shellcorp office decor background list",
+        "shellcorp office decor painting list",
         "shellcorp office decor pack apply clam-cabinet",
         "shellcorp office decor floor set walnut_parquet",
         "shellcorp office decor wall set sage_mist",
+        "shellcorp office decor background set midnight_tide",
         "shellcorp office decor painting place back-center sunrise_blocks",
         "shellcorp office decor painting clear back-center",
       ];
@@ -925,6 +971,7 @@ export function registerOfficeCommands(program: Command): void {
         packs: OFFICE_DECOR_PACKS,
         floorPatterns: OFFICE_FLOOR_PATTERNS,
         wallColors: OFFICE_WALL_COLORS,
+        backgrounds: OFFICE_BACKGROUNDS,
         paintings: OFFICE_PAINTINGS,
         slots: WALL_ART_SLOTS,
       };
@@ -934,7 +981,10 @@ export function registerOfficeCommands(program: Command): void {
         [
           `Current floor: ${settings.decor.floorPatternId}`,
           `Current wall: ${settings.decor.wallColorId}`,
+          `Current background: ${settings.decor.backgroundId}`,
           `Paintings: ${payload.current.paintings.length}`,
+          "",
+          "Use `shellcorp office decor floor|wall|background|painting|pack list` to inspect options.",
         ].join("\n"),
       );
     });
@@ -949,7 +999,10 @@ export function registerOfficeCommands(program: Command): void {
       [
         `Current floor: ${settings.decor.floorPatternId}`,
         `Current wall: ${settings.decor.wallColorId}`,
+        `Current background: ${settings.decor.backgroundId}`,
         `Paintings: ${payload.paintings.map((entry) => `${entry.slotId}=${entry.paintingPresetId}`).join(", ") || "none"}`,
+        "",
+        "Use `shellcorp office decor list` for the full catalog.",
       ].join("\n"),
     );
   });
@@ -963,7 +1016,8 @@ export function registerOfficeCommands(program: Command): void {
         opts.json ? "json" : "text",
         { packs: OFFICE_DECOR_PACKS },
         OFFICE_DECOR_PACKS.map(
-          (entry) => `${entry.id} | ${entry.label} | ${entry.description}`,
+          (entry) =>
+            `${entry.id} | ${entry.label} | floor=${entry.floorPatternId} wall=${entry.wallColorId} background=${entry.backgroundId}`,
         ).join("\n"),
       );
     });
@@ -979,6 +1033,7 @@ export function registerOfficeCommands(program: Command): void {
         decor: {
           floorPatternId: pack.floorPatternId,
           wallColorId: pack.wallColorId,
+          backgroundId: pack.backgroundId,
         },
       };
       await store.writeOfficeSettings(nextSettings);
@@ -989,9 +1044,20 @@ export function registerOfficeCommands(program: Command): void {
       );
     });
 
-  decor
-    .command("floor")
-    .description("Manage floor decor")
+  const decorFloor = decor.command("floor").description("Manage floor decor");
+  decorFloor
+    .command("list")
+    .option("--json", "Output JSON", false)
+    .action((opts: { json?: boolean }) => {
+      formatOutput(
+        opts.json ? "json" : "text",
+        { floorPatterns: OFFICE_FLOOR_PATTERNS },
+        OFFICE_FLOOR_PATTERNS.map(
+          (entry) => `${entry.id} | ${entry.label} | ${entry.description}`,
+        ).join("\n"),
+      );
+    });
+  decorFloor
     .command("set")
     .argument("<patternId>", "Floor pattern id")
     .option("--json", "Output JSON", false)
@@ -1013,9 +1079,20 @@ export function registerOfficeCommands(program: Command): void {
       );
     });
 
-  decor
-    .command("wall")
-    .description("Manage wall decor")
+  const decorWall = decor.command("wall").description("Manage wall decor");
+  decorWall
+    .command("list")
+    .option("--json", "Output JSON", false)
+    .action((opts: { json?: boolean }) => {
+      formatOutput(
+        opts.json ? "json" : "text",
+        { wallColors: OFFICE_WALL_COLORS },
+        OFFICE_WALL_COLORS.map(
+          (entry) => `${entry.id} | ${entry.label} | ${entry.description}`,
+        ).join("\n"),
+      );
+    });
+  decorWall
     .command("set")
     .argument("<wallColorId>", "Wall color id")
     .option("--json", "Output JSON", false)
@@ -1034,6 +1111,43 @@ export function registerOfficeCommands(program: Command): void {
         opts.json ? "json" : "text",
         { ok: true, wallColorId: normalized, decor: nextSettings.decor },
         `Office wall color set to ${normalized}`,
+      );
+    });
+
+  const decorBackground = decor
+    .command("background")
+    .description("Manage scene background decor");
+  decorBackground
+    .command("list")
+    .option("--json", "Output JSON", false)
+    .action((opts: { json?: boolean }) => {
+      formatOutput(
+        opts.json ? "json" : "text",
+        { backgrounds: OFFICE_BACKGROUNDS },
+        OFFICE_BACKGROUNDS.map(
+          (entry) => `${entry.id} | ${entry.label} | ${entry.description}`,
+        ).join("\n"),
+      );
+    });
+  decorBackground
+    .command("set")
+    .argument("<backgroundId>", "Background preset id")
+    .option("--json", "Output JSON", false)
+    .action(async (backgroundId: string, opts: { json?: boolean }) => {
+      const normalized = ensureBackgroundId(backgroundId);
+      const settings = await store.readOfficeSettings();
+      const nextSettings: OfficeSettingsModel = {
+        ...settings,
+        decor: {
+          ...settings.decor,
+          backgroundId: normalized,
+        },
+      };
+      await store.writeOfficeSettings(nextSettings);
+      formatOutput(
+        opts.json ? "json" : "text",
+        { ok: true, backgroundId: normalized, decor: nextSettings.decor },
+        `Office background set to ${normalized}`,
       );
     });
 

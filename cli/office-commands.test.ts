@@ -65,6 +65,7 @@ interface OfficeSettingsSnapshot {
   decor?: {
     floorPatternId?: string;
     wallColorId?: string;
+    backgroundId?: string;
   };
 }
 
@@ -81,7 +82,11 @@ async function setupStateDir(): Promise<string> {
     `${JSON.stringify(
       {
         officeFootprint: { width: 35, depth: 35 },
-        decor: { floorPatternId: "sandstone_tiles", wallColorId: "gallery_cream" },
+        decor: {
+          floorPatternId: "sandstone_tiles",
+          wallColorId: "gallery_cream",
+          backgroundId: "shell_haze",
+        },
         viewProfile: "free_orbit_3d",
         orbitControlsEnabled: true,
         cameraOrientation: "south_east",
@@ -143,19 +148,22 @@ describe("office CLI", () => {
     const office = JSON.parse(raw) as OfficeSettingsSnapshot;
     expect(office.decor?.floorPatternId).toBe("graphite_grid");
     expect(office.decor?.wallColorId).toBe("harbor_blue");
+    expect(office.decor?.backgroundId).toBe("midnight_tide");
   });
 
-  it("sets floor and wall decor directly through the CLI", async () => {
+  it("sets floor, wall, and background decor directly through the CLI", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
 
     await runCommand(["office", "decor", "floor", "set", "walnut_parquet"]);
     await runCommand(["office", "decor", "wall", "set", "sage_mist"]);
+    await runCommand(["office", "decor", "background", "set", "kelp_fog"]);
 
     const raw = await readFile(path.join(stateDir, "office.json"), "utf-8");
     const office = JSON.parse(raw) as OfficeSettingsSnapshot;
     expect(office.decor?.floorPatternId).toBe("walnut_parquet");
     expect(office.decor?.wallColorId).toBe("sage_mist");
+    expect(office.decor?.backgroundId).toBe("kelp_fog");
   });
 
   it("places and clears a wall painting through the CLI", async () => {
@@ -201,7 +209,24 @@ describe("office CLI", () => {
 
     const payload = String(logSpy.mock.calls.at(-1)?.[0] ?? "");
     expect(payload).toContain("Office decor CLI");
+    expect(payload).toContain("shellcorp office decor floor list");
     expect(payload).toContain("shellcorp office decor pack apply clam-cabinet");
+    expect(payload).toContain("shellcorp office decor background set midnight_tide");
+  });
+
+  it("lists floor, wall, and background options through the CLI", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(["office", "decor", "floor", "list"]);
+    expect(String(logSpy.mock.calls.at(-1)?.[0] ?? "")).toContain("walnut_parquet");
+
+    await runCommand(["office", "decor", "wall", "list"]);
+    expect(String(logSpy.mock.calls.at(-1)?.[0] ?? "")).toContain("harbor_blue");
+
+    await runCommand(["office", "decor", "background", "list"]);
+    expect(String(logSpy.mock.calls.at(-1)?.[0] ?? "")).toContain("midnight_tide");
   });
 
   it("writes a meshy spec via office generate", async () => {
