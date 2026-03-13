@@ -34,6 +34,7 @@ Build Shell Company as a UI-first control center on top of OpenClaw:
 4. **Operational surfaces**: improve memory and skill visibility for agent orchestration.
 5. **Federated work orchestration**: unify external board work (Notion/Vibe/internal) into one operator surface.
 6. **Personalized agent presence**: let operators configure identity, appearance, and office style as a first-class product value.
+7. **Office decor controls**: let operators apply simple room styling such as floor patterns, wall colors, and wall art without introducing heavy 3D authoring workflows.
 
 ## Core Platform Behaviors
 

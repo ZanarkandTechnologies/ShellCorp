@@ -222,7 +222,7 @@ export function OfficeMenu({ className }: SpeedDialProps) {
       {
         id: "office-shop",
         icon: ShoppingBag,
-        label: "Office Shop",
+        label: "Decoration",
         onClick: () => setIsFurnitureShopOpen(true),
         color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
         buttonClassName:

@@ -59,7 +59,8 @@ After that:
 
 1. Open the UI.
 2. Complete the in-app onboarding flow.
-3. Use the UI to learn the office panels, CEO controls, and connector setup.
+3. Use the Office Shop `Decor` tab to set floor patterns, wall colors, and fixed-slot paintings.
+4. Use the rest of the UI to learn the office panels, CEO controls, and connector setup.
 
 Notes:
 
@@ -92,6 +93,9 @@ Useful commands:
 - `npm run shell -- onboarding --json`
 - `npm run shell -- onboarding --launch-ui`
 - `npm run shell -- ui`
+- `npm run shell -- office decor docs`
+- `npm run shell -- office decor pack list`
+- `npm run shell -- office decor pack apply clam-cabinet`
 - `shellcorp ui`
 - `npm run shell -- doctor team-data --json`
 - `npm run shell -- office doctor --json`
