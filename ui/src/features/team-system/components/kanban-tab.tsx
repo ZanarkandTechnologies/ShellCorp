@@ -31,6 +31,7 @@ interface KanbanTabProps {
   teamEmployees: EmployeeModel[];
   ownerLabelById: Map<string, string>;
   convexEnabled: boolean;
+  showReadOnlyNotice?: boolean;
   boardActionState: { pending: boolean; error?: string; ok?: string };
   onBoardCommand: (
     command: string,
@@ -47,6 +48,7 @@ export function KanbanTab({
   teamEmployees,
   ownerLabelById,
   convexEnabled,
+  showReadOnlyNotice = true,
   boardActionState,
   onBoardCommand,
 }: KanbanTabProps): JSX.Element {
@@ -96,7 +98,7 @@ export function KanbanTab({
         </div>
       ) : null}
 
-      {!convexEnabled ? (
+      {!convexEnabled && showReadOnlyNotice ? (
         <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
           Read-only view — connect Convex to enable task creation and edits.
         </div>
