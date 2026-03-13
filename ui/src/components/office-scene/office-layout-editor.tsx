@@ -12,17 +12,16 @@
  *
  * MEMORY REFERENCES:
  * - MEM-0165
+ * - MEM-0179
  */
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
 import { Html, Plane } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/lib/app-store";
-import { useOfficeDataContext } from "@/providers/office-data-provider";
-import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import {
   applyOfficeLayoutPaint,
   expandOfficeLayoutRemovalStroke,
@@ -31,14 +30,20 @@ import {
   getOfficeLayoutEditBounds,
   getPreferredManagementAnchorFromOfficeLayout,
   hasOfficeLayoutTile,
-  isPositionInsideOfficeLayout,
   officeLayoutTileKey,
   parseOfficeLayoutTileKey,
 } from "@/lib/office-layout";
+import { useOfficeDataContext } from "@/providers/office-data-provider";
+import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
+import {
+  describeOfficeLayoutRemovalBlockers,
+  formatOfficeLayoutRemovalBlockers,
+  getNewOfficeLayoutRemovalBlockers,
+  getOfficeLayoutRemovalBlockers,
+  mergeOfficeObjectsWithPersistedPositions,
+  mergeTeamsWithPersistedClusterPositions,
+} from "./office-layout-removal-guards";
 import { saveOfficeSettingsOptimistically } from "./office-layout-save";
-
-const OBJECT_MARGIN = 1;
-const TEAM_MARGIN = 3;
 
 function snapCell(value: number): number {
   return Math.round(value);
@@ -61,6 +66,18 @@ function getCellsBetween(
     });
   }
   return cells;
+}
+
+function stringifyOfficeLayoutDebug(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function getTeamOverlayLabel(name: string, position: [number, number, number]): string {
+  return `${name} (${position[0]}:${position[2]})`;
 }
 
 export function OfficeLayoutEditor(): JSX.Element | null {
@@ -91,7 +108,9 @@ export function OfficeLayoutEditor(): JSX.Element | null {
       return new Set(
         nextLayout.tiles.filter((tile) => {
           const parsed = parseOfficeLayoutTileKey(tile);
-          return parsed ? !hasOfficeLayoutTile(officeSettings.officeLayout, parsed.x, parsed.z) : false;
+          return parsed
+            ? !hasOfficeLayoutTile(officeSettings.officeLayout, parsed.x, parsed.z)
+            : false;
         }),
       );
     }
@@ -106,7 +125,33 @@ export function OfficeLayoutEditor(): JSX.Element | null {
     }
     return cells;
   }, [effectiveStrokeCells]);
+  const managementAnchor = useMemo(
+    () => getPreferredManagementAnchorFromOfficeLayout(officeSettings.officeLayout),
+    [officeSettings.officeLayout],
+  );
+  const previewCoordinateLabels = useMemo(
+    () =>
+      previewCells.length <= 16 ? previewCells : previewCells.filter((_, index) => index % 2 === 0),
+    [previewCells],
+  );
+  const teamAnchorOverlays = useMemo(
+    () =>
+      paintMode === "remove"
+        ? teams
+            .filter((team) => Array.isArray(team.clusterPosition))
+            .map((team) => ({
+              key: String(team._id),
+              position: team.clusterPosition as [number, number, number],
+              label: getTeamOverlayLabel(
+                team.name,
+                team.clusterPosition as [number, number, number],
+              ),
+            }))
+        : [],
+    [paintMode, teams],
+  );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: switching tools must clear the current draft selection and error state.
   useEffect(() => {
     setStrokeCells(new Set());
     setIsPainting(false);
@@ -149,63 +194,136 @@ export function OfficeLayoutEditor(): JSX.Element | null {
     }
     setIsSaving(true);
     setErrorMessage(null);
-    let nextLayout = officeSettings.officeLayout;
-    let blockedCount = 0;
-    if (paintMode === "add") {
-      nextLayout = applyOfficeLayoutPaint(nextLayout, effectiveStrokeCells, "add");
-      nextLayout = fillEnclosedOfficeLayoutGaps(nextLayout);
-    } else {
-      const preferredManagementAnchor = getPreferredManagementAnchorFromOfficeLayout(
-        officeSettings.officeLayout,
-      );
-      const expandedStroke = effectiveStrokeCells;
-      const sortedCells = [...expandedStroke].sort();
-      for (const key of sortedCells) {
-        const candidate = applyOfficeLayoutPaint(nextLayout, [key], "remove");
-        const isValidForObjects = officeObjects.every((object) =>
-          isPositionInsideOfficeLayout(
-            object.position,
-            candidate,
-            object.meshType === "team-cluster" ? 2 : OBJECT_MARGIN,
-          ),
+    try {
+      let nextLayout = officeSettings.officeLayout;
+      let blockedCount = 0;
+      if (paintMode === "add") {
+        nextLayout = applyOfficeLayoutPaint(nextLayout, effectiveStrokeCells, "add");
+        nextLayout = fillEnclosedOfficeLayoutGaps(nextLayout);
+      } else {
+        const persistedObjects = await adapter.getOfficeObjects();
+        const effectiveOfficeObjects = mergeOfficeObjectsWithPersistedPositions(
+          officeObjects,
+          persistedObjects,
         );
-        const isValidForTeams = teams.every(
-          (team) =>
-            !Array.isArray(team.clusterPosition) ||
-            isPositionInsideOfficeLayout(team.clusterPosition, candidate, TEAM_MARGIN),
+        const effectiveTeams = mergeTeamsWithPersistedClusterPositions(teams, persistedObjects);
+        const preferredManagementAnchor = getPreferredManagementAnchorFromOfficeLayout(
+          officeSettings.officeLayout,
         );
-        const keepsManagementArea = isPositionInsideOfficeLayout(
-          preferredManagementAnchor,
-          candidate,
-          0,
+        const expandedStroke = effectiveStrokeCells;
+        const sortedCells = [...expandedStroke].sort();
+        const blockerLabels = new Set<string>();
+        const blockedTileDebugRows: Array<Record<string, unknown>> = [];
+        const officeObjectById = new Map(
+          effectiveOfficeObjects.map((object) => [String(object._id), object] as const),
         );
-        if (isValidForObjects && isValidForTeams && keepsManagementArea) {
-          nextLayout = candidate;
-        } else {
-          blockedCount += 1;
+        const teamById = new Map(effectiveTeams.map((team) => [String(team._id), team] as const));
+        const baselineBlockers = getOfficeLayoutRemovalBlockers({
+          candidateLayout: nextLayout,
+          officeObjects: effectiveOfficeObjects,
+          teams: effectiveTeams,
+          managementAnchor: preferredManagementAnchor,
+        });
+        for (const key of sortedCells) {
+          const candidate = applyOfficeLayoutPaint(nextLayout, [key], "remove");
+          const candidateBlockers = getOfficeLayoutRemovalBlockers({
+            candidateLayout: candidate,
+            officeObjects: effectiveOfficeObjects,
+            teams: effectiveTeams,
+            managementAnchor: preferredManagementAnchor,
+          });
+          const blockers = getNewOfficeLayoutRemovalBlockers({
+            baseline: baselineBlockers,
+            candidate: candidateBlockers,
+          });
+          if (blockers.isValid) {
+            nextLayout = candidate;
+          } else {
+            blockedCount += 1;
+            const blockerLabel =
+              describeOfficeLayoutRemovalBlockers({
+                blockers,
+                officeObjects: effectiveOfficeObjects,
+                teams: effectiveTeams,
+                persistedObjects,
+              }) ?? formatOfficeLayoutRemovalBlockers(blockers);
+            if (blockerLabel) {
+              blockerLabels.add(blockerLabel);
+            }
+            const debugRow = {
+              tile: key,
+              candidateTileCount: candidate.tiles.length,
+              blockerLabel,
+              baselineBlockers,
+              candidateBlockers,
+              blockers,
+              objectBlockers: blockers.objectIds.map((objectId) => {
+                const object = officeObjectById.get(objectId);
+                return {
+                  objectId,
+                  meshType: object?.meshType ?? "unknown",
+                  position: object?.position ?? null,
+                  teamId:
+                    object?.metadata && typeof object.metadata.teamId === "string"
+                      ? object.metadata.teamId
+                      : undefined,
+                  displayName:
+                    object?.metadata && typeof object.metadata.displayName === "string"
+                      ? object.metadata.displayName
+                      : undefined,
+                };
+              }),
+              teamBlockers: blockers.teamIds.map((teamId) => {
+                const team = teamById.get(teamId);
+                return {
+                  teamId,
+                  teamName: team?.name ?? teamId,
+                  clusterPosition: team?.clusterPosition ?? null,
+                };
+              }),
+              managementAnchor: preferredManagementAnchor,
+            };
+            blockedTileDebugRows.push(debugRow);
+            console.warn(
+              `[office-layout] blocked tile removal ${stringifyOfficeLayoutDebug(debugRow)}`,
+            );
+          }
+        }
+        if (blockedTileDebugRows.length > 0) {
+          console.warn(
+            `[office-layout] blocked stroke summary ${stringifyOfficeLayoutDebug({
+              strokeTiles: sortedCells,
+              blockedCount,
+              blockedTiles: blockedTileDebugRows,
+            })}`,
+          );
+        }
+        if (blockerLabels.size > 0) {
+          const blockerSummary = [...blockerLabels].slice(0, 2).join(" | ");
+          setErrorMessage(`Blocked by ${blockerSummary}.`);
         }
       }
-    }
 
-    setStrokeCells(new Set());
-    setIsPainting(false);
-    lastStrokeCellRef.current = null;
+      setStrokeCells(new Set());
+      setIsPainting(false);
+      lastStrokeCellRef.current = null;
 
-    if (nextLayout.tiles.join("|") === officeSettings.officeLayout.tiles.join("|")) {
-      setIsSaving(false);
-      if (blockedCount > 0) {
-        setErrorMessage(`Skipped ${blockedCount} tile${blockedCount === 1 ? "" : "s"} because content still depends on them.`);
+      if (nextLayout.tiles.join("|") === officeSettings.officeLayout.tiles.join("|")) {
+        if (blockedCount > 0) {
+          setErrorMessage((current) => {
+            const detail = current ? ` ${current}` : "";
+            return `Skipped ${blockedCount} tile${blockedCount === 1 ? "" : "s"} because content still depends on them.${detail}`;
+          });
+        }
+        return;
       }
-      return;
-    }
 
-    const nextSettings = {
-      ...officeSettings,
-      officeLayout: nextLayout,
-      officeFootprint: getOfficeFootprintFromLayout(nextLayout),
-    };
+      const nextSettings = {
+        ...officeSettings,
+        officeLayout: nextLayout,
+        officeFootprint: getOfficeFootprintFromLayout(nextLayout),
+      };
 
-    try {
       const result = await saveOfficeSettingsOptimistically({
         previousSettings: officeSettings,
         nextSettings,
@@ -217,7 +335,10 @@ export function OfficeLayoutEditor(): JSX.Element | null {
         return;
       }
       if (blockedCount > 0) {
-        setErrorMessage(`Saved layout. Skipped ${blockedCount} protected tile${blockedCount === 1 ? "" : "s"}.`);
+        setErrorMessage((current) => {
+          const detail = current ? ` ${current}` : "";
+          return `Saved layout. Skipped ${blockedCount} protected tile${blockedCount === 1 ? "" : "s"}.${detail}`;
+        });
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to save office layout.");
@@ -255,11 +376,7 @@ export function OfficeLayoutEditor(): JSX.Element | null {
       </Plane>
 
       {previewCells.map((cell) => (
-        <mesh
-          key={cell.key}
-          position={[cell.x, 0.06, cell.z]}
-          rotation={[-Math.PI / 2, 0, 0]}
-        >
+        <mesh key={cell.key} position={[cell.x, 0.06, cell.z]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[1, 1]} />
           <meshBasicMaterial
             color={paintMode === "add" ? "#4ade80" : "#ef4444"}
@@ -269,13 +386,72 @@ export function OfficeLayoutEditor(): JSX.Element | null {
         </mesh>
       ))}
 
+      {previewCoordinateLabels.map((cell) => (
+        <Html
+          key={`label-${cell.key}`}
+          position={[cell.x, 0.22, cell.z]}
+          center
+          distanceFactor={18}
+        >
+          <div className="rounded border border-border/70 bg-background/92 px-1.5 py-0.5 text-[10px] font-medium text-foreground shadow-sm">
+            {cell.x}:{cell.z}
+          </div>
+        </Html>
+      ))}
+
+      {paintMode === "remove" ? (
+        <>
+          <mesh
+            position={[managementAnchor[0], 0.08, managementAnchor[2]]}
+            rotation={[-Math.PI / 2, 0, 0]}
+          >
+            <ringGeometry args={[0.38, 0.52, 32]} />
+            <meshBasicMaterial color="#ef4444" transparent opacity={0.95} />
+          </mesh>
+          <Html
+            position={[managementAnchor[0], 0.42, managementAnchor[2]]}
+            center
+            distanceFactor={16}
+          >
+            <div className="rounded border border-red-500/60 bg-background/92 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm">
+              Management ({managementAnchor[0]}:{managementAnchor[2]})
+            </div>
+          </Html>
+
+          {teamAnchorOverlays.map((overlay) => (
+            <group key={`anchor-${overlay.key}`}>
+              <mesh
+                position={[overlay.position[0], 0.07, overlay.position[2]]}
+                rotation={[-Math.PI / 2, 0, 0]}
+              >
+                <ringGeometry args={[0.42, 0.58, 32]} />
+                <meshBasicMaterial color="#2563eb" transparent opacity={0.9} />
+              </mesh>
+              <Html
+                position={[overlay.position[0], 0.38, overlay.position[2]]}
+                center
+                distanceFactor={16}
+              >
+                <div className="rounded border border-sky-500/60 bg-background/92 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm">
+                  {overlay.label}
+                </div>
+              </Html>
+            </group>
+          ))}
+        </>
+      ) : null}
+
       <Html position={[editBounds.centerX, 3.6, editBounds.centerZ]} center>
         <div className="pointer-events-auto min-w-80 rounded-2xl border border-border/70 bg-background/92 px-4 py-3 text-xs text-foreground shadow-lg backdrop-blur">
           <p className="font-medium">
             {paintMode === "add" ? "Drag to add floor tiles" : "Drag to shovel out floor tiles"}
           </p>
           <p className="mt-1 text-muted-foreground">
-            Painted tiles stay in preview until you click <strong>Apply</strong>. Exiting builder mode does not auto-save the current stroke.
+            Painted tiles stay in preview until you click <strong>Apply</strong>. Exiting builder
+            mode does not auto-save the current stroke.
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            Tile coordinates use integer center points like <strong>-16:-11</strong>.
           </p>
           {errorMessage ? <p className="mt-2 text-destructive">{errorMessage}</p> : null}
           <div className="mt-3 flex items-center justify-between gap-2">

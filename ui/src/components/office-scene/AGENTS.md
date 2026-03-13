@@ -16,6 +16,9 @@
 - Builder-mode drag editing must rasterize every crossed tile and the visible builder grid must stay 1:1 with office layout tiles, otherwise preview/fill behavior becomes misleading. `MEM-0173`
 - Office-settings persistence bridges must round-trip `officeLayout` intact; if a bridge only keeps `officeFootprint`, builder apply/removal will snap back to a rectangle after save. `MEM-0174`
 - Builder-mode layout saves should apply `officeSettings` optimistically and roll back on failure, rather than waiting for a refresh or server echo before the scene updates. `MEM-0175`
+- Builder-mode tile removal must validate against the freshest persisted office-object and team-cluster anchors, not only the current provider snapshot, so a saved move cannot leave a phantom blocker on the old tile. `MEM-0179`
+- Builder-mode tile removal must not double-count an active team when the same persisted `team-cluster` object already represents that anchor; blocker messaging should collapse that case to one team-facing label. `MEM-0185`
+- Builder floor editing must visually expose the real integer tile centers and protected anchors used by removal validation; the blue helper grid alone is not enough when operators need to reason about `x:z` cells or management/team blocker positions. `MEM-0186`
 
 ## Tests
 - Prefer pure tests for derived-data helpers.

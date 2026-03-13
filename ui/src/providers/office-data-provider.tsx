@@ -144,6 +144,30 @@ function resolveTeamClusterTeamId(
   return null;
 }
 
+function buildPersistedTeamClusterByTeamId(
+  objects: UnifiedOfficeModel["officeObjects"],
+): Map<string, UnifiedOfficeModel["officeObjects"][number]> {
+  const clusterByTeamId = new Map<string, UnifiedOfficeModel["officeObjects"][number]>();
+  for (const object of objects) {
+    if (object.meshType !== "team-cluster") continue;
+    const teamId = resolveTeamClusterTeamId(object);
+    if (!teamId) continue;
+    const existing = clusterByTeamId.get(teamId);
+    if (!existing) {
+      clusterByTeamId.set(teamId, object);
+      continue;
+    }
+    const existingCanonical = normalizeOfficeObjectId(existing.id);
+    const nextCanonical = normalizeOfficeObjectId(object.id);
+    const existingIsCurrent = existing.id.startsWith("team-cluster-");
+    const nextIsCurrent = object.id.startsWith("team-cluster-");
+    if (existingCanonical !== nextCanonical ? nextIsCurrent : !existingIsCurrent && nextIsCurrent) {
+      clusterByTeamId.set(teamId, object);
+    }
+  }
+  return clusterByTeamId;
+}
+
 function buildDefaultFurnitureObjects(companyId: string): OfficeObject[] {
   return [
     { _id: "plant-1", companyId, meshType: "plant", position: [-14, 0, -14], rotation: [0, 0, 0] },
@@ -280,6 +304,7 @@ function toOfficeData(
   );
   const companyAgents = companyModel.agents ?? [];
   const teamClusterAnchorsByTeamId = new Map<string, [number, number, number]>();
+  const persistedTeamClusterByTeamId = buildPersistedTeamClusterByTeamId(sidecarObjects);
   for (const object of sidecarObjects.filter((entry) => entry.meshType === "team-cluster")) {
     const resolvedTeamId = resolveTeamClusterTeamId(object);
     if (!resolvedTeamId) continue;
@@ -445,15 +470,23 @@ function toOfficeData(
     approvalsByAgent.set(approval.agentId, existing);
   }
 
-  const clusterObjects: OfficeObject[] = teams
-    .map((team, index) => ({
-      _id: `cluster-${team._id}`,
+  const clusterObjects: OfficeObject[] = teams.map((team, index) => {
+    const persistedCluster = persistedTeamClusterByTeamId.get(team._id);
+    return {
+      // MEM-0185 decision: keep active team clusters on the persisted sidecar id when one exists
+      // so builder transforms do not fork team anchors onto a second legacy object id.
+      _id: persistedCluster?.id ?? `team-cluster-${team._id}`,
       companyId,
       meshType: "team-cluster",
       position: team.clusterPosition ?? [index * 9 - 4, 0, 8],
-      rotation: [0, 0, 0],
-      metadata: { teamId: team._id },
-    }));
+      rotation: persistedCluster?.rotation ?? [0, 0, 0],
+      scale: persistedCluster?.scale,
+      metadata: {
+        ...(persistedCluster?.metadata ?? {}),
+        teamId: team._id,
+      },
+    };
+  });
   const sidecarFurniture: OfficeObject[] = sidecarObjects
     .filter((item) => item.meshType !== "team-cluster")
     .map((item) => ({
