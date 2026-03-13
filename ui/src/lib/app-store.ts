@@ -13,6 +13,7 @@ type PlacementMode = {
 };
 
 type ObjectPanelAspectRatio = "wide" | "square" | "tall";
+export type CeoWorkbenchView = "board" | "review";
 
 export type ActiveObjectPanelState = {
   objectId: OfficeId<"officeObjects">;
@@ -46,6 +47,8 @@ interface AppState {
   setIsUserTasksModalOpen: (isOpen: boolean) => void;
   isCeoWorkbenchOpen: boolean;
   setIsCeoWorkbenchOpen: (isOpen: boolean) => void;
+  ceoWorkbenchView: CeoWorkbenchView;
+  setCeoWorkbenchView: (view: CeoWorkbenchView) => void;
   isTeamOptionsDialogOpen: boolean;
   setIsTeamOptionsDialogOpen: (isOpen: boolean) => void;
   activeTeamForOptions: TeamData | null;
@@ -115,6 +118,8 @@ export const useAppStore = create<AppState>()(
     setIsUserTasksModalOpen: (isOpen) => set({ isUserTasksModalOpen: isOpen }),
     isCeoWorkbenchOpen: false,
     setIsCeoWorkbenchOpen: (isOpen) => set({ isCeoWorkbenchOpen: isOpen }),
+    ceoWorkbenchView: "board",
+    setCeoWorkbenchView: (view) => set({ ceoWorkbenchView: view }),
     isTeamOptionsDialogOpen: false,
     setIsTeamOptionsDialogOpen: (isOpen) => set({ isTeamOptionsDialogOpen: isOpen }),
     activeTeamForOptions: null,

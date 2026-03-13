@@ -37,14 +37,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import type {
-  PanelTask,
-  TaskApprovalState,
-} from "@/features/team-system/components/team-panel-types";
-
-type ReviewTask = PanelTask & {
-  projectId: string;
-};
+import type { TaskApprovalState } from "@/features/team-system/components/team-panel-types";
+import { TaskMemoryView } from "@/features/team-system/components/task-memory-view";
+import {
+  countSc12PendingReviewTasks,
+  resolveSc12BoardTasks,
+  type Sc12BoardTask,
+} from "@/lib/sc12-board";
 
 interface UserTasksPanelProps {
   isOpen: boolean;
@@ -56,6 +55,8 @@ function statusTone(task: ReviewTask): "secondary" | "destructive" | "outline" {
   if (task.approvalState === "approved" || task.approvalState === "executed") return "secondary";
   return "outline";
 }
+
+type ReviewTask = Sc12BoardTask;
 
 function parseAgentIdFromSessionKey(sessionKey: string | undefined): string | null {
   const value = sessionKey?.trim() ?? "";
@@ -94,43 +95,27 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusText, setStatusText] = useState("");
 
-  const reviewTasks = useMemo<ReviewTask[]>(
+  const { tasks: reviewTasks, isMock } = useMemo(
     () =>
-      (companyBoard?.tasks ?? []).map((task) => ({
-        id: task.taskId,
-        projectId: task.projectId,
-        title: task.title,
-        status: task.status as PanelTask["status"],
-        ownerAgentId: task.ownerAgentId,
-        priority: (task.priority as PanelTask["priority"]) ?? "medium",
-        provider: (task.provider as PanelTask["provider"]) ?? "internal",
-        providerUrl: task.providerUrl,
-        syncState: (task.syncState as PanelTask["syncState"]) ?? "healthy",
-        syncError: task.syncError,
-        notes: task.notes,
-        taskType: task.taskType as PanelTask["taskType"],
-        approvalState: task.approvalState as PanelTask["approvalState"],
-        linkedSessionKey: task.linkedSessionKey,
-        createdTeamId: task.createdTeamId,
-        createdProjectId: task.createdProjectId,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt,
-        dueAt: task.dueAt,
-      })),
-    [companyBoard?.tasks],
+      resolveSc12BoardTasks({
+        convexEnabled,
+        hasLoaded: companyBoard !== undefined,
+        rows: companyBoard?.tasks,
+      }),
+    [companyBoard, convexEnabled],
   );
 
   useEffect(() => {
     if (!isOpen) return;
-    setSelectedTaskId((current) => current ?? reviewTasks[0]?.id ?? null);
+    setSelectedTaskId((current) =>
+      current && reviewTasks.some((task) => task.id === current)
+        ? current
+        : (reviewTasks[0]?.id ?? null),
+    );
   }, [isOpen, reviewTasks]);
 
   const pendingReviewTasks = useMemo(
-    () =>
-      reviewTasks.filter(
-        (task) =>
-          task.approvalState === "pending_review" || task.approvalState === "changes_requested",
-      ),
+    () => reviewTasks.filter((task) => countSc12PendingReviewTasks([task]) > 0),
     [reviewTasks],
   );
 
@@ -140,7 +125,7 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
   );
 
   async function handleDecision(nextState: TaskApprovalState): Promise<void> {
-    if (!selectedTask || !convexEnabled) return;
+    if (!selectedTask || !convexEnabled || selectedTask.isMock) return;
     setIsSubmitting(true);
     setStatusText("");
     try {
@@ -182,6 +167,9 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
           <DialogDescription>
             Founder review is a filtered view over CEO board tasks waiting for approval, not a
             separate workflow store.
+            {isMock
+              ? " Showing mock tasks so the SC12 review flow stays visible before live board data exists."
+              : ""}
           </DialogDescription>
         </DialogHeader>
 
@@ -217,11 +205,7 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
                   <CardTitle className="text-sm">Inbox</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {!convexEnabled ? (
-                    <p className="text-sm text-muted-foreground">
-                      Convex board data is required for founder review.
-                    </p>
-                  ) : reviewTasks.length === 0 ? (
+                  {reviewTasks.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No CEO review tasks yet.</p>
                   ) : (
                     reviewTasks.map((task) => (
@@ -236,9 +220,9 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">{task.title}</p>
-                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                              {task.notes ?? "No summary yet."}
-                            </p>
+                            <div className="mt-1">
+                              <TaskMemoryView notes={task.notes} variant="compact" />
+                            </div>
                           </div>
                           <Badge variant={statusTone(task)}>{task.approvalState ?? "draft"}</Badge>
                         </div>
@@ -274,9 +258,7 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
                         <CardTitle className="text-sm">Proposal / Task Memory</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <pre className="whitespace-pre-wrap text-sm text-muted-foreground">
-                          {selectedTask.notes ?? "No task memory yet."}
-                        </pre>
+                        <TaskMemoryView notes={selectedTask.notes} />
                       </CardContent>
                     </Card>
 
@@ -315,7 +297,13 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
                             <strong>Created project:</strong>{" "}
                             {selectedTask.createdProjectId ?? "not created"}
                           </p>
-                          {selectedTask.createdTeamId ? (
+                          {selectedTask.isMock ? (
+                            <p className="text-muted-foreground">
+                              Demo record only. Live team/project links appear once a real CEO board
+                              task executes.
+                            </p>
+                          ) : null}
+                          {selectedTask.createdTeamId && !selectedTask.isMock ? (
                             <Button
                               variant="outline"
                               onClick={() => {
@@ -337,7 +325,7 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
                         onChange={(event) => setDecisionNote(event.target.value)}
                         placeholder="Optional approval feedback or change request"
                         className="min-h-[72px]"
-                        disabled={isSubmitting || !convexEnabled}
+                        disabled={isSubmitting || !convexEnabled || selectedTask.isMock}
                       />
                     </div>
 
@@ -347,6 +335,7 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
                         disabled={
                           isSubmitting ||
                           !convexEnabled ||
+                          selectedTask.isMock ||
                           selectedTask.approvalState === "executed"
                         }
                       >
@@ -356,14 +345,14 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
                       <Button
                         variant="outline"
                         onClick={() => void handleDecision("changes_requested")}
-                        disabled={isSubmitting || !convexEnabled}
+                        disabled={isSubmitting || !convexEnabled || selectedTask.isMock}
                       >
                         Request Changes
                       </Button>
                       <Button
                         variant="outline"
                         onClick={() => void handleDecision("rejected")}
-                        disabled={isSubmitting || !convexEnabled}
+                        disabled={isSubmitting || !convexEnabled || selectedTask.isMock}
                       >
                         Reject
                       </Button>

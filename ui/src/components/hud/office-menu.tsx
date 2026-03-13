@@ -21,12 +21,12 @@ import { useNavigate } from "react-router-dom";
 import { useAppStore } from "@/lib/app-store";
 import { FurnitureShop } from "./furniture-shop";
 import { ApprovalQueue } from "./approval-queue";
-import { UserTasksPanel } from "./user-tasks-panel";
 import { useChatActions } from "@/features/chat-system/chat-store";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { OrganizationPanel } from "./organization-panel";
 import { api } from "../../../../convex/_generated/api";
 import { isConvexEnabled } from "@/providers/convex-provider";
+import { countSc12PendingReviewTasks, resolveSc12BoardTasks } from "@/lib/sc12-board";
 
 interface SpeedDialProps {
   className?: string;
@@ -49,9 +49,8 @@ export function OfficeMenu({ className }: SpeedDialProps) {
   const setKanbanFocusAgentId = useAppStore((state) => state.setKanbanFocusAgentId);
   const setIsSettingsModalOpen = useAppStore((state) => state.setIsSettingsModalOpen);
   const placementMode = useAppStore((state) => state.placementMode);
-  const isUserTasksOpen = useAppStore((state) => state.isUserTasksModalOpen);
-  const setIsUserTasksOpen = useAppStore((state) => state.setIsUserTasksModalOpen);
   const setIsCeoWorkbenchOpen = useAppStore((state) => state.setIsCeoWorkbenchOpen);
+  const setCeoWorkbenchView = useAppStore((state) => state.setCeoWorkbenchView);
 
   const [isFurnitureShopOpen, setIsFurnitureShopOpen] = useState(false);
   const [isApprovalQueueOpen, setIsApprovalQueueOpen] = useState(false);
@@ -61,14 +60,14 @@ export function OfficeMenu({ className }: SpeedDialProps) {
     api.board.getCompanyBoardTasks,
     convexEnabled ? { taskType: "team_proposal" } : "skip",
   );
-  const userTaskCount = useMemo(
-    () =>
-      (companyBoard?.tasks ?? []).filter(
-        (task) =>
-          task.approvalState === "pending_review" || task.approvalState === "changes_requested",
-      ).length,
-    [companyBoard?.tasks],
-  );
+  const userTaskCount = useMemo(() => {
+    const { tasks } = resolveSc12BoardTasks({
+      convexEnabled,
+      hasLoaded: companyBoard !== undefined,
+      rows: companyBoard?.tasks,
+    });
+    return countSc12PendingReviewTasks(tasks);
+  }, [companyBoard, convexEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,8 +96,7 @@ export function OfficeMenu({ className }: SpeedDialProps) {
     setIsFurnitureShopOpen(false);
     setIsApprovalQueueOpen(false);
     setIsOrganizationOpen(false);
-    setIsUserTasksOpen(false);
-  }, [placementMode.active, setIsUserTasksOpen]);
+  }, [placementMode.active]);
 
   // Handle builder mode toggle - let the scene handle animation
   const handleBuilderModeToggle = useCallback(() => {
@@ -165,14 +163,20 @@ export function OfficeMenu({ className }: SpeedDialProps) {
         id: "ceo-workbench",
         icon: BriefcaseBusiness,
         label: "CEO Workbench",
-        onClick: () => setIsCeoWorkbenchOpen(true),
+        onClick: () => {
+          setCeoWorkbenchView("board");
+          setIsCeoWorkbenchOpen(true);
+        },
         color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
       },
       {
         id: "user-tasks",
         icon: ClipboardList,
-        label: "User Tasks",
-        onClick: () => setIsUserTasksOpen(true),
+        label: "Human Review",
+        onClick: () => {
+          setCeoWorkbenchView("review");
+          setIsCeoWorkbenchOpen(true);
+        },
         badge: userTaskCount > 0 ? userTaskCount : undefined,
         color:
           userTaskCount > 0
@@ -220,6 +224,7 @@ export function OfficeMenu({ className }: SpeedDialProps) {
       setIsSkillsPanelOpen,
       openEmployeeChat,
       setIsCeoWorkbenchOpen,
+      setCeoWorkbenchView,
       userTaskCount,
       approvalCount,
       setIsApprovalQueueOpen,
@@ -228,7 +233,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
       setIsOrganizationOpen,
       setIsFurnitureShopOpen,
       setIsSettingsModalOpen,
-      setIsUserTasksOpen,
     ],
   );
 
@@ -248,9 +252,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
         canOpenTeamManager={canOpenTeamManager}
         canOpenAgentManager={canOpenAgentManager}
       />
-      {isUserTasksOpen ? (
-        <UserTasksPanel isOpen={isUserTasksOpen} onOpenChange={setIsUserTasksOpen} />
-      ) : null}
       {isFurnitureShopOpen ? (
         <FurnitureShop isOpen={isFurnitureShopOpen} onOpenChange={setIsFurnitureShopOpen} />
       ) : null}
