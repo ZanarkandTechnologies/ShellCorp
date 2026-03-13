@@ -18,7 +18,10 @@ const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || path.join(OPENC
 const COMPANY_MODEL_PATH = path.join(OPENCLAW_HOME, "company.json");
 const OFFICE_OBJECTS_PATH = path.join(OPENCLAW_HOME, "office-objects.json");
 const OFFICE_SETTINGS_PATH = path.join(OPENCLAW_HOME, "office.json");
-const OFFICE_OBJECTS_TEMPLATE_PATH = path.resolve(__dirname, "../officeObjects.json");
+const OFFICE_OBJECTS_TEMPLATE_PATH = path.resolve(
+  __dirname,
+  "../templates/sidecar/office-objects.template.json",
+);
 const PENDING_APPROVALS_PATH = path.join(OPENCLAW_HOME, "pending-approvals.json");
 const PENDING_APPROVALS_TEMPLATE_PATH = path.resolve(__dirname, "../templates/sidecar/pending-approvals.template.json");
 const BIZ_PM_HEARTBEAT_TEMPLATE_PATH = path.resolve(__dirname, "../templates/workspace/HEARTBEAT-biz-pm.md");
