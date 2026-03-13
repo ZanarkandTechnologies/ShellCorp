@@ -1,12 +1,34 @@
+/**
+ * GATEWAY PROVIDER
+ * ================
+ * Own the live WebSocket client for gateway-backed UI features.
+ *
+ * KEY CONCEPTS:
+ * - Gateway config is local-ui state and can change at runtime.
+ * - Saving config should reconnect in place instead of forcing a page reload.
+ *
+ * USAGE:
+ * - Read `client` and `connected` via `useGateway()`.
+ * - Call `updateConfig()` after settings changes to rebuild the client.
+ *
+ * MEMORY REFERENCES:
+ * - MEM-0175
+ */
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { gatewayBase, gatewayToken } from "@/lib/gateway-config";
+import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import {
+  type GatewayUiConfig,
+  getGatewayUiConfig,
+  saveGatewayUiConfig,
+} from "@/lib/gateway-config";
 import { GatewayWsClient } from "@/lib/gateway-ws-client";
 
 type GatewayContextValue = {
   client: GatewayWsClient;
   connected: boolean;
+  config: GatewayUiConfig;
+  updateConfig: (next: Partial<GatewayUiConfig>) => GatewayUiConfig;
 };
 
 const GatewayContext = createContext<GatewayContextValue | null>(null);
@@ -20,14 +42,15 @@ function toGatewayWsUrl(baseUrl: string): string {
 
 export function GatewayProvider({ children }: { children: ReactNode }): JSX.Element {
   const [connected, setConnected] = useState(false);
+  const [config, setConfig] = useState<GatewayUiConfig>(() => getGatewayUiConfig());
   const client = useMemo(
     () =>
       new GatewayWsClient({
-        url: toGatewayWsUrl(gatewayBase),
-        token: gatewayToken,
+        url: toGatewayWsUrl(config.gatewayBase),
+        token: config.gatewayToken,
         onConnectionStateChange: setConnected,
       }),
-    [],
+    [config.gatewayBase, config.gatewayToken],
   );
 
   useEffect(() => {
@@ -37,7 +60,19 @@ export function GatewayProvider({ children }: { children: ReactNode }): JSX.Elem
     };
   }, [client]);
 
-  const value = useMemo(() => ({ client, connected }), [client, connected]);
+  const value = useMemo(
+    () => ({
+      client,
+      connected,
+      config,
+      updateConfig: (next: Partial<GatewayUiConfig>) => {
+        const saved = saveGatewayUiConfig(next);
+        setConfig(saved);
+        return saved;
+      },
+    }),
+    [client, config, connected],
+  );
   return <GatewayContext.Provider value={value}>{children}</GatewayContext.Provider>;
 }
 

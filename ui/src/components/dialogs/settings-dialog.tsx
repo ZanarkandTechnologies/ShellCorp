@@ -1,17 +1,17 @@
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useEffect, useMemo, useState } from "react";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useEffect, useMemo, useState } from "react";
+import { Label } from "@/components/ui/label";
 import { useAppStore } from "@/lib/app-store";
-import { getGatewayUiConfig, saveGatewayUiConfig } from "@/lib/gateway-config";
-import { useGateway } from "@/providers/gateway-provider";
+import { getGatewayUiConfig } from "@/lib/gateway-config";
+import { setOfficeOnboardingCompleted } from "@/lib/office-onboarding";
+import type { OfficeSettingsModel } from "@/lib/openclaw-types";
 import { UI_Z } from "@/lib/z-index";
+import { useGateway } from "@/providers/gateway-provider";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
-import type { OfficeSettingsModel } from "@/lib/openclaw-types";
-import { setOfficeOnboardingCompleted } from "@/lib/office-onboarding";
 
 type SettingsDialogProps = {
   trigger?: React.ReactNode;
@@ -19,7 +19,8 @@ type SettingsDialogProps = {
   onOpenChange?: (open: boolean) => void;
 };
 
-export default function SettingsDialog({ trigger, open, onOpenChange }: SettingsDialogProps) {
+export default function SettingsDialog(props: SettingsDialogProps) {
+  const { open, onOpenChange } = props;
   const adapter = useOpenClawAdapter();
   const { officeSettings, refresh } = useOfficeDataContext();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
@@ -31,7 +32,7 @@ export default function SettingsDialog({ trigger, open, onOpenChange }: Settings
   const setBuilderMode = useAppStore((state) => state.setBuilderMode);
   const setIsOfficeOnboardingVisible = useAppStore((state) => state.setIsOfficeOnboardingVisible);
   const setOfficeOnboardingStep = useAppStore((state) => state.setOfficeOnboardingStep);
-  const { connected } = useGateway();
+  const { connected, updateConfig } = useGateway();
   const gatewayConfig = useMemo(() => getGatewayUiConfig(), []);
   const [gatewayBaseInput, setGatewayBaseInput] = useState(gatewayConfig.gatewayBase);
   const [gatewayTokenInput, setGatewayTokenInput] = useState(gatewayConfig.gatewayToken);
@@ -84,17 +85,19 @@ export default function SettingsDialog({ trigger, open, onOpenChange }: Settings
   }
 
   function handleConnectGateway(): void {
-    saveGatewayUiConfig({
+    const saved = updateConfig({
       gatewayBase: gatewayBaseInput,
       gatewayToken: gatewayTokenInput,
       stateBase: stateBaseInput,
       defaultSessionKey: defaultSessionKeyInput,
       language: languageInput,
     });
-    setStatusText("Gateway config saved. Reloading UI...");
-    if (typeof window !== "undefined") {
-      window.setTimeout(() => window.location.reload(), 250);
-    }
+    setGatewayBaseInput(saved.gatewayBase);
+    setGatewayTokenInput(saved.gatewayToken);
+    setStateBaseInput(saved.stateBase);
+    setDefaultSessionKeyInput(saved.defaultSessionKey);
+    setLanguageInput(saved.language);
+    setStatusText("Gateway config saved. Reconnecting gateway client...");
   }
 
   async function handleSaveViewSettings(): Promise<void> {

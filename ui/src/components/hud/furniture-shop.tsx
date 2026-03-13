@@ -23,7 +23,21 @@
  */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  Briefcase,
+  CloudDownload,
+  Download,
+  Library,
+  Monitor,
+  Package,
+  Palette,
+  Sofa,
+  Store,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -31,28 +45,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { useOfficeDataContext } from "@/providers/office-data-provider";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { usePlacementSystem } from "@/features/office-system/systems/placement-system";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { MeshAssetModel } from "@/lib/openclaw-types";
-import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Store,
-  Box,
-  CloudDownload,
-  Monitor,
-  Download,
-  Package,
-  Sofa,
-  Library,
-  Briefcase,
-  Palette,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { usePlacementSystem } from "@/features/office-system/systems/placement-system";
 import {
   getBackgroundPreset,
   getPaintingPreset,
@@ -68,6 +64,10 @@ import {
   type OfficeWallColorId,
   type WallArtSlotId,
 } from "@/lib/office-decor";
+import type { MeshAssetModel } from "@/lib/openclaw-types";
+import { cn } from "@/lib/utils";
+import { useOfficeDataContext } from "@/providers/office-data-provider";
+import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 
 type TabId = "catalog" | "decor" | "custom" | "import";
 
@@ -116,7 +116,8 @@ interface FurnitureShopProps {
 }
 
 export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
-  const { company, officeSettings, officeObjects, refresh } = useOfficeDataContext();
+  const { company, officeSettings, officeObjects, refresh, applyOfficeSettings } =
+    useOfficeDataContext();
   const { startPlacement } = usePlacementSystem();
   const adapter = useOpenClawAdapter();
 
@@ -178,7 +179,7 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   };
 
-  const loadMeshAssets = async () => {
+  const loadMeshAssets = useCallback(async () => {
     setIsLoadingAssets(true);
     setMeshError(null);
     try {
@@ -193,12 +194,12 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     } finally {
       setIsLoadingAssets(false);
     }
-  };
+  }, [adapter]);
 
   useEffect(() => {
     if (!isOpen) return;
     void loadMeshAssets();
-  }, [isOpen]);
+  }, [isOpen, loadMeshAssets]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -276,16 +277,10 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
         setDecorStatus(result.error ?? "Failed to save office decor.");
         return;
       }
-      setDecorStatus("Applying view and reloading...");
-      onOpenChange(false);
-      if (typeof window !== "undefined") {
-        window.setTimeout(() => {
-          window.location.reload();
-        }, 50);
-        return;
-      }
-      await refresh();
+      applyOfficeSettings(result.settings);
       setDecorStatus("Decoration view applied.");
+      onOpenChange(false);
+      await refresh();
     } catch (error) {
       setDecorStatus(error instanceof Error ? error.message : "Failed to save office decor.");
     } finally {
