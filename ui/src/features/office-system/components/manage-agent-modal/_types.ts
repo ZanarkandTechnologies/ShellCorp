@@ -13,7 +13,7 @@ export type AgentConfigDraft = {
   selectedSkills: string[];
 };
 
-export type TabId = "overview" | "files" | "tools" | "skills" | "channels" | "cron";
+export type TabId = "overview" | "files" | "tools" | "channels" | "cron";
 
 export type AgentUsageOverview = {
   latestSession?: SessionTimelineModel["usageSummary"];

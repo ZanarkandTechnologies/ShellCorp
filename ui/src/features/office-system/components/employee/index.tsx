@@ -12,11 +12,13 @@
  * MEMORY REFERENCES:
  * - MEM-0144
  * - MEM-0163
+ * - MEM-0188
  */
 import { Box, Edges } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
-import { Book, Brain, CheckSquare, MessageSquare, Monitor, UserCog } from "lucide-react";
+import { Book, Brain, MessageSquare, Monitor, UserCog } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import * as THREE from "three";
 import {
   BODY_HEIGHT,
@@ -188,14 +190,11 @@ const Employee = memo(function Employee({
   const isSelected = useAppStore((state) => state.selectedObjectId === employeeIdString);
   const setSelectedObjectId = useAppStore((state) => state.setSelectedObjectId);
   const setManageAgentEmployeeId = useAppStore((state) => state.setManageAgentEmployeeId);
-  const setViewComputerEmployeeId = useAppStore((state) => state.setViewComputerEmployeeId);
-  const setTrainingEmployeeId = useAppStore((state) => state.setTrainingEmployeeId);
   const setMemoryPanelEmployeeId = useAppStore((state) => state.setMemoryPanelEmployeeId);
-  const setIsTeamPanelOpen = useAppStore((state) => state.setIsTeamPanelOpen);
-  const setActiveTeamId = useAppStore((state) => state.setActiveTeamId);
-  const setSelectedTeamId = useAppStore((state) => state.setSelectedTeamId);
-  const setSelectedProjectId = useAppStore((state) => state.setSelectedProjectId);
   const setKanbanFocusAgentId = useAppStore((state) => state.setKanbanFocusAgentId);
+  const setIsSkillsPanelOpen = useAppStore((state) => state.setIsSkillsPanelOpen);
+  const setSelectedSkillStudioSkillId = useAppStore((state) => state.setSelectedSkillStudioSkillId);
+  const setSkillStudioFocusAgentId = useAppStore((state) => state.setSkillStudioFocusAgentId);
   const highlightedEmployeeIds = useAppStore((state) => state.highlightedEmployeeIds);
   const isOfficeOnboardingVisible = useAppStore((state) => state.isOfficeOnboardingVisible);
   const officeOnboardingStep = useAppStore((state) => state.officeOnboardingStep);
@@ -290,13 +289,13 @@ const Employee = memo(function Employee({
         },
       },
       {
-        id: "view-pc",
-        label: "View PC",
+        id: "computer",
+        label: "Computer",
         icon: Monitor,
         color: "green",
         position: "right" as const,
         onClick: () => {
-          setViewComputerEmployeeId(id);
+          toast.info("Computer view is hidden for this demo.");
         },
       },
       {
@@ -310,9 +309,24 @@ const Employee = memo(function Employee({
         },
       },
       {
-        id: "kanban",
-        label: "Kanban",
-        icon: CheckSquare,
+        id: "training",
+        label: "Skills",
+        icon: Book,
+        color: "indigo",
+        onClick: () => {
+          const employeeId = String(id);
+          const focusedAgentId = employeeId.startsWith("employee-")
+            ? employeeId.replace(/^employee-/, "")
+            : employeeId;
+          setSelectedSkillStudioSkillId(null);
+          setSkillStudioFocusAgentId(focusedAgentId);
+          setIsSkillsPanelOpen(true);
+        },
+      },
+      {
+        id: "memory",
+        label: "Context",
+        icon: Brain,
         color: "purple",
         position: "left" as const,
         onClick: () => {
@@ -320,45 +334,8 @@ const Employee = memo(function Employee({
           const focusedAgentId = employeeId.startsWith("employee-")
             ? employeeId.replace(/^employee-/, "")
             : employeeId;
-          const selectedTeamIdFromEmployee = String(teamId ?? "");
-          const selectedTeam = String(
-            (useAppStore.getState().activeChatParticipant as { teamId?: string } | null)?.teamId ??
-              "",
-          );
-
           setSelectedObjectId(null);
           setKanbanFocusAgentId(focusedAgentId);
-          if (selectedTeamIdFromEmployee) {
-            setActiveTeamId(selectedTeamIdFromEmployee);
-            setSelectedTeamId(selectedTeamIdFromEmployee);
-            if (selectedTeamIdFromEmployee.startsWith("team-")) {
-              setSelectedProjectId(selectedTeamIdFromEmployee.replace(/^team-/, ""));
-            }
-          } else if (selectedTeam) {
-            setActiveTeamId(selectedTeam);
-            setSelectedTeamId(selectedTeam);
-            if (selectedTeam.startsWith("team-")) {
-              setSelectedProjectId(selectedTeam.replace(/^team-/, ""));
-            }
-          }
-          setIsTeamPanelOpen(true);
-        },
-      },
-      {
-        id: "training",
-        label: "Training",
-        icon: Book,
-        color: "indigo",
-        onClick: () => {
-          setTrainingEmployeeId(id);
-        },
-      },
-      {
-        id: "memory",
-        label: "Memory",
-        icon: Brain,
-        color: "cyan",
-        onClick: () => {
           setMemoryPanelEmployeeId(id);
         },
       },
@@ -366,19 +343,15 @@ const Employee = memo(function Employee({
     [
       id,
       onClick,
-      setActiveTeamId,
-      setIsTeamPanelOpen,
       setKanbanFocusAgentId,
       isOfficeOnboardingVisible,
+      setIsSkillsPanelOpen,
       setManageAgentEmployeeId,
       setMemoryPanelEmployeeId,
+      setSelectedSkillStudioSkillId,
+      setSkillStudioFocusAgentId,
       officeOnboardingStep,
       setSelectedObjectId,
-      setSelectedProjectId,
-      setSelectedTeamId,
-      setTrainingEmployeeId,
-      setViewComputerEmployeeId,
-      teamId,
       isCEO,
     ],
   );

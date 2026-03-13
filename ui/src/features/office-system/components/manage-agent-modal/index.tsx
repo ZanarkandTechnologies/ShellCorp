@@ -13,8 +13,10 @@
  * MEMORY REFERENCES:
  * - MEM-0143: office-modal hot path stays non-blocking
  * - MEM-0144 refactor: Phase 3c folder split
+ * - MEM-0188
  */
-import { useEffect, useMemo, useState } from "react";
+
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import {
   Dialog,
   DialogContent,
@@ -35,8 +37,6 @@ import type {
   ChannelsStatusSnapshot,
   CronJob,
   CronStatus,
-  SkillItemModel,
-  SkillStatusReport,
   ToolsCatalogResult,
 } from "@/lib/openclaw-types";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
@@ -46,141 +46,17 @@ import { UI_Z } from "@/lib/z-index";
 import { extractAgentId } from "@/lib/entity-utils";
 import { buildTeamAiUsageSummary } from "@/lib/session-usage";
 import type { AgentConfigDraft, AgentUsageOverview, TabId } from "./_types";
+import {
+  buildNextAgentConfig,
+  cloneAgentConfigDraft,
+  EMPTY_AGENT_CONFIG_DRAFT,
+  resolveAgentConfigDraft,
+} from "./config-draft";
 import { OverviewPanel } from "./OverviewTab";
 import { FilesPanel } from "./FilesTab";
 import { ToolsPanel } from "./ToolsTab";
-import { SkillsPanel } from "./SkillsTab";
 import { ChannelsPanel } from "./ChannelsTab";
 import { CronPanel } from "./CronTab";
-
-function cloneConfig<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function resolveAgentConfigDraft(
-  config: Record<string, unknown> | null,
-  agentId: string,
-): AgentConfigDraft {
-  const agentsNode =
-    config?.agents && typeof config.agents === "object"
-      ? (config.agents as Record<string, unknown>)
-      : {};
-  const list = Array.isArray(agentsNode.list) ? agentsNode.list : [];
-  const entry = list.find((item) => {
-    if (!item || typeof item !== "object") return false;
-    const row = item as Record<string, unknown>;
-    return String(row.id ?? row.agentId ?? "").trim() === agentId;
-  }) as Record<string, unknown> | undefined;
-  const modelNode = entry?.model;
-  let primaryModel = "";
-  let fallbackModels = "";
-  if (typeof modelNode === "string") {
-    primaryModel = modelNode;
-  } else if (modelNode && typeof modelNode === "object") {
-    const row = modelNode as Record<string, unknown>;
-    primaryModel = String(row.primary ?? row.model ?? "");
-    if (Array.isArray(row.fallbacks)) {
-      fallbackModels = row.fallbacks
-        .filter((item): item is string => typeof item === "string")
-        .join(", ");
-    }
-  }
-  const toolsNode =
-    entry?.tools && typeof entry.tools === "object" ? (entry.tools as Record<string, unknown>) : {};
-  const toolsAllow = Array.isArray(toolsNode.alsoAllow)
-    ? toolsNode.alsoAllow.filter((item): item is string => typeof item === "string")
-    : [];
-  const toolsDeny = Array.isArray(toolsNode.deny)
-    ? toolsNode.deny.filter((item): item is string => typeof item === "string")
-    : [];
-  const skillsArray = Array.isArray(entry?.skills)
-    ? entry.skills.filter((item): item is string => typeof item === "string")
-    : null;
-  const skillsMode = skillsArray === null ? "all" : skillsArray.length === 0 ? "none" : "selected";
-  return {
-    primaryModel,
-    fallbackModels,
-    toolsProfile: typeof toolsNode.profile === "string" ? toolsNode.profile : "",
-    toolsAllow,
-    toolsDeny,
-    skillsMode,
-    selectedSkills: skillsArray ?? [],
-  };
-}
-
-function buildNextConfig(
-  currentConfig: Record<string, unknown>,
-  agentId: string,
-  draft: AgentConfigDraft,
-): Record<string, unknown> {
-  const next = cloneConfig(currentConfig);
-  const root = next as Record<string, unknown>;
-  const agentsNode =
-    root.agents && typeof root.agents === "object"
-      ? (root.agents as Record<string, unknown>)
-      : ({} as Record<string, unknown>);
-  const list = Array.isArray(agentsNode.list) ? (cloneConfig(agentsNode.list) as unknown[]) : [];
-  const idx = list.findIndex((item) => {
-    if (!item || typeof item !== "object") return false;
-    const row = item as Record<string, unknown>;
-    return String(row.id ?? row.agentId ?? "").trim() === agentId;
-  });
-  const baseEntry =
-    idx >= 0 && list[idx] && typeof list[idx] === "object"
-      ? (cloneConfig(list[idx]) as Record<string, unknown>)
-      : ({ id: agentId } as Record<string, unknown>);
-
-  const primaryModel = draft.primaryModel.trim();
-  const fallbackModels = draft.fallbackModels
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-  if (!primaryModel && fallbackModels.length === 0) {
-    delete baseEntry.model;
-  } else if (fallbackModels.length > 0) {
-    baseEntry.model = { primary: primaryModel, fallbacks: fallbackModels };
-  } else {
-    baseEntry.model = primaryModel;
-  }
-
-  const toolsNode =
-    baseEntry.tools && typeof baseEntry.tools === "object"
-      ? (cloneConfig(baseEntry.tools) as Record<string, unknown>)
-      : ({} as Record<string, unknown>);
-  const profile = draft.toolsProfile.trim();
-  if (profile) toolsNode.profile = profile;
-  else delete toolsNode.profile;
-  if (draft.toolsAllow.length > 0) toolsNode.alsoAllow = [...draft.toolsAllow];
-  else delete toolsNode.alsoAllow;
-  if (draft.toolsDeny.length > 0) toolsNode.deny = [...draft.toolsDeny];
-  else delete toolsNode.deny;
-  if (Object.keys(toolsNode).length > 0) baseEntry.tools = toolsNode;
-  else delete baseEntry.tools;
-
-  if (draft.skillsMode === "all") {
-    delete baseEntry.skills;
-  } else if (draft.skillsMode === "none") {
-    baseEntry.skills = [];
-  } else {
-    baseEntry.skills = [...draft.selectedSkills];
-  }
-
-  if (idx >= 0) list[idx] = baseEntry;
-  else list.push(baseEntry);
-  agentsNode.list = list;
-  root.agents = agentsNode;
-  return next;
-}
-
-const EMPTY_DRAFT: AgentConfigDraft = {
-  primaryModel: "",
-  fallbackModels: "",
-  toolsProfile: "",
-  toolsAllow: [],
-  toolsDeny: [],
-  skillsMode: "all",
-  selectedSkills: [],
-};
 
 type FilesState = {
   list: AgentsFilesListResult | null;
@@ -202,7 +78,7 @@ const EMPTY_FILES_STATE: FilesState = {
   error: "",
 };
 
-export function ManageAgentModal(): JSX.Element {
+export function ManageAgentModal(): ReactElement {
   const manageAgentEmployeeId = useAppStore((state) => state.manageAgentEmployeeId);
   const setManageAgentEmployeeId = useAppStore((state) => state.setManageAgentEmployeeId);
   const setIsSkillsPanelOpen = useAppStore((state) => state.setIsSkillsPanelOpen);
@@ -218,14 +94,12 @@ export function ManageAgentModal(): JSX.Element {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [identity, setIdentity] = useState<AgentIdentityResult | null>(null);
   const [toolsCatalog, setToolsCatalog] = useState<ToolsCatalogResult | null>(null);
-  const [skillsReport, setSkillsReport] = useState<SkillStatusReport | null>(null);
-  const [fallbackSkills, setFallbackSkills] = useState<SkillItemModel[]>([]);
   const [channelsSnapshot, setChannelsSnapshot] = useState<ChannelsStatusSnapshot | null>(null);
   const [cronStatus, setCronStatus] = useState<CronStatus | null>(null);
   const [cronJobs, setCronJobs] = useState<CronJob[]>([]);
   const [config, setConfig] = useState<Record<string, unknown> | null>(null);
-  const [draft, setDraft] = useState<AgentConfigDraft>(EMPTY_DRAFT);
-  const [baseDraft, setBaseDraft] = useState<AgentConfigDraft>(EMPTY_DRAFT);
+  const [draft, setDraft] = useState<AgentConfigDraft>(EMPTY_AGENT_CONFIG_DRAFT);
+  const [baseDraft, setBaseDraft] = useState<AgentConfigDraft>(EMPTY_AGENT_CONFIG_DRAFT);
   const [usageOverview, setUsageOverview] = useState<AgentUsageOverview | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -268,14 +142,12 @@ export function ManageAgentModal(): JSX.Element {
           nextChannels,
           nextCronStatus,
           nextCronJobs,
-          skillItems,
         ] = await Promise.all([
           adapter.getAgentsList(),
           adapter.getConfigSnapshot(),
           adapter.getChannelsStatus(),
           adapter.getCronStatus(),
           adapter.listCronJobs(),
-          adapter.listSkills().catch(() => []),
         ]);
         if (cancelled) return;
         setAgentsList(nextAgentsList);
@@ -291,7 +163,6 @@ export function ManageAgentModal(): JSX.Element {
         setChannelsSnapshot(nextChannels);
         setCronStatus(nextCronStatus);
         setCronJobs(nextCronJobs);
-        setFallbackSkills(skillItems);
       } catch (error) {
         if (!cancelled)
           setLoadError(error instanceof Error ? error.message : "bootstrap_load_failed");
@@ -309,17 +180,16 @@ export function ManageAgentModal(): JSX.Element {
     if (!isOpen || !selectedAgentId || !config) return;
     let cancelled = false;
     async function loadAgentData(): Promise<void> {
-      if (!selectedAgentId) return;
-      const [nextIdentity, nextToolsCatalog, nextSkillsReport] = await Promise.all([
-        adapter.getAgentIdentity(selectedAgentId),
-        adapter.getToolsCatalog(selectedAgentId),
-        adapter.getSkillsStatus(selectedAgentId),
+      const agentId = selectedAgentId;
+      if (!agentId) return;
+      const [nextIdentity, nextToolsCatalog] = await Promise.all([
+        adapter.getAgentIdentity(agentId),
+        adapter.getToolsCatalog(agentId),
       ]);
       if (cancelled) return;
       setIdentity(nextIdentity);
       setToolsCatalog(nextToolsCatalog);
-      setSkillsReport(nextSkillsReport);
-      const source = resolveAgentConfigDraft(config, selectedAgentId);
+      const source = resolveAgentConfigDraft(config, agentId);
       setDraft(source);
       setBaseDraft(source);
       setSaveStatus("");
@@ -340,19 +210,17 @@ export function ManageAgentModal(): JSX.Element {
     }
     let cancelled = false;
     async function loadUsageOverview(): Promise<void> {
+      const agentId = selectedAgentId;
+      if (!agentId) return;
       let failedSessions = 0;
       try {
-        const sessions = (await adapter.listSessions(selectedAgentId)).sort(
+        const sessions = (await adapter.listSessions(agentId)).sort(
           (a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
         );
         const usageRows = await Promise.all(
           sessions.map(async (session) => {
             try {
-              const timeline = await adapter.getSessionTimeline(
-                selectedAgentId,
-                session.sessionKey,
-                120,
-              );
+              const timeline = await adapter.getSessionTimeline(agentId, session.sessionKey, 120);
               return {
                 sessionKey: session.sessionKey,
                 updatedAt: session.updatedAt,
@@ -375,7 +243,7 @@ export function ManageAgentModal(): JSX.Element {
           usageRows
             .filter((row) => row.usageSummary)
             .map((row) => ({
-              agentId: selectedAgentId,
+              agentId,
               occurredAt: row.updatedAt,
               usageSummary: row.usageSummary,
             })),
@@ -422,9 +290,11 @@ export function ManageAgentModal(): JSX.Element {
     }
     if (filesState.list?.agentId === selectedAgentId) return;
     void (async () => {
+      const agentId = selectedAgentId;
+      if (!agentId) return;
       setFilesState((current) => ({ ...current, loading: true, error: "" }));
       try {
-        const list = await adapter.listAgentFiles(selectedAgentId);
+        const list = await adapter.listAgentFiles(agentId);
         setFilesState((current) => ({
           ...current,
           list,
@@ -446,9 +316,12 @@ export function ManageAgentModal(): JSX.Element {
     if (!gatewayConnected) return;
     if (Object.hasOwn(filesState.baseByName, filesState.activeName)) return;
     void (async () => {
+      const agentId = selectedAgentId;
+      const activeName = filesState.activeName;
+      if (!agentId || !activeName) return;
       setFilesState((current) => ({ ...current, loading: true, error: "" }));
       try {
-        const result = await adapter.getAgentFile(selectedAgentId, filesState.activeName as string);
+        const result = await adapter.getAgentFile(agentId, activeName);
         const content = result.file.content ?? "";
         setFilesState((current) => ({
           ...current,
@@ -519,31 +392,19 @@ export function ManageAgentModal(): JSX.Element {
     }
   }
 
-  async function refreshSkills(): Promise<void> {
-    if (!selectedAgentId) return;
-    try {
-      const report = await adapter.getSkillsStatus(selectedAgentId);
-      if (report) setSkillsReport(report);
-      const all = await adapter.listSkills().catch(() => []);
-      setFallbackSkills(all);
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "skills_refresh_failed");
-    }
-  }
-
   async function handleSaveConfig(): Promise<void> {
     if (!selectedAgentId || !config || !isDraftDirty) return;
     setIsSavingConfig(true);
     setSaveStatus("");
     try {
-      const nextConfig = buildNextConfig(config, selectedAgentId, draft);
+      const nextConfig = buildNextAgentConfig(config, selectedAgentId, draft);
       const result = await adapter.applyConfig(nextConfig, true);
       if (!result.ok) {
         setSaveStatus(result.error ?? "config_save_failed");
         return;
       }
       setConfig(nextConfig);
-      setBaseDraft(cloneConfig(draft));
+      setBaseDraft(cloneAgentConfigDraft(draft));
       setSaveStatus("Config saved.");
     } catch (error) {
       setSaveStatus(error instanceof Error ? error.message : "config_save_failed");
@@ -592,8 +453,9 @@ export function ManageAgentModal(): JSX.Element {
     }
   }
 
-  function openSkillStudio(skillId: string): void {
-    setSelectedSkillStudioSkillId(skillId);
+  function openSkillStudio(): void {
+    if (!selectedAgentId) return;
+    setSelectedSkillStudioSkillId(null);
     setSkillStudioFocusAgentId(selectedAgentId);
     setIsSkillsPanelOpen(true);
   }
@@ -607,7 +469,8 @@ export function ManageAgentModal(): JSX.Element {
             Manage Agent: {employee?.name ?? "Agent"}
           </DialogTitle>
           <DialogDescription>
-            Configure OpenClaw-backed workspace, tools, skills, channels, and cron settings.
+            Configure OpenClaw-backed workspace, tools, channels, and cron settings. Per-agent
+            skill allowlists now live in Skill Studio.
           </DialogDescription>
         </DialogHeader>
 
@@ -616,11 +479,10 @@ export function ManageAgentModal(): JSX.Element {
           onValueChange={(value) => setActiveTab(value as TabId)}
           className="w-full"
         >
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="files">Files</TabsTrigger>
             <TabsTrigger value="tools">Tools</TabsTrigger>
-            <TabsTrigger value="skills">Skills</TabsTrigger>
             <TabsTrigger value="channels">Channels</TabsTrigger>
             <TabsTrigger value="cron">Cron Jobs</TabsTrigger>
           </TabsList>
@@ -657,17 +519,6 @@ export function ManageAgentModal(): JSX.Element {
                 onReloadConfig={refreshConfigOnly}
               />
             </TabsContent>
-            <TabsContent value="skills" className="space-y-4">
-              <SkillsPanel
-                draft={draft}
-                setDraft={setDraft}
-                skillsReport={skillsReport}
-                fallbackSkills={fallbackSkills}
-                onReloadConfig={refreshConfigOnly}
-                onRefreshSkills={refreshSkills}
-                onOpenSkillStudio={openSkillStudio}
-              />
-            </TabsContent>
             <TabsContent value="channels" className="space-y-4">
               <ChannelsPanel snapshot={channelsSnapshot} />
             </TabsContent>
@@ -678,6 +529,9 @@ export function ManageAgentModal(): JSX.Element {
         </Tabs>
 
         <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
+          <Button variant="outline" onClick={openSkillStudio} disabled={!selectedAgentId}>
+            Open Skill Studio
+          </Button>
           <Button variant="outline" onClick={() => setManageAgentEmployeeId(null)}>
             Close
           </Button>

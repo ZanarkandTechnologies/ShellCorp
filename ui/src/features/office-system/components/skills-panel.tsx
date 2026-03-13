@@ -13,9 +13,10 @@
  * MEMORY REFERENCES:
  * - MEM-0160
  * - MEM-0166
+ * - MEM-0188
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,10 +37,9 @@ import { usePollWithInterval } from "@/hooks/use-poll-with-interval";
 import { useAppStore } from "@/lib/app-store";
 import { formatTimestamp as fmtTs } from "@/lib/format-utils";
 import type {
-  SkillDemoCase,
+  SkillItemModel,
   SkillDemoRunResult,
   SkillManifest,
-  SkillStatusEntry,
   SkillStatusReport,
   SkillStudioCatalogEntry,
   SkillStudioDetail,
@@ -48,6 +48,18 @@ import type {
 import { stringifySkillManifest } from "@/lib/skill-studio";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { UI_Z } from "@/lib/z-index";
+import type { AgentConfigDraft } from "@/features/office-system/components/manage-agent-modal/_types";
+import {
+  buildNextAgentConfig,
+  cloneAgentConfigDraft,
+  EMPTY_AGENT_CONFIG_DRAFT,
+  resolveAgentConfigDraft,
+} from "@/features/office-system/components/manage-agent-modal/config-draft";
+import {
+  getCustomSelectionDraft,
+  isSkillEquipped,
+  toggleSidebarSkill,
+} from "@/features/office-system/components/skills-panel.helpers";
 
 function joinLines(lines: string[]): string {
   return lines.join("\n");
@@ -76,7 +88,7 @@ function getDemoStepKey(
 }
 
 const SKILL_CARD_DESCRIPTION_CHAR_LIMIT = 84;
-const SKILL_STUDIO_SIDEBAR_WIDTH = 420;
+const SKILL_STUDIO_SIDEBAR_WIDTH = 380;
 
 function truncateSkillCardDescription(text: string): string {
   const normalized = text.replace(/\s+/g, " ").trim();
@@ -193,7 +205,9 @@ function buildMermaidDocument(diagram: string): string {
 </html>`;
 }
 
-export function SkillsPanel(): JSX.Element {
+type DetailTab = "overview" | "files" | "diagram" | "demos";
+
+export function SkillsPanel(): ReactElement {
   const isOpen = useAppStore((state) => state.isSkillsPanelOpen);
   const setIsOpen = useAppStore((state) => state.setIsSkillsPanelOpen);
   const selectedSkillId = useAppStore((state) => state.selectedSkillStudioSkillId);
@@ -208,16 +222,22 @@ export function SkillsPanel(): JSX.Element {
   const [selectedDemoId, setSelectedDemoId] = useState<string | null>(null);
   const [lastDemoRun, setLastDemoRun] = useState<SkillDemoRunResult | null>(null);
   const [skillsReport, setSkillsReport] = useState<SkillStatusReport | null>(null);
+  const [fallbackSkills, setFallbackSkills] = useState<SkillItemModel[]>([]);
+  const [configSnapshot, setConfigSnapshot] = useState<Record<string, unknown> | null>(null);
+  const [agentDraft, setAgentDraft] = useState<AgentConfigDraft>(EMPTY_AGENT_CONFIG_DRAFT);
+  const [agentBaseDraft, setAgentBaseDraft] = useState<AgentConfigDraft>(EMPTY_AGENT_CONFIG_DRAFT);
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
   const [flagFilter, setFlagFilter] = useState("all");
   const [errorText, setErrorText] = useState("");
   const [manifestDraft, setManifestDraft] = useState<SkillManifest | null>(null);
   const [rawManifest, setRawManifest] = useState("");
   const [editorMode, setEditorMode] = useState<"structured" | "raw">("structured");
   const [saveStatus, setSaveStatus] = useState("");
+  const [agentConfigStatus, setAgentConfigStatus] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingAgentConfig, setIsSavingAgentConfig] = useState(false);
   const [isRunningDemo, setIsRunningDemo] = useState(false);
+  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const selectOverlayStyle = useMemo(() => ({ zIndex: UI_Z.panelModal + 1 }), []);
 
   usePollWithInterval(
@@ -231,6 +251,10 @@ export function SkillsPanel(): JSX.Element {
         if (signal.cancelled) return;
         setSkills(mergeRuntimeStatus(catalog, report));
         setSkillsReport(report);
+        if (focusAgentId) {
+          const listedSkills = await adapter.listSkills().catch(() => []);
+          if (!signal.cancelled) setFallbackSkills(listedSkills);
+        }
         const nextSelectedId = selectedSkillId ?? catalog[0]?.skillId ?? null;
         if (nextSelectedId && nextSelectedId !== selectedSkillId) {
           setSelectedSkillId(nextSelectedId);
@@ -245,14 +269,50 @@ export function SkillsPanel(): JSX.Element {
   );
 
   useEffect(() => {
+    if (!isOpen) return;
+    setActiveTab("overview");
+  }, [focusAgentId, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !focusAgentId) {
+      setConfigSnapshot(null);
+      setAgentDraft(EMPTY_AGENT_CONFIG_DRAFT);
+      setAgentBaseDraft(EMPTY_AGENT_CONFIG_DRAFT);
+      setAgentConfigStatus("");
+      return;
+    }
+    let cancelled = false;
+    const agentId = focusAgentId;
+    async function loadAgentConfig(): Promise<void> {
+      try {
+        const snapshot = await adapter.getConfigSnapshot();
+        if (cancelled) return;
+        const nextDraft = resolveAgentConfigDraft(snapshot.config, agentId);
+        setConfigSnapshot(snapshot.config);
+        setAgentDraft(nextDraft);
+        setAgentBaseDraft(nextDraft);
+        setAgentConfigStatus("");
+      } catch (error) {
+        if (!cancelled) {
+          setAgentConfigStatus(
+            error instanceof Error ? error.message : "skill_agent_config_load_failed",
+          );
+        }
+      }
+    }
+    void loadAgentConfig();
+    return () => {
+      cancelled = true;
+    };
+  }, [adapter, focusAgentId, isOpen]);
+
+  useEffect(() => {
     if (!isOpen || !selectedSkillId) return;
     let cancelled = false;
+    const skillId = selectedSkillId;
     async function loadDetail(): Promise<void> {
       try {
-        const detail = await adapter.getSkillStudioDetail(
-          selectedSkillId,
-          focusAgentId ?? undefined,
-        );
+        const detail = await adapter.getSkillStudioDetail(skillId, focusAgentId ?? undefined);
         if (cancelled || !detail) return;
         const runtimeStatus =
           skillsReport?.skills.find(
@@ -262,7 +322,7 @@ export function SkillsPanel(): JSX.Element {
         setSelectedDetail(nextDetail);
         setManifestDraft(toManifestDraft(nextDetail));
         const configFile = await adapter
-          .getSkillStudioFile(selectedSkillId, "skill.config.yaml")
+          .getSkillStudioFile(skillId, "skill.config.yaml")
           .catch(() => null);
         setRawManifest(configFile?.content ?? stringifySkillManifest(nextDetail.manifest));
         const defaultFile = nextDetail.fileEntries[0]?.path ?? null;
@@ -287,8 +347,10 @@ export function SkillsPanel(): JSX.Element {
       return;
     }
     let cancelled = false;
+    const detail = selectedDetail;
+    const filePath = selectedFilePath;
     async function loadFile(): Promise<void> {
-      const file = await adapter.getSkillStudioFile(selectedDetail.skillId, selectedFilePath);
+      const file = await adapter.getSkillStudioFile(detail.skillId, filePath);
       if (!cancelled) setSelectedFile(file);
     }
     void loadFile();
@@ -297,11 +359,6 @@ export function SkillsPanel(): JSX.Element {
     };
   }, [adapter, selectedDetail, selectedFilePath]);
 
-  const categories = useMemo(
-    () => ["all", ...new Set(skills.map((entry) => entry.category).filter(Boolean))],
-    [skills],
-  );
-
   const filteredSkills = useMemo(
     () =>
       skills.filter((entry) => {
@@ -309,7 +366,6 @@ export function SkillsPanel(): JSX.Element {
           `${entry.displayName} ${entry.skillId} ${entry.description} ${entry.category}`
             .toLowerCase()
             .includes(search.trim().toLowerCase());
-        const matchesCategory = categoryFilter === "all" || entry.category === categoryFilter;
         const matchesFlag =
           flagFilter === "all" ||
           (flagFilter === "has-tests" && entry.hasTests) ||
@@ -317,9 +373,14 @@ export function SkillsPanel(): JSX.Element {
           (flagFilter === "skill-memory" && entry.hasSkillMemory) ||
           (flagFilter === "runtime-blocked" && entry.runtimeStatus?.blockedByAllowlist) ||
           (flagFilter === "runtime-eligible" && entry.runtimeStatus?.eligible);
-        return matchesSearch && matchesCategory && matchesFlag;
+        return matchesSearch && matchesFlag;
       }),
-    [categoryFilter, flagFilter, search, skills],
+    [flagFilter, search, skills],
+  );
+  const availableSkillIds = useMemo(
+    () =>
+      [...new Set([...skills.map((entry) => entry.skillId), ...fallbackSkills.map((entry) => entry.name)])],
+    [fallbackSkills, skills],
   );
 
   const selectedDemo = useMemo(
@@ -342,6 +403,10 @@ export function SkillsPanel(): JSX.Element {
   const dependencyDocsText = manifestEditor ? joinLines(manifestEditor.dependencies.docs) : "";
   const referencesText = manifestEditor ? joinLines(manifestEditor.references) : "";
   const canSave = Boolean(selectedDetail && manifestEditor && !isSaving);
+  const isAgentConfigDirty = useMemo(
+    () => JSON.stringify(agentDraft) !== JSON.stringify(agentBaseDraft),
+    [agentBaseDraft, agentDraft],
+  );
 
   async function handleRunDemo(): Promise<void> {
     if (!selectedDetail || !selectedDemo) return;
@@ -384,6 +449,62 @@ export function SkillsPanel(): JSX.Element {
     setManifestDraft({ ...manifestEditor, ...next });
   }
 
+  async function refreshAgentConfig(): Promise<void> {
+    if (!focusAgentId) return;
+    try {
+      const snapshot = await adapter.getConfigSnapshot();
+      const nextDraft = resolveAgentConfigDraft(snapshot.config, focusAgentId);
+      setConfigSnapshot(snapshot.config);
+      setAgentDraft(nextDraft);
+      setAgentBaseDraft(nextDraft);
+      setAgentConfigStatus("Config reloaded.");
+    } catch (error) {
+      setAgentConfigStatus(error instanceof Error ? error.message : "config_reload_failed");
+    }
+  }
+
+  async function refreshAgentSkills(): Promise<void> {
+    if (!focusAgentId) return;
+    try {
+      const [report, listedSkills] = await Promise.all([
+        adapter.getSkillsStatus(focusAgentId),
+        adapter.listSkills().catch(() => []),
+      ]);
+      setSkillsReport(report);
+      setFallbackSkills(listedSkills);
+      setAgentConfigStatus("Skill status refreshed.");
+    } catch (error) {
+      setAgentConfigStatus(error instanceof Error ? error.message : "skills_refresh_failed");
+    }
+  }
+
+  async function handleSaveAgentConfig(): Promise<void> {
+    if (!focusAgentId || !configSnapshot || !isAgentConfigDirty) return;
+    setIsSavingAgentConfig(true);
+    setAgentConfigStatus("");
+    try {
+      const nextConfig = buildNextAgentConfig(configSnapshot, focusAgentId, agentDraft);
+      const result = await adapter.applyConfig(nextConfig, true);
+      if (!result.ok) {
+        setAgentConfigStatus(result.error ?? "config_save_failed");
+        return;
+      }
+      setConfigSnapshot(nextConfig);
+      setAgentBaseDraft(cloneAgentConfigDraft(agentDraft));
+      setAgentConfigStatus("Skill config saved.");
+      const nextReport = await adapter.getSkillsStatus(focusAgentId).catch(() => null);
+      setSkillsReport(nextReport);
+    } catch (error) {
+      setAgentConfigStatus(error instanceof Error ? error.message : "config_save_failed");
+    } finally {
+      setIsSavingAgentConfig(false);
+    }
+  }
+
+  function updateAgentSkill(skillId: string): void {
+    setAgentDraft((current) => toggleSidebarSkill(current, skillId, availableSkillIds));
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent
@@ -401,78 +522,111 @@ export function SkillsPanel(): JSX.Element {
           className="grid h-full overflow-hidden"
           style={{ gridTemplateColumns: `${SKILL_STUDIO_SIDEBAR_WIDTH}px minmax(0, 1fr)` }}
         >
-          <div className="border-r p-4">
-            <div className="grid grid-cols-2 gap-2">
+          <div className="flex min-h-0 flex-col border-r p-4">
+            <div className="flex items-center gap-2">
               <Input
+                className="flex-1"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search skills"
               />
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Category" />
+              <Select value={flagFilter} onValueChange={setFlagFilter}>
+                <SelectTrigger className="w-[104px]">
+                  <SelectValue placeholder="Filter" />
                 </SelectTrigger>
                 <SelectContent style={selectOverlayStyle}>
-                  {categories.map((category) => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="all">Filter</SelectItem>
+                  <SelectItem value="has-tests">Tests</SelectItem>
+                  <SelectItem value="has-diagram">Diagram</SelectItem>
+                  <SelectItem value="skill-memory">Memory</SelectItem>
+                  <SelectItem value="runtime-eligible">Eligible</SelectItem>
+                  <SelectItem value="runtime-blocked">Blocked</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <Select value={flagFilter} onValueChange={setFlagFilter}>
-              <SelectTrigger className="mt-2">
-                <SelectValue placeholder="Filter" />
-              </SelectTrigger>
-              <SelectContent style={selectOverlayStyle}>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="has-tests">Has tests</SelectItem>
-                <SelectItem value="has-diagram">Has diagram</SelectItem>
-                <SelectItem value="skill-memory">Skill memory</SelectItem>
-                <SelectItem value="runtime-eligible">Runtime eligible</SelectItem>
-                <SelectItem value="runtime-blocked">Runtime blocked</SelectItem>
-              </SelectContent>
-            </Select>
+            {focusAgentId ? (
+              <div className="mt-3 rounded-md border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={agentDraft.skillsMode === "all" ? "default" : "outline"}
+                    onClick={() => setAgentDraft((current) => ({ ...current, skillsMode: "all" }))}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={agentDraft.skillsMode === "none" ? "default" : "outline"}
+                    onClick={() =>
+                      setAgentDraft((current) => ({
+                        ...current,
+                        skillsMode: "none",
+                        selectedSkills: [],
+                      }))
+                    }
+                  >
+                    None
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={agentDraft.skillsMode === "selected" ? "default" : "outline"}
+                    onClick={() =>
+                      setAgentDraft((current) => getCustomSelectionDraft(current, availableSkillIds))
+                    }
+                  >
+                    Custom
+                  </Button>
+                  <div className="ml-auto flex items-center gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => void refreshAgentConfig()}>
+                      Reload
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => void refreshAgentSkills()}>
+                      Refresh
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => void handleSaveAgentConfig()}
+                      disabled={isSavingAgentConfig || !isAgentConfigDirty}
+                    >
+                      {isSavingAgentConfig ? "Saving..." : "Save"}
+                    </Button>
+                  </div>
+                </div>
+                {agentConfigStatus ? (
+                  <p className="mt-2 text-[11px] text-muted-foreground">{agentConfigStatus}</p>
+                ) : null}
+              </div>
+            ) : null}
 
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs">Skills</CardTitle>
-                </CardHeader>
-                <CardContent>{skills.length}</CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs">Tests</CardTitle>
-                </CardHeader>
-                <CardContent>{skills.filter((entry) => entry.hasTests).length}</CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs">Diagrams</CardTitle>
-                </CardHeader>
-                <CardContent>{skills.filter((entry) => entry.hasDiagram).length}</CardContent>
-              </Card>
-            </div>
-
-            <ScrollArea className="mt-4 h-[calc(100vh-22rem)] rounded-md border">
+            <ScrollArea className="mt-4 min-h-0 flex-1 rounded-md border">
               <div className="space-y-2 p-2">
                 {filteredSkills.map((skill) => (
-                  <button
-                    type="button"
+                  <div
                     key={skill.packageKey}
-                    onClick={() => setSelectedSkillId(skill.skillId)}
-                    className={`w-full min-w-0 rounded-md border p-3 text-left transition ${selectedSkillId === skill.skillId ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                    className={`w-full min-w-0 rounded-md border p-3 transition ${selectedSkillId === skill.skillId ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
                     style={{ maxWidth: `calc(${SKILL_STUDIO_SIDEBAR_WIDTH}px - 2rem)` }}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="min-w-0 flex-1 truncate font-medium">{skill.displayName}</p>
-                      <Badge variant="secondary">{skill.category}</Badge>
-                    </div>
-                    <p className="mt-1 min-h-[2.75rem] max-w-full break-words text-xs leading-relaxed text-muted-foreground">
-                      {truncateSkillCardDescription(skill.description || skill.skillId)}
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSkillId(skill.skillId)}
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate font-medium">{skill.displayName}</p>
+                        {focusAgentId ? (
+                          <Badge
+                            variant={isSkillEquipped(agentDraft, skill.skillId) ? "secondary" : "outline"}
+                          >
+                            {isSkillEquipped(agentDraft, skill.skillId) ? "on" : "off"}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">{skill.category}</Badge>
+                        )}
+                      </div>
+                      <p className="mt-1 max-w-full break-words text-xs leading-relaxed text-muted-foreground">
+                        {truncateSkillCardDescription(skill.description || skill.skillId)}
+                      </p>
+                    </button>
                     <div className="mt-2 flex flex-wrap gap-1">
                       {skill.hasTests ? <Badge variant="outline">tests</Badge> : null}
                       {skill.hasDiagram ? <Badge variant="outline">diagram</Badge> : null}
@@ -483,8 +637,27 @@ export function SkillsPanel(): JSX.Element {
                       {skill.runtimeStatus?.eligible ? (
                         <Badge variant="secondary">eligible</Badge>
                       ) : null}
+                      {!focusAgentId ? <Badge variant="outline">{skill.category}</Badge> : null}
                     </div>
-                  </button>
+                    {focusAgentId ? (
+                      <div className="mt-3 flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setSelectedSkillId(skill.skillId)}
+                        >
+                          Open
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={isSkillEquipped(agentDraft, skill.skillId) ? "outline" : "default"}
+                          onClick={() => updateAgentSkill(skill.skillId)}
+                        >
+                          {isSkillEquipped(agentDraft, skill.skillId) ? "Unequip" : "Equip"}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
                 ))}
                 {filteredSkills.length === 0 ? (
                   <p className="p-2 text-sm text-muted-foreground">
@@ -501,7 +674,11 @@ export function SkillsPanel(): JSX.Element {
                 Select a skill to inspect its files, diagram, and demos.
               </div>
             ) : (
-              <Tabs defaultValue="overview" className="flex h-full min-h-0 flex-col">
+              <Tabs
+                value={activeTab}
+                onValueChange={(value) => setActiveTab(value as DetailTab)}
+                className="flex h-full min-h-0 flex-col"
+              >
                 <TabsList className="shrink-0">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="files">Files</TabsTrigger>
