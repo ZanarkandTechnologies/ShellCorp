@@ -459,3 +459,51 @@ describe("agent files fallback", () => {
     );
   });
 });
+
+describe("skill studio catalog compatibility", () => {
+  it("falls back to legacy /openclaw/skills when /catalog is unavailable", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          skills: [
+            {
+              name: "create-team",
+              category: "workflow",
+              scope: "shared",
+              sourcePath: "skills/create-team",
+              updatedAt: 123,
+            },
+          ],
+        }),
+      } as Response);
+
+    const adapter = new OpenClawAdapter("http://127.0.0.1:8787", "http://127.0.0.1:8787");
+    const result = await adapter.listSkillStudioCatalog();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8787/openclaw/skills/catalog",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8787/openclaw/skills",
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+    expect(result).toEqual([
+      expect.objectContaining({
+        skillId: "create-team",
+        displayName: "create-team",
+        category: "workflow",
+        hasTests: false,
+      }),
+    ]);
+  });
+});

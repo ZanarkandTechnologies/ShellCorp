@@ -26,6 +26,8 @@ interface SkillManagerProps {
 
 export function SkillManager({ isOpen, onOpenChange }: SkillManagerProps) {
   const setIsSkillsPanelOpen = useAppStore((state) => state.setIsSkillsPanelOpen);
+  const setSelectedSkillStudioSkillId = useAppStore((state) => state.setSelectedSkillStudioSkillId);
+  const setSkillStudioFocusAgentId = useAppStore((state) => state.setSkillStudioFocusAgentId);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -33,20 +35,22 @@ export function SkillManager({ isOpen, onOpenChange }: SkillManagerProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <BookOpen className="w-5 h-5" />
-            Manage Skills
+            Skill Studio
           </DialogTitle>
           <DialogDescription>
-            Open the Skills Panel to inspect shared and per-agent skills.
+            Open Skill Studio to inspect package files, diagrams, metadata, and runnable demo cases.
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center justify-end gap-2">
           <Button
             onClick={() => {
               onOpenChange(false);
+              setSelectedSkillStudioSkillId(null);
+              setSkillStudioFocusAgentId(null);
               setIsSkillsPanelOpen(true);
             }}
           >
-            Open Skills Panel
+            Open Skill Studio
           </Button>
         </div>
       </DialogContent>

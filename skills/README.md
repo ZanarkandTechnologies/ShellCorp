@@ -10,6 +10,7 @@ Prefer two layers when needed:
 ## Required Files
 
 - `SKILL.md` or legacy `skill.md`: workflow, commands, and guardrails.
+- Optional `skill.config.yaml`: structured Skill Studio metadata for UI, diagrams, dependencies, and safe package-level editing.
 - `tests/*.md` for skills with ShellCorp-native operational flows.
 
 ## Skill Contract Test Standard

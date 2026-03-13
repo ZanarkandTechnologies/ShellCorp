@@ -1,0 +1,36 @@
+interface:
+  display_name: "Competitor Feature Scout"
+  short_description: "Track competitor repo changes, keep skill-local MEMORY state, and post bounded ShellCorp follow-up suggestions."
+  brand_color: "#0F766E"
+  default_prompt: "Use this skill for daily competitor-repo monitoring when the goal is to extract product-significant ideas rather than copy code."
+policy:
+  allow_implicit_invocation: false
+dependencies:
+  tools: []
+  skills:
+    - "shellcorp-kanban-ops"
+  docs:
+    - "./MEMORY.md"
+state:
+  mode: "skill_memory"
+  memory_file: "MEMORY.md"
+paths:
+  read:
+    - "{skillDir}/SKILL.md"
+    - "{skillDir}/MEMORY.md"
+    - "{skillDir}/watchlist.md"
+  write:
+    - "{skillDir}/MEMORY.md"
+visualization:
+  mermaid: |
+    flowchart TD
+      watchlist[Read watchlist.md] --> memory[Read MEMORY.md cursor]
+      memory --> scan[Inspect recent repo changes]
+      scan --> decide{Copy or drop?}
+      decide --> post[Post ShellCorp follow-up]
+      post --> update[Update MEMORY.md]
+references:
+  - "./watchlist.md"
+  - "./MEMORY.md"
+demos:
+  labels: {}

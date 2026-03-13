@@ -185,6 +185,9 @@ const EMPTY_FILES_STATE: FilesState = {
 export function ManageAgentModal(): JSX.Element {
   const manageAgentEmployeeId = useAppStore((state) => state.manageAgentEmployeeId);
   const setManageAgentEmployeeId = useAppStore((state) => state.setManageAgentEmployeeId);
+  const setIsSkillsPanelOpen = useAppStore((state) => state.setIsSkillsPanelOpen);
+  const setSelectedSkillStudioSkillId = useAppStore((state) => state.setSelectedSkillStudioSkillId);
+  const setSkillStudioFocusAgentId = useAppStore((state) => state.setSkillStudioFocusAgentId);
   const { employees } = useOfficeDataContext();
   const employee = employees.find((row) => row._id === manageAgentEmployeeId) ?? null;
   const isOpen = !!manageAgentEmployeeId;
@@ -518,6 +521,12 @@ export function ManageAgentModal(): JSX.Element {
     }
   }
 
+  function openSkillStudio(skillId: string): void {
+    setSelectedSkillStudioSkillId(skillId);
+    setSkillStudioFocusAgentId(selectedAgentId);
+    setIsSkillsPanelOpen(true);
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && setManageAgentEmployeeId(null)}>
       <DialogContent className="sm:max-w-4xl min-h-[90vh]" style={{ zIndex: UI_Z.panelElevated }}>
@@ -576,6 +585,7 @@ export function ManageAgentModal(): JSX.Element {
                 fallbackSkills={fallbackSkills}
                 onReloadConfig={refreshConfigOnly}
                 onRefreshSkills={refreshSkills}
+                onOpenSkillStudio={openSkillStudio}
               />
             </TabsContent>
             <TabsContent value="channels" className="space-y-4">
