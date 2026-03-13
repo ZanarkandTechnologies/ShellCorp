@@ -25,14 +25,15 @@ Office objects can now carry metadata-driven runtime UI bindings while keeping b
   - Configured objects open a routed runtime panel instead of the radial menu
 - **Embeds first**:
   - Runtime panel supports iframe-backed embeds with an external-open fallback for blocked sites
-  - Metadata contract reserves future `skillBinding` support without changing the persistence shape
+  - Objects can optionally bind a `skillId`; live agent activity resolves that semantic skill to the hosting object for in-scene targeting without coupling status to object IDs
 
 **Key Files**:
 
-- **`office-object-ui.ts`**: typed metadata helpers for `uiBinding` and future `skillBinding`
-- **`components/object-config-panel.tsx`**: builder-only embed configuration panel
+- **`office-object-ui.ts`**: typed metadata helpers for `uiBinding` and `skillBinding`
+- **`components/object-config-panel.tsx`**: builder-side embed and skill-binding configuration panel
 - **`components/object-interaction-panel.tsx`**: runtime object panel/iframe viewer
 - **`components/interactive-object.tsx`**: builder gating, runtime click routing, persisted scaling
+- **`skill-targeting.ts`**: pure `skillId -> object anchor` resolution for avatar activity targeting
 
 ---
 

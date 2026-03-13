@@ -6,36 +6,37 @@
  * - Team KPI management.
  * - Team role-slot management.
  */
-import { Command } from "commander";
+import type { Command } from "commander";
 import {
-  type SidecarStore,
-  type CompanyModel,
-  type CompanyAgentModel,
-  ensureCommandPermission,
-  resolveProjectOrFail,
-  projectIdFromTeamId,
-  buildTeamSummaries,
   buildAutoAgents,
   buildAutoRoleSlots,
   buildBusinessAgents,
   buildBusinessRoleSlots,
-  provisionOpenclawAgents,
-  deregisterOpenclawAgents,
-  upsertTeamCluster,
-  ensureBusinessHeartbeatProfiles,
+  buildTeamSummaries,
+  type CompanyAgentModel,
+  type CompanyModel,
+  collectValue,
+  copyBusinessHeartbeatTemplates,
   defaultBusinessConfig,
   defaultProjectResources,
-  copyBusinessHeartbeatTemplates,
-  upsertBusinessCronJobs,
-  toSlug,
-  normalizeKpis,
-  parseRoles,
-  parseRoleSlotRole,
-  parseSpawnPolicy,
-  parseBusinessType,
-  collectValue,
-  formatOutput,
+  deregisterOpenclawAgents,
+  ensureBusinessHeartbeatProfiles,
+  ensureCommandPermission,
   fail,
+  formatOutput,
+  normalizeKpis,
+  parseBusinessType,
+  parseRoleSlotRole,
+  parseRoles,
+  parseSpawnPolicy,
+  projectIdFromTeamId,
+  provisionOpenclawAgents,
+  removeTeamClusters,
+  resolveProjectOrFail,
+  type SidecarStore,
+  toSlug,
+  upsertBusinessCronJobs,
+  upsertTeamCluster,
 } from "./_shared.js";
 
 export function registerTeamCore(team: Command, store: SidecarStore): void {
@@ -297,6 +298,13 @@ export function registerTeamCore(team: Command, store: SidecarStore): void {
         ),
       };
       await store.writeCompanyModel(nextCompany);
+      const officeObjects = await store.readOfficeObjects();
+      const nextOfficeObjects = removeTeamClusters(officeObjects, {
+        teamId: opts.teamId.trim(),
+      });
+      if (nextOfficeObjects.length !== officeObjects.length) {
+        await store.writeOfficeObjects(nextOfficeObjects);
+      }
       if (opts.deregisterOpenclaw) {
         await deregisterOpenclawAgents({ store, agentIds: archivedAgentIds });
       }

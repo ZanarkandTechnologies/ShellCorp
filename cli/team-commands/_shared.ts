@@ -13,28 +13,30 @@
  * - MEM-0104
  * - MEM-0183
  */
-import path from "node:path";
+
 import { execFile } from "node:child_process";
-import { access, cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { promisify } from "node:util";
-import { buildNewTeamClusterObject } from "../team-cluster-placement.js";
-import {
+import type {
+  AgentRole,
+  BusinessConfigModel,
+  CapabilitySlotModel,
+  CompanyAgentModel,
+  CompanyModel,
   createSidecarStore,
-  type AgentRole,
-  type BusinessConfigModel,
-  type CapabilitySlotModel,
-  type CompanyAgentModel,
-  type CompanyModel,
-  type HeartbeatProfileModel,
-  type OfficeObjectModel,
-  type ProjectResourceModel,
-  type ProjectAccountModel,
-  type ProjectAccountEventModel,
-  type ResourceEventModel,
-  type ResourceType,
-  type RoleSlotModel,
-  type SpawnPolicy,
+  HeartbeatProfileModel,
+  OfficeObjectModel,
+  ProjectAccountEventModel,
+  ProjectAccountModel,
+  ProjectResourceModel,
+  ResourceEventModel,
+  ResourceType,
+  RoleSlotModel,
+  SpawnPolicy,
 } from "../sidecar-store.js";
+import { buildNewTeamClusterObject } from "../team-cluster-placement.js";
+
 export type { OutputMode } from "../cli-utils.js";
 export { fail, formatOutput } from "../cli-utils.js";
 
@@ -434,7 +436,7 @@ export function ensureProjectAccount(
   project: CompanyModel["projects"][number],
 ): ProjectAccountModel {
   const existing = (project as { account?: ProjectAccountModel }).account;
-  if (existing && existing.id) return existing;
+  if (existing?.id) return existing;
   const accountEvents =
     (project as { accountEvents?: ProjectAccountEventModel[] }).accountEvents ?? [];
   const derivedBalance =
@@ -525,6 +527,27 @@ export function upsertTeamCluster(
     },
   };
   return next;
+}
+
+export function removeTeamClusters(
+  officeObjects: OfficeObjectModel[],
+  input: { teamId: string },
+): OfficeObjectModel[] {
+  const trimmedTeamId = input.teamId.trim();
+  if (!trimmedTeamId) return officeObjects;
+  const legacyClusterId = `cluster-${trimmedTeamId}`;
+  const currentClusterId = `team-cluster-${trimmedTeamId}`;
+  return officeObjects.filter((object) => {
+    if (object.meshType !== "team-cluster") return true;
+    const metadataTeamId =
+      object.metadata && typeof object.metadata.teamId === "string"
+        ? object.metadata.teamId.trim()
+        : "";
+    if (metadataTeamId === trimmedTeamId) return false;
+    if (object.id === legacyClusterId || object.identifier === legacyClusterId) return false;
+    if (object.id === currentClusterId || object.identifier === currentClusterId) return false;
+    return true;
+  });
 }
 
 export function buildTeamSummaries(company: CompanyModel): TeamSummary[] {

@@ -9,3 +9,8 @@ dist/
 
 
 skills/external/
+
+# Ignore .files
+.*/
+
+/docs/research/*/*

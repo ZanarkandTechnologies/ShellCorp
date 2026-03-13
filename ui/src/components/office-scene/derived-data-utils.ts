@@ -16,138 +16,118 @@
  * - MEM-0150
  */
 
-import type { StatusType } from '../../features/nav-system/components/status-indicator';
-import { SAMPLE_MESSAGES } from '../../constants/idle-messages';
-import type { DeskLayoutData, EmployeeData, TeamData } from '../../lib/types';
-import { HALF_FLOOR } from '../../constants';
+import { SAMPLE_MESSAGES } from "../../constants/idle-messages";
+import type { StatusType } from "../../features/nav-system/components/status-indicator";
+import type { DeskLayoutData, EmployeeData, TeamData } from "../../lib/types";
 
 function hashString(str: string): number {
-    if (!str || str.length === 0) return 0;
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
-    }
-    return Math.abs(hash);
+  if (!str || str.length === 0) return 0;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
 }
 
 function seededRandom(seed: string, offset: number = 0): number {
-    if (!seed) return 0.5;
-    const hash = hashString(seed + offset.toString());
-    return (hash % 1000) / 1000;
+  if (!seed) return 0.5;
+  const hash = hashString(seed + offset.toString());
+  return (hash % 1000) / 1000;
 }
 
 export function assignRandomStatuses(
-    employees: EmployeeData[],
-    teamWanderLocks: Map<string, number | undefined>,
+  employees: EmployeeData[],
+  teamWanderLocks: Map<string, number | undefined>,
 ): EmployeeData[] {
-    const statusTypes: StatusType[] = ['info', 'success', 'question', 'warning'];
-    const now = Date.now();
+  const statusTypes: StatusType[] = ["info", "success", "question", "warning"];
+  const now = Date.now();
 
-    return employees.map((employee) => {
-        const hasActiveHeartbeatState = Boolean(
-            employee.heartbeatState
-            && employee.heartbeatState !== 'idle'
-            && employee.heartbeatState !== 'no_work',
-        );
-        const isIdleHeartbeatState =
-            employee.heartbeatState === 'idle' || employee.heartbeatState === 'no_work';
-        const teamLockUntil = teamWanderLocks.get(employee.teamId);
-        const isTeamLocked = teamLockUntil !== undefined && teamLockUntil > now;
+  return employees.map((employee) => {
+    const hasActiveHeartbeatState = Boolean(
+      employee.heartbeatState &&
+        employee.heartbeatState !== "idle" &&
+        employee.heartbeatState !== "no_work",
+    );
+    const isIdleHeartbeatState =
+      employee.heartbeatState === "idle" || employee.heartbeatState === "no_work";
+    const teamLockUntil = teamWanderLocks.get(employee.teamId);
+    const isTeamLocked = teamLockUntil !== undefined && teamLockUntil > now;
 
-        if (employee.builtInRole === 'ceo') {
-            return {
-                ...employee,
-                status: 'info' as StatusType,
-                statusMessage: employee.statusMessage || 'Managing the team',
-                wantsToWander: false,
-            };
-        }
+    if (employee.builtInRole === "ceo") {
+      return {
+        ...employee,
+        status: "info" as StatusType,
+        statusMessage: employee.statusMessage || "Managing the team",
+        wantsToWander: false,
+      };
+    }
 
-        const wanderRandom = seededRandom(employee._id, 1);
-        const statusRandom = seededRandom(employee._id, 2);
-        const statusTypeRandom = seededRandom(employee._id, 3);
-        const messageRandom = seededRandom(employee._id, 4);
-        const messageIndexRandom = seededRandom(employee._id, 5);
+    const wanderRandom = seededRandom(employee._id, 1);
+    const statusRandom = seededRandom(employee._id, 2);
+    const statusTypeRandom = seededRandom(employee._id, 3);
+    const messageRandom = seededRandom(employee._id, 4);
+    const messageIndexRandom = seededRandom(employee._id, 5);
 
-        const wantsToWander = isTeamLocked ? false : wanderRandom < 0.5;
+    const wantsToWander = isTeamLocked ? false : wanderRandom < 0.5;
 
-        if (hasActiveHeartbeatState) {
-            return {
-                ...employee,
-                wantsToWander,
-            };
-        }
+    if (hasActiveHeartbeatState) {
+      return {
+        ...employee,
+        wantsToWander,
+      };
+    }
 
-        if (statusRandom < 0.6) {
-            const randomStatus =
-                statusTypes[Math.floor(statusTypeRandom * statusTypes.length)];
-            const shouldHaveMessage = messageRandom < 0.75;
-            const randomMessage = shouldHaveMessage
-                ? SAMPLE_MESSAGES[Math.floor(messageIndexRandom * SAMPLE_MESSAGES.length)]
-                : employee.statusMessage;
-            const nextMessage = isIdleHeartbeatState
-                ? randomMessage || employee.statusMessage
-                : employee.statusMessage;
+    if (statusRandom < 0.6) {
+      const randomStatus = statusTypes[Math.floor(statusTypeRandom * statusTypes.length)];
+      const shouldHaveMessage = messageRandom < 0.75;
+      const randomMessage = shouldHaveMessage
+        ? SAMPLE_MESSAGES[Math.floor(messageIndexRandom * SAMPLE_MESSAGES.length)]
+        : employee.statusMessage;
+      const nextMessage = isIdleHeartbeatState
+        ? randomMessage || employee.statusMessage
+        : employee.statusMessage;
 
-            return {
-                ...employee,
-                status: randomStatus as StatusType,
-                statusMessage: nextMessage,
-                wantsToWander,
-            };
-        }
+      return {
+        ...employee,
+        status: randomStatus as StatusType,
+        statusMessage: nextMessage,
+        wantsToWander,
+      };
+    }
 
-        return {
-            ...employee,
-            wantsToWander,
-        };
-    });
+    return {
+      ...employee,
+      wantsToWander,
+    };
+  });
 }
 
 export function buildDesksByTeamId(desks: DeskLayoutData[]): Map<string, DeskLayoutData[]> {
-    const desksByTeamId = new Map<string, DeskLayoutData[]>();
+  const desksByTeamId = new Map<string, DeskLayoutData[]>();
 
-    for (const desk of desks) {
-        const prefix = 'desk-';
-        if (!desk.id.startsWith(prefix)) continue;
-        const lastDashIndex = desk.id.lastIndexOf('-');
-        if (lastDashIndex <= prefix.length) continue;
-        const teamId = desk.id.slice(prefix.length, lastDashIndex);
-        const current = desksByTeamId.get(teamId);
-        if (current) {
-            current.push(desk);
-        } else {
-            desksByTeamId.set(teamId, [desk]);
-        }
+  for (const desk of desks) {
+    const prefix = "desk-";
+    if (!desk.id.startsWith(prefix)) continue;
+    const lastDashIndex = desk.id.lastIndexOf("-");
+    if (lastDashIndex <= prefix.length) continue;
+    const teamId = desk.id.slice(prefix.length, lastDashIndex);
+    const current = desksByTeamId.get(teamId);
+    if (current) {
+      current.push(desk);
+    } else {
+      desksByTeamId.set(teamId, [desk]);
     }
+  }
 
-    return desksByTeamId;
+  return desksByTeamId;
 }
 
 export function buildTeamWanderLocks(teams: TeamData[]): Map<string, number | undefined> {
-    const locks = new Map<string, number | undefined>();
-    for (const team of teams) {
-        locks.set(team._id, team.wanderLockUntil);
-    }
-    return locks;
-}
-
-export function getCeoAnchorFromGlassWalls(
-    glassWallObjects: Array<{ position: [number, number, number] }>,
-): [number, number, number] {
-    if (glassWallObjects.length === 0) return [0, 0, 15];
-
-    const avgX =
-        glassWallObjects.reduce((sum, wall) => sum + wall.position[0], 0) / glassWallObjects.length;
-    const maxZ = glassWallObjects.reduce((max, wall) => Math.max(max, wall.position[2]), -Infinity);
-    const x = Number.isFinite(avgX) ? avgX : 0;
-    const z = Number.isFinite(maxZ) ? maxZ : 15;
-
-    return [
-        Math.max(-HALF_FLOOR + 2, Math.min(HALF_FLOOR - 2, x)),
-        0,
-        Math.max(-HALF_FLOOR + 2, Math.min(HALF_FLOOR - 2, z)),
-    ];
+  const locks = new Map<string, number | undefined>();
+  for (const team of teams) {
+    locks.set(team._id, team.wanderLockUntil);
+  }
+  return locks;
 }

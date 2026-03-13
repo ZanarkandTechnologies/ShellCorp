@@ -15,6 +15,13 @@ The repo is split into a few main surfaces:
 - `ui/`: the Vite/React office UI and its local state bridge
 - `templates/`: bootstrap files for OpenClaw config, sidecars, and workspace scaffolding
 
+Package management is workspace-based:
+
+- root `package.json`: orchestration scripts, shared tooling, and root-owned code
+- `ui/package.json`: UI/runtime web dependencies
+- `cli/package.json`: CLI/runtime Node dependencies
+- `extensions/notion/package.json`: Notion plugin metadata and plugin-local runtime dependencies
+
 Canonical local state lives under `~/.openclaw`, especially:
 
 - `~/.openclaw/openclaw.json`
@@ -92,7 +99,6 @@ Notes:
 - Start the UI with `npm run shell -- ui` from the repo root.
 - `shellcorp onboarding` can run `npm link` for you, or you can run it manually first.
 - In non-interactive flows such as `--yes`, pass `--install-cli` if you want onboarding to run `npm link`.
-
 - Use `shellcorp onboarding --launch-ui` if you want the CLI to jump straight into the UI after bootstrap.
 
 ## Minimal Demo Flow
@@ -133,6 +139,18 @@ npm run typecheck
 npm run build
 ```
 
+Workspace note:
+
+- `npm run typecheck` is the workspace-wide TypeScript gate and includes the UI package.
+- `npm run typecheck:root` checks only the repo-root/CLI/Convex TypeScript program.
+- `npm run build` currently preserves the narrower root-owned build gate; use `npm run ui:build` for the Vite bundle.
+
+Install from the repo root so npm workspaces wire the UI and CLI packages together:
+
+```bash
+npm install
+```
+
 Useful commands:
 
 - `npm run shell -- onboarding --json`
@@ -162,7 +180,6 @@ Developer notes:
 - The CLI and UI both read ShellCorp sidecars from `~/.openclaw`.
 - The UI reads `VITE_*` values from `ui/.env.local`; backend/private env stays in the repo-root `.env.local`.
 - The global `shellcorp` alias comes from the package `bin` entry plus `npm link`.
-
 - `templates/` is only for bootstrap and scaffolding. It is not the live source of truth after onboarding runs.
 
 ## More Docs

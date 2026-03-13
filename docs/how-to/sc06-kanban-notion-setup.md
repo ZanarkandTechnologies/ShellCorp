@@ -97,49 +97,66 @@ Task cards should show:
 
 This stores a project-scoped provider profile used for stable context-tool metadata generation.
 
-## Step 6: Phase A Temporary Probe (FastAPI)
+## Step 6: Configure Stable Inbound Webhook URL
 
-Use this only to capture real webhook payloads and complete Notion subscription verification.
+Use one stable plugin-owned URL from the start. Do not verify one URL and later change it in Notion.
 
-1. Start probe server:
+1. Add plugin webhook config:
 
-```bash
-cd /home/kenjipcx/Zanarkand/ShellCorp/tools/notion-webhook-probe
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn server:app --host 0.0.0.0 --port 8321
+```json
+{
+  "plugins": {
+    "entries": {
+      "notion-shell": {
+        "enabled": true,
+        "config": {
+          "defaultAccountId": "default",
+          "webhook": {
+            "path": "/plugins/notion-shell/webhook",
+            "targetAgentId": "main"
+          }
+        }
+      }
+    }
+  }
+}
 ```
 
-1. Expose via Tailscale Funnel:
+2. Add hooks config so the plugin can proxy accepted comments into `/hooks/agent`:
 
-```bash
-tailscale funnel 8321
+```json
+{
+  "hooks": {
+    "enabled": true,
+    "token": "replace_with_dedicated_hook_secret",
+    "allowRequestSessionKey": true,
+    "allowedSessionKeyPrefixes": ["hook:notion:"],
+    "allowedAgentIds": ["main", "hooks"]
+  }
+}
 ```
 
-1. In Notion webhook settings, set:
+3. Expose the gateway via your public HTTPS ingress.
+
+4. In Notion webhook settings, set:
 
 ```text
-https://<machine>.<tailnet>.ts.net/hooks/notion
+https://<public-host>/plugins/notion-shell/webhook
 ```
 
-1. Verify subscription:
-   - Notion sends `{"verification_token":"secret_..."}` once.
-   - Probe logs token in stdout.
-   - Paste token into Notion verification UI.
+5. Verify subscription:
+   - Notion sends `{"verification_token":"secret_..."}` to that exact URL.
+   - The plugin logs that it saw the token.
+   - Paste the token into the Notion verification UI.
+   - Persist the same token into `plugins.entries.notion-shell.config.webhook.verificationToken`.
 
-2. Trigger payload capture:
-   - Add test comments on a page the integration can access.
-   - Include one comment with wake-word and one without.
-   - Probe writes payload JSON files under `tools/notion-webhook-probe/payloads/`.
+## Step 7: Optional Payload Probe
 
-## Step 7: Phase B Hot-Swap to OpenClaw Hooks (Production)
+Use the FastAPI probe only if you need live payload fixtures.
 
-1. Add `hooks` config to `~/.openclaw/openclaw.json` (see `docs/how-to/notion-comment-hook-contract.md`).
-2. Add transform module at `~/.openclaw/hooks/transforms/notion.ts`.
-3. Point Funnel at OpenClaw gateway port (`18789`) instead of probe.
-4. Keep webhook path as `/hooks/notion`.
-5. Re-test with a wake-word comment.
+1. Keep the same public URL if you proxy traffic through the probe temporarily.
+2. Save captured payloads under `tools/notion-webhook-probe/payloads/`.
+3. Do not change the webhook URL in Notion after verification unless you are prepared to delete and recreate the subscription.
 
 ## Step 8: Validate End-to-End Quickly
 
@@ -151,11 +168,12 @@ https://<machine>.<tailnet>.ts.net/hooks/notion
 
 ## Notion Comments Provider Status
 
-Yes, you can install and run it now in local/in-repo mode with the two-phase workflow.
+Yes, you can install and run it now in local/in-repo mode with the stable plugin-owned webhook workflow.
 
 - Outbound Notion comment sending is available through the registered Notion channel plugin.
-- Inbound webhook mapping is now based on OpenClaw hooks (`/hooks/<name>`) and transform modules.
-- Use the temporary FastAPI probe only for verification/payload discovery; remove it once OpenClaw mapping is active.
+- Inbound webhook verification and signature validation now happen in the plugin at `/plugins/notion-shell/webhook`.
+- Accepted comments are proxied internally into OpenClaw `/hooks/agent`.
+- Use the temporary FastAPI probe only for payload discovery or fixture capture.
 
 ## Deprecated from Active Onboarding
 

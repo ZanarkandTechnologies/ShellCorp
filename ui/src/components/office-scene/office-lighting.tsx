@@ -14,18 +14,17 @@
  */
 
 import type { getOfficeTheme } from "@/config/office-theme";
-import type { OfficeFootprint } from "@/lib/office-footprint";
-import { getOfficeFootprintHalfExtents } from "@/lib/office-footprint";
+import { getOfficeLayoutBounds, type OfficeLayoutModel } from "@/lib/office-layout";
 import type { OfficeSceneViewSettings } from "./view-profile";
 
 export function OfficeLighting(props: {
   officeTheme: ReturnType<typeof getOfficeTheme>;
-  officeFootprint: OfficeFootprint;
+  officeLayout: OfficeLayoutModel;
   officeViewSettings: OfficeSceneViewSettings;
   sceneBuilderMode: boolean;
 }): JSX.Element {
-  const { officeTheme, officeFootprint, officeViewSettings, sceneBuilderMode } = props;
-  const { halfWidth, halfDepth } = getOfficeFootprintHalfExtents(officeFootprint);
+  const { officeTheme, officeLayout, officeViewSettings, sceneBuilderMode } = props;
+  const bounds = getOfficeLayoutBounds(officeLayout);
   const isIsometricView = officeViewSettings.viewProfile === "fixed_2_5d";
 
   return (
@@ -39,10 +38,10 @@ export function OfficeLighting(props: {
         shadow-mapSize-width={sceneBuilderMode ? 1024 : 2048}
         shadow-mapSize-height={sceneBuilderMode ? 1024 : 2048}
         shadow-camera-far={50}
-        shadow-camera-left={-halfWidth - 5}
-        shadow-camera-right={halfWidth + 5}
-        shadow-camera-top={halfDepth + 5}
-        shadow-camera-bottom={-halfDepth - 5}
+        shadow-camera-left={bounds.minWorldX - 5}
+        shadow-camera-right={bounds.maxWorldX + 5}
+        shadow-camera-top={bounds.maxWorldZ + 5}
+        shadow-camera-bottom={bounds.minWorldZ - 5}
       />
       <pointLight
         position={[-10, 10, -10]}

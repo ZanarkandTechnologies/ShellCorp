@@ -1,8 +1,8 @@
-import { access, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerDoctorCommands, registerTeamCommands } from "./team-commands/index.js";
 
 const baseCompany = {
@@ -12,13 +12,49 @@ const baseCompany = {
     { id: "dept-products", name: "Product Studio", description: "", goal: "" },
   ],
   projects: [],
-  agents: [{ agentId: "main", role: "ceo", heartbeatProfileId: "hb-ceo", isCeo: true, lifecycleState: "active" }],
+  agents: [
+    {
+      agentId: "main",
+      role: "ceo",
+      heartbeatProfileId: "hb-ceo",
+      isCeo: true,
+      lifecycleState: "active",
+    },
+  ],
   roleSlots: [],
   heartbeatProfiles: [
-    { id: "hb-ceo", role: "ceo", cadenceMinutes: 15, teamDescription: "", productDetails: "", goal: "" },
-    { id: "hb-builder", role: "builder", cadenceMinutes: 10, teamDescription: "", productDetails: "", goal: "" },
-    { id: "hb-growth", role: "growth_marketer", cadenceMinutes: 20, teamDescription: "", productDetails: "", goal: "" },
-    { id: "hb-pm", role: "pm", cadenceMinutes: 10, teamDescription: "", productDetails: "", goal: "" },
+    {
+      id: "hb-ceo",
+      role: "ceo",
+      cadenceMinutes: 15,
+      teamDescription: "",
+      productDetails: "",
+      goal: "",
+    },
+    {
+      id: "hb-builder",
+      role: "builder",
+      cadenceMinutes: 10,
+      teamDescription: "",
+      productDetails: "",
+      goal: "",
+    },
+    {
+      id: "hb-growth",
+      role: "growth_marketer",
+      cadenceMinutes: 20,
+      teamDescription: "",
+      productDetails: "",
+      goal: "",
+    },
+    {
+      id: "hb-pm",
+      role: "pm",
+      cadenceMinutes: 10,
+      teamDescription: "",
+      productDetails: "",
+      goal: "",
+    },
   ],
   tasks: [],
   channelBindings: [],
@@ -40,7 +76,13 @@ type CompanySnapshot = {
       };
     };
     trackingContext?: string;
-    account?: { id: string; projectId: string; currency: string; balanceCents: number; updatedAt: string };
+    account?: {
+      id: string;
+      projectId: string;
+      currency: string;
+      balanceCents: number;
+      updatedAt: string;
+    };
     accountEvents?: Array<{
       id: string;
       projectId: string;
@@ -55,7 +97,13 @@ type CompanySnapshot = {
     ledger?: unknown[];
     experiments?: unknown[];
     metricEvents?: unknown[];
-    resources?: Array<{ id: string; type: string; remaining: number; limit: number; reserved?: number }>;
+    resources?: Array<{
+      id: string;
+      type: string;
+      remaining: number;
+      limit: number;
+      reserved?: number;
+    }>;
     resourceEvents?: Array<{
       id?: string;
       projectId?: string;
@@ -69,7 +117,12 @@ type CompanySnapshot = {
   }>;
   roleSlots: Array<{ projectId: string; desiredCount: number; role?: string }>;
   heartbeatProfiles: Array<{ id: string; goal: string }>;
-  agents: Array<{ agentId?: string; projectId?: string; heartbeatProfileId: string; role?: string }>;
+  agents: Array<{
+    agentId?: string;
+    projectId?: string;
+    heartbeatProfileId: string;
+    role?: string;
+  }>;
   teamProposals?: Array<{
     id: string;
     approvalStatus: string;
@@ -81,7 +134,11 @@ type CompanySnapshot = {
 
 async function setupStateDir(): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "shellcorp-cli-test-"));
-  await writeFile(path.join(dir, "company.json"), `${JSON.stringify(baseCompany, null, 2)}\n`, "utf-8");
+  await writeFile(
+    path.join(dir, "company.json"),
+    `${JSON.stringify(baseCompany, null, 2)}\n`,
+    "utf-8",
+  );
   await writeFile(path.join(dir, "office-objects.json"), "[]\n", "utf-8");
   await writeFile(
     path.join(dir, "openclaw.json"),
@@ -202,9 +259,75 @@ describe("team CLI", () => {
     expect(project).toBeTruthy();
     expect(project?.status).toBe("archived");
     expect(project?.kpis).toEqual(["weekly_shipped_tickets", "closed_vs_open_ticket_ratio"]);
-    expect(finalModel.roleSlots.filter((entry) => entry.projectId === "proj-alpha").every((entry) => entry.desiredCount === 0)).toBe(
-      true,
+    expect(
+      finalModel.roleSlots
+        .filter((entry) => entry.projectId === "proj-alpha")
+        .every((entry) => entry.desiredCount === 0),
+    ).toBe(true);
+  });
+
+  it("removes archived team clusters from office sidecar state", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await writeFile(
+      path.join(stateDir, "office-objects.json"),
+      `${JSON.stringify(
+        [
+          {
+            id: "team-cluster-team-proj-alpha",
+            identifier: "team-cluster-team-proj-alpha",
+            meshType: "team-cluster",
+            position: [0, 0, 8],
+            rotation: [0, 0, 0],
+            metadata: { teamId: "team-proj-alpha", name: "Alpha" },
+          },
+          {
+            id: "cluster-team-proj-alpha",
+            identifier: "cluster-team-proj-alpha",
+            meshType: "team-cluster",
+            position: [1, 0, 8],
+            rotation: [0, 0, 0],
+            metadata: { teamId: "team-proj-alpha" },
+          },
+          {
+            id: "team-cluster-team-proj-beta",
+            identifier: "team-cluster-team-proj-beta",
+            meshType: "team-cluster",
+            position: [2, 0, 8],
+            rotation: [0, 0, 0],
+            metadata: { teamId: "team-proj-beta", name: "Beta" },
+          },
+        ],
+        null,
+        2,
+      )}\n`,
+      "utf-8",
     );
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Alpha",
+      "--description",
+      "Core team",
+      "--goal",
+      "Ship fast",
+    ]);
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Beta",
+      "--description",
+      "Second team",
+      "--goal",
+      "Stay active",
+    ]);
+
+    await runCommand(["team", "archive", "--team-id", "team-proj-alpha"]);
+
+    const officeObjects = await readOfficeObjects(stateDir);
+    expect(officeObjects.map((entry) => entry.id)).toEqual(["team-cluster-team-proj-beta"]);
   });
 
   it("supports explicit team show and KPI set/clear commands", async () => {
@@ -301,7 +424,15 @@ describe("team CLI", () => {
     const proposalId = afterCreate.teamProposals?.[0]?.id;
     expect(proposalId).toBeTruthy();
 
-    await runCommand(["team", "proposal", "approve", "--proposal-id", proposalId!, "--note", "looks good"]);
+    await runCommand([
+      "team",
+      "proposal",
+      "approve",
+      "--proposal-id",
+      proposalId!,
+      "--note",
+      "looks good",
+    ]);
     await runCommand(["team", "proposal", "execute", "--proposal-id", proposalId!]);
 
     const finalRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
@@ -310,7 +441,9 @@ describe("team CLI", () => {
     expect(executed?.approvalStatus).toBe("approved");
     expect(executed?.executionStatus).toBe("created");
     expect(executed?.createdTeamId).toBe("team-proj-affiliate-content-engine-team");
-    expect(finalModel.projects.some((entry) => entry.id === "proj-affiliate-content-engine-team")).toBe(true);
+    expect(
+      finalModel.projects.some((entry) => entry.id === "proj-affiliate-content-engine-team"),
+    ).toBe(true);
 
     const teamClusters = (await readOfficeObjects(stateDir)).filter(
       (entry) => entry.meshType === "team-cluster",
@@ -359,7 +492,15 @@ describe("team CLI", () => {
     const proposalId = afterCreate.teamProposals?.[0]?.id;
     expect(proposalId).toBeTruthy();
 
-    await runCommand(["team", "proposal", "approve", "--proposal-id", proposalId!, "--note", "looks good"]);
+    await runCommand([
+      "team",
+      "proposal",
+      "approve",
+      "--proposal-id",
+      proposalId!,
+      "--note",
+      "looks good",
+    ]);
     await runCommand(["team", "proposal", "execute", "--proposal-id", proposalId!]);
 
     const clusterByTeamId = new Map(
@@ -435,12 +576,17 @@ describe("team CLI", () => {
 
     const finalRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
     const finalModel = JSON.parse(finalRaw) as CompanySnapshot;
-    const heartbeat = finalModel.heartbeatProfiles.find((entry) => entry.id === "hb-team-proj-beta");
+    const heartbeat = finalModel.heartbeatProfiles.find(
+      (entry) => entry.id === "hb-team-proj-beta",
+    );
     expect(heartbeat).toBeTruthy();
     expect(heartbeat?.goal).toBe("Reduce backlog");
-    expect(finalModel.agents.some((entry) => entry.projectId === "proj-beta" && entry.heartbeatProfileId === "hb-team-proj-beta")).toBe(
-      true,
-    );
+    expect(
+      finalModel.agents.some(
+        (entry) =>
+          entry.projectId === "proj-beta" && entry.heartbeatProfileId === "hb-team-proj-beta",
+      ),
+    ).toBe(true);
   });
 
   it("doctor reports broken references", async () => {
@@ -450,10 +596,20 @@ describe("team CLI", () => {
       ...baseCompany,
       agents: [
         ...baseCompany.agents,
-        { agentId: "broken-agent", role: "pm", projectId: "proj-missing", heartbeatProfileId: "hb-missing", lifecycleState: "active" },
+        {
+          agentId: "broken-agent",
+          role: "pm",
+          projectId: "proj-missing",
+          heartbeatProfileId: "hb-missing",
+          lifecycleState: "active",
+        },
       ],
     };
-    await writeFile(path.join(stateDir, "company.json"), `${JSON.stringify(broken, null, 2)}\n`, "utf-8");
+    await writeFile(
+      path.join(stateDir, "company.json"),
+      `${JSON.stringify(broken, null, 2)}\n`,
+      "utf-8",
+    );
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await runCommand(["doctor", "team-data"]);
@@ -481,7 +637,7 @@ describe("team CLI", () => {
     const project = model.projects.find((entry) => entry.id === "proj-brokenresource");
     expect(project).toBeTruthy();
     project!.resourceEvents = [
-      ...(project!.resourceEvents ?? []),
+      ...(project?.resourceEvents ?? []),
       {
         id: "bad-resource-event",
         projectId: "proj-brokenresource",
@@ -493,7 +649,11 @@ describe("team CLI", () => {
         source: "test",
       },
     ];
-    await writeFile(path.join(stateDir, "company.json"), `${JSON.stringify(model, null, 2)}\n`, "utf-8");
+    await writeFile(
+      path.join(stateDir, "company.json"),
+      `${JSON.stringify(model, null, 2)}\n`,
+      "utf-8",
+    );
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await runCommand(["doctor", "team-data"]);
@@ -527,7 +687,7 @@ describe("team CLI", () => {
       "--skill-id",
       "stripe-revenue",
       "--config-json",
-      "{\"apiKey\":\"sk_test\"}",
+      '{"apiKey":"sk_test"}',
     ]);
     await runCommand([
       "team",
@@ -557,10 +717,14 @@ describe("team CLI", () => {
     expect(project?.metricEvents ?? []).toEqual([]);
     expect((project?.resources ?? []).length).toBeGreaterThan(0);
     expect(project?.resourceEvents ?? []).toEqual([]);
-    const businessRoles = finalModel.roleSlots.filter((entry) => entry.projectId === "proj-affiliate").map((entry) => entry.role);
+    const businessRoles = finalModel.roleSlots
+      .filter((entry) => entry.projectId === "proj-affiliate")
+      .map((entry) => entry.role);
     expect(businessRoles).toContain("biz_pm");
     expect(businessRoles).toContain("biz_executor");
-    const businessAgentRoles = finalModel.agents.filter((entry) => entry.projectId === "proj-affiliate").map((entry) => entry.role);
+    const businessAgentRoles = finalModel.agents
+      .filter((entry) => entry.projectId === "proj-affiliate")
+      .map((entry) => entry.role);
     expect(businessAgentRoles).toContain("biz_pm");
     expect(businessAgentRoles).toContain("biz_executor");
     const openclawAgentIds = await readOpenclawAgentIds(stateDir);
@@ -586,8 +750,18 @@ describe("team CLI", () => {
 
     const cronRaw = await readFile(path.join(stateDir, "cron", "jobs.json"), "utf-8");
     const cronJobs = JSON.parse(cronRaw) as Array<{ id: string; agentId?: string }>;
-    expect(cronJobs.some((job) => job.id === "biz-heartbeat-proj-affiliate-pm" && job.agentId === "affiliate-pm")).toBe(true);
-    expect(cronJobs.some((job) => job.id === "biz-heartbeat-proj-affiliate-executor" && job.agentId === "affiliate-executor")).toBe(true);
+    expect(
+      cronJobs.some(
+        (job) => job.id === "biz-heartbeat-proj-affiliate-pm" && job.agentId === "affiliate-pm",
+      ),
+    ).toBe(true);
+    expect(
+      cronJobs.some(
+        (job) =>
+          job.id === "biz-heartbeat-proj-affiliate-executor" &&
+          job.agentId === "affiliate-executor",
+      ),
+    ).toBe(true);
 
     await runCommand([
       "team",
@@ -647,10 +821,16 @@ describe("team CLI", () => {
     const refreshedRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
     const refreshedModel = JSON.parse(refreshedRaw) as CompanySnapshot;
     const refreshedProject = refreshedModel.projects.find((entry) => entry.id === "proj-affiliate");
-    const cashResource = (refreshedProject?.resources ?? []).find((entry) => entry.id === "proj-affiliate:cash");
+    const cashResource = (refreshedProject?.resources ?? []).find(
+      (entry) => entry.id === "proj-affiliate:cash",
+    );
     expect(cashResource?.remaining).toBe(4100);
     expect(cashResource?.reserved).toBe(200);
-    expect((refreshedProject?.resourceEvents ?? []).some((entry) => entry.resourceId === "proj-affiliate:cash" && entry.kind === "refresh")).toBe(true);
+    expect(
+      (refreshedProject?.resourceEvents ?? []).some(
+        (entry) => entry.resourceId === "proj-affiliate:cash" && entry.kind === "refresh",
+      ),
+    ).toBe(true);
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await runCommand(["team", "business", "get", "--team-id", "team-proj-affiliate", "--json"]);
@@ -667,13 +847,39 @@ describe("team CLI", () => {
       "--json",
     ]);
     expect(logSpy).toHaveBeenCalled();
-    await runCommand(["team", "business", "context", "get", "--team-id", "team-proj-affiliate", "--json"]);
+    await runCommand([
+      "team",
+      "business",
+      "context",
+      "get",
+      "--team-id",
+      "team-proj-affiliate",
+      "--json",
+    ]);
     expect(logSpy).toHaveBeenCalled();
     await runCommand(["team", "resources", "list", "--team-id", "team-proj-affiliate", "--json"]);
     expect(logSpy).toHaveBeenCalled();
-    await runCommand(["team", "resources", "events", "--team-id", "team-proj-affiliate", "--limit", "3", "--json"]);
+    await runCommand([
+      "team",
+      "resources",
+      "events",
+      "--team-id",
+      "team-proj-affiliate",
+      "--limit",
+      "3",
+      "--json",
+    ]);
     expect(logSpy).toHaveBeenCalled();
-    await runCommand(["team", "heartbeat", "render", "--team-id", "team-proj-affiliate", "--role", "biz_pm", "--json"]);
+    await runCommand([
+      "team",
+      "heartbeat",
+      "render",
+      "--team-id",
+      "team-proj-affiliate",
+      "--role",
+      "biz_pm",
+      "--json",
+    ]);
     expect(logSpy).toHaveBeenCalled();
     logSpy.mockRestore();
 
@@ -691,7 +897,9 @@ describe("team CLI", () => {
     const removedRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
     const removedModel = JSON.parse(removedRaw) as CompanySnapshot;
     const removedProject = removedModel.projects.find((entry) => entry.id === "proj-affiliate");
-    expect((removedProject?.resources ?? []).some((entry) => entry.id === "proj-affiliate:distribution")).toBe(false);
+    expect(
+      (removedProject?.resources ?? []).some((entry) => entry.id === "proj-affiliate:distribution"),
+    ).toBe(false);
     expect(removedProject?.trackingContext).toContain("CAC");
   });
 
@@ -740,7 +948,9 @@ describe("team CLI", () => {
       agents?: { list?: Array<{ id?: string; skills?: string[] }> };
     };
     const pm = (openclawConfig.agents?.list ?? []).find((entry) => entry.id === "buffalos-ai-pm");
-    const executor = (openclawConfig.agents?.list ?? []).find((entry) => entry.id === "buffalos-ai-executor");
+    const executor = (openclawConfig.agents?.list ?? []).find(
+      (entry) => entry.id === "buffalos-ai-executor",
+    );
     expect(pm?.skills ?? []).toEqual(
       expect.arrayContaining([
         "amazon-affiliate-metrics",
@@ -752,7 +962,12 @@ describe("team CLI", () => {
       ]),
     );
     expect(executor?.skills ?? []).toEqual(
-      expect.arrayContaining(["amazon-affiliate-metrics", "video-generator", "tiktok-poster", "shellcorp-team-cli"]),
+      expect.arrayContaining([
+        "amazon-affiliate-metrics",
+        "video-generator",
+        "tiktok-poster",
+        "shellcorp-team-cli",
+      ]),
     );
   });
 
@@ -774,7 +989,9 @@ describe("team CLI", () => {
     const beforeRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
     const beforeConfig = JSON.parse(beforeRaw) as {
       version: number;
-      agents?: { list?: Array<{ id?: string; skills?: string[]; workspace?: string; agentDir?: string }> };
+      agents?: {
+        list?: Array<{ id?: string; skills?: string[]; workspace?: string; agentDir?: string }>;
+      };
     };
     const nextList = (beforeConfig.agents?.list ?? []).map((entry) =>
       entry.id === "delta-executor" ? { ...entry, skills: ["custom-existing-skill"] } : entry,
@@ -799,7 +1016,9 @@ describe("team CLI", () => {
     const afterDryRunConfig = JSON.parse(afterDryRunRaw) as {
       agents?: { list?: Array<{ id?: string; skills?: string[] }> };
     };
-    const afterDryRunExecutor = (afterDryRunConfig.agents?.list ?? []).find((entry) => entry.id === "delta-executor");
+    const afterDryRunExecutor = (afterDryRunConfig.agents?.list ?? []).find(
+      (entry) => entry.id === "delta-executor",
+    );
     expect(afterDryRunExecutor?.skills ?? []).toEqual(["custom-existing-skill"]);
 
     await runCommand([
@@ -816,9 +1035,16 @@ describe("team CLI", () => {
     const afterApplyConfig = JSON.parse(afterApplyRaw) as {
       agents?: { list?: Array<{ id?: string; skills?: string[] }> };
     };
-    const afterApplyExecutor = (afterApplyConfig.agents?.list ?? []).find((entry) => entry.id === "delta-executor");
+    const afterApplyExecutor = (afterApplyConfig.agents?.list ?? []).find(
+      (entry) => entry.id === "delta-executor",
+    );
     expect(afterApplyExecutor?.skills ?? []).toEqual(
-      expect.arrayContaining(["custom-existing-skill", "amazon-affiliate-metrics", "video-generator", "tiktok-poster"]),
+      expect.arrayContaining([
+        "custom-existing-skill",
+        "amazon-affiliate-metrics",
+        "video-generator",
+        "tiktok-poster",
+      ]),
     );
   });
 
@@ -852,10 +1078,29 @@ describe("team CLI", () => {
       "--distribute-skill-id",
       "tiktok-poster",
     ]);
-    await runCommand(["team", "business", "sync-workspace-skills", "--team-id", "team-proj-buffalos-ai", "--json"]);
-    await access(path.join(stateDir, "workspace-buffalos-ai-pm", "skills", "amazon-affiliate-metrics", "SKILL.md"));
-    await access(path.join(stateDir, "workspace-buffalos-ai-pm", "skills", "video-generator", "SKILL.md"));
-    await access(path.join(stateDir, "workspace-buffalos-ai-executor", "skills", "tiktok-poster", "SKILL.md"));
+    await runCommand([
+      "team",
+      "business",
+      "sync-workspace-skills",
+      "--team-id",
+      "team-proj-buffalos-ai",
+      "--json",
+    ]);
+    await access(
+      path.join(
+        stateDir,
+        "workspace-buffalos-ai-pm",
+        "skills",
+        "amazon-affiliate-metrics",
+        "SKILL.md",
+      ),
+    );
+    await access(
+      path.join(stateDir, "workspace-buffalos-ai-pm", "skills", "video-generator", "SKILL.md"),
+    );
+    await access(
+      path.join(stateDir, "workspace-buffalos-ai-executor", "skills", "tiktok-poster", "SKILL.md"),
+    );
     await access(path.join(process.cwd(), "skills", "execute", "video-generator", "SKILL.md"));
   });
 
@@ -885,15 +1130,30 @@ describe("team CLI", () => {
       "--simulate",
       "--json",
     ]);
-    const artefactDir = path.join(stateDir, "workspace-buffalos-ai-executor", "projects", "proj-buffalos-ai", "affiliate", "videos");
+    const artefactDir = path.join(
+      stateDir,
+      "workspace-buffalos-ai-executor",
+      "projects",
+      "proj-buffalos-ai",
+      "affiliate",
+      "videos",
+    );
     const names = await readdir(artefactDir);
     expect(names.filter((name) => name.endsWith(".mp4"))).toHaveLength(2);
     const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
     const company = JSON.parse(companyRaw) as CompanySnapshot;
     const project = company.projects.find((entry) => entry.id === "proj-buffalos-ai");
     expect(project).toBeTruthy();
-    expect((project?.ledger ?? []).filter((entry) => (entry as { source?: string }).source === "inference_sh").length).toBeGreaterThanOrEqual(2);
-    expect((project?.accountEvents ?? []).some((entry) => entry.source === "inference_sh" && entry.type === "debit")).toBe(true);
+    expect(
+      (project?.ledger ?? []).filter(
+        (entry) => (entry as { source?: string }).source === "inference_sh",
+      ).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      (project?.accountEvents ?? []).some(
+        (entry) => entry.source === "inference_sh" && entry.type === "debit",
+      ),
+    ).toBe(true);
   });
 
   it("does not duplicate existing openclaw agent entries when IDs already exist", async () => {
@@ -916,7 +1176,11 @@ describe("team CLI", () => {
         ],
       },
     };
-    await writeFile(path.join(stateDir, "openclaw.json"), `${JSON.stringify(existingConfig, null, 2)}\n`, "utf-8");
+    await writeFile(
+      path.join(stateDir, "openclaw.json"),
+      `${JSON.stringify(existingConfig, null, 2)}\n`,
+      "utf-8",
+    );
     await runCommand([
       "team",
       "create",
@@ -984,9 +1248,14 @@ describe("team CLI", () => {
       if (url.endsWith("/board/command")) {
         commandPayloads.push(payload);
         if (payload.command === "task_add") {
-          return new Response(JSON.stringify({ ok: true, duplicate: false, taskId: "task-1" }), { status: 200 });
+          return new Response(JSON.stringify({ ok: true, duplicate: false, taskId: "task-1" }), {
+            status: 200,
+          });
         }
-        return new Response(JSON.stringify({ ok: true, duplicate: false, taskId: payload.taskId ?? "task-1" }), { status: 200 });
+        return new Response(
+          JSON.stringify({ ok: true, duplicate: false, taskId: payload.taskId ?? "task-1" }),
+          { status: 200 },
+        );
       }
       if (url.endsWith("/board/query")) {
         queryPayloads.push(payload);
@@ -994,7 +1263,17 @@ describe("team CLI", () => {
           return new Response(
             JSON.stringify({
               ok: true,
-              data: { tasks: [{ taskId: "task-1", title: "Draft content", status: "todo", priority: "high", ownerAgentId: "delta-executor" }] },
+              data: {
+                tasks: [
+                  {
+                    taskId: "task-1",
+                    title: "Draft content",
+                    status: "todo",
+                    priority: "high",
+                    ownerAgentId: "delta-executor",
+                  },
+                ],
+              },
             }),
             { status: 200 },
           );
@@ -1003,7 +1282,14 @@ describe("team CLI", () => {
           return new Response(
             JSON.stringify({
               ok: true,
-              data: [{ agentId: "delta-executor", activityType: "executing", label: "Working task-1", occurredAt: Date.now() }],
+              data: [
+                {
+                  agentId: "delta-executor",
+                  activityType: "executing",
+                  label: "Working task-1",
+                  occurredAt: Date.now(),
+                },
+              ],
             }),
             { status: 200 },
           );
@@ -1011,12 +1297,22 @@ describe("team CLI", () => {
         return new Response(
           JSON.stringify({
             ok: true,
-            data: [{ taskId: "task-1", title: "Draft content", status: "todo", priority: "high", ownerAgentId: "delta-executor" }],
+            data: [
+              {
+                taskId: "task-1",
+                title: "Draft content",
+                status: "todo",
+                priority: "high",
+                ownerAgentId: "delta-executor",
+              },
+            ],
           }),
           { status: 200 },
         );
       }
-      return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), { status: 404 });
+      return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), {
+        status: 404,
+      });
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -1126,9 +1422,17 @@ describe("team CLI", () => {
     expect(commandPayloads.some((payload) => payload.beatId === "beat-delta-1")).toBe(true);
     expect(commandPayloads.some((payload) => payload.taskType === "team_proposal")).toBe(true);
     expect(commandPayloads.some((payload) => payload.approvalState === "approved")).toBe(true);
-    expect(commandPayloads.some((payload) => payload.linkedSessionKey === "agent:main:main")).toBe(true);
-    expect(commandPayloads.some((payload) => payload.createdTeamId === "team-proj-delta-launch")).toBe(true);
-    expect(commandPayloads.some((payload) => payload.command === "activity_log" && payload.beatId === "beat-delta-1")).toBe(true);
+    expect(commandPayloads.some((payload) => payload.linkedSessionKey === "agent:main:main")).toBe(
+      true,
+    );
+    expect(
+      commandPayloads.some((payload) => payload.createdTeamId === "team-proj-delta-launch"),
+    ).toBe(true);
+    expect(
+      commandPayloads.some(
+        (payload) => payload.command === "activity_log" && payload.beatId === "beat-delta-1",
+      ),
+    ).toBe(true);
     expect(queryPayloads.some((payload) => payload.teamId === "team-proj-delta")).toBe(true);
   });
 
@@ -1150,9 +1454,9 @@ describe("team CLI", () => {
       "affiliate_marketing",
     ]);
 
-    await expect(runCommand(["team", "board", "task", "list", "--team-id", "team-proj-invalidurl"])).rejects.toThrow(
-      "invalid_convex_site_url:127.0.0.1:3211",
-    );
+    await expect(
+      runCommand(["team", "board", "task", "list", "--team-id", "team-proj-invalidurl"]),
+    ).rejects.toThrow("invalid_convex_site_url:127.0.0.1:3211");
   });
 
   it("reports actionable board query network errors", async () => {
@@ -1178,7 +1482,9 @@ describe("team CLI", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(runCommand(["team", "board", "task", "list", "--team-id", "team-proj-networkerror"])).rejects.toThrow(
+    await expect(
+      runCommand(["team", "board", "task", "list", "--team-id", "team-proj-networkerror"]),
+    ).rejects.toThrow(
       "board_query_request_failed:connection_refused:url=http://127.0.0.1:3211/board/query",
     );
   });
@@ -1209,7 +1515,9 @@ describe("team CLI", () => {
         statusPayloads.push(payload);
         return new Response(JSON.stringify({ ok: true, duplicate: false }), { status: 200 });
       }
-      return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), { status: 404 });
+      return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), {
+        status: 404,
+      });
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -1273,9 +1581,14 @@ describe("team CLI", () => {
       const payload = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
       if (url.endsWith("/board/command")) {
         commandPayloads.push(payload);
-        return new Response(JSON.stringify({ ok: true, duplicate: false, taskId: payload.taskId ?? "task-1" }), { status: 200 });
+        return new Response(
+          JSON.stringify({ ok: true, duplicate: false, taskId: payload.taskId ?? "task-1" }),
+          { status: 200 },
+        );
       }
-      return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), { status: 404 });
+      return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), {
+        status: 404,
+      });
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -1339,7 +1652,15 @@ describe("team CLI", () => {
     const proposalId = afterCreate.teamProposals?.[0]?.id;
     expect(proposalId).toBeTruthy();
 
-    await runCommand(["team", "proposal", "approve", "--proposal-id", proposalId!, "--note", "approved"]);
+    await runCommand([
+      "team",
+      "proposal",
+      "approve",
+      "--proposal-id",
+      proposalId!,
+      "--note",
+      "approved",
+    ]);
 
     process.env.SHELLCORP_ACTOR_ROLE = "operator";
     process.env.SHELLCORP_ALLOWED_PERMISSIONS = "team.meta.write";
@@ -1391,7 +1712,16 @@ describe("team CLI", () => {
       "batch run",
     ]);
     await runCommand(["team", "funds", "balance", "--team-id", "team-proj-funds", "--json"]);
-    await runCommand(["team", "funds", "ledger", "--team-id", "team-proj-funds", "--limit", "5", "--json"]);
+    await runCommand([
+      "team",
+      "funds",
+      "ledger",
+      "--team-id",
+      "team-proj-funds",
+      "--limit",
+      "5",
+      "--json",
+    ]);
 
     const finalRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
     const finalModel = JSON.parse(finalRaw) as CompanySnapshot;

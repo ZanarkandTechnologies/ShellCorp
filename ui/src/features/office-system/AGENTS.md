@@ -8,6 +8,8 @@
 ## Invariants
 - Agent activity targets are keyed by `skillId`, never by persisted office-object IDs.
 - Office objects own placement and local runtime UI metadata; status events only report semantic activity.
+- Active project team clusters are derived from project/team state, not deletable furniture; builder delete affordances must steer operators toward archive/remove-team flows instead of pretending a cluster delete will remove the underlying team. `MEM-0182`
+- Builder object movement must constrain against the live `officeLayout` tile mask, not the nav-grid snap alone, so newly added floor area becomes immediately usable for placement and drag preview matches persisted placement rules. `MEM-0187`
 - Avatar targeting must remain transient and presentation-only; it must not rewrite persisted desk or object transforms.
 - Shared skill hosts must fan active avatars across deterministic local slots so multiple agents can occupy one object without overlapping.
 - Skill effects must be chosen once per activity from object metadata and remain stable for that activity; render code may not randomize effects per frame or per rerender.
