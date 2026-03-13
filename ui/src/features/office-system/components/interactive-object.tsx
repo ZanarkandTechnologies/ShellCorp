@@ -31,6 +31,11 @@ interface InteractiveObjectProps {
     onSettings?: () => void;
     metadata?: Record<string, unknown>;
     supportsScaling?: boolean;
+    interactionBounds?: {
+        center: [number, number, number];
+        size: [number, number, number];
+        highlightRadius: number;
+    };
 }
 
 /**
@@ -51,6 +56,7 @@ export function InteractiveObject({
     onSettings,
     metadata,
     supportsScaling = true,
+    interactionBounds,
 }: InteractiveObjectProps) {
     const groupRef = useRef<THREE.Group>(null);
     const contentRef = useRef<THREE.Group>(null);
@@ -187,12 +193,16 @@ export function InteractiveObject({
     }, [activeObjectConfigId, objectId]);
 
     useEffect(() => {
+        if (interactionBounds) {
+            setHighlightRadius(interactionBounds.highlightRadius);
+            return;
+        }
         if (!contentRef.current) return;
         const bounds = new THREE.Box3().setFromObject(contentRef.current);
         if (bounds.isEmpty()) return;
         const size = bounds.getSize(new THREE.Vector3());
         setHighlightRadius(Math.max(0.85, Math.max(size.x, size.z) * 0.55));
-    }, [children, objectType]);
+    }, [children, interactionBounds, objectType]);
 
     const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
         if (isLocallyDragging) return;
@@ -335,6 +345,16 @@ export function InteractiveObject({
             onClick={handleClick}
             onPointerEnter={(e) => {
                 e.stopPropagation();
+                if (import.meta.env.DEV && interactionConfig.uiBinding.kind === "embed") {
+                    console.debug("[office-object] pointer-enter", {
+                        objectId: String(objectId),
+                        objectType,
+                        title: interactionConfig.uiBinding.title,
+                        highlightRadius,
+                        scale: localScale,
+                        interactionBounds,
+                    });
+                }
                 setIsHovered(true);
             }}
             onPointerLeave={(e) => {
@@ -342,6 +362,13 @@ export function InteractiveObject({
                 setIsHovered(false);
             }}
         >
+            {interactionBounds ? (
+                <mesh position={interactionBounds.center}>
+                    <boxGeometry args={interactionBounds.size} />
+                    <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+                </mesh>
+            ) : null}
+
             <group ref={contentRef}>
                 {children}
             </group>

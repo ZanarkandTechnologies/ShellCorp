@@ -9,6 +9,7 @@ import {
   preloadMesh,
   cloneCachedScene,
 } from "../systems/mesh-cache";
+import { deriveCustomMeshInteractionBounds } from "./custom-mesh-interaction";
 
 interface CustomMeshObjectProps {
   objectId: Id<"officeObjects">;
@@ -68,10 +69,20 @@ export default function CustomMeshObject({
 
   const clonedScene = useMemo(() => {
     if (!cachedMesh) return null;
-    return cloneCachedScene(cachedMesh);
+    const scene = cloneCachedScene(cachedMesh);
+    scene.traverse((child) => {
+      if ("isMesh" in child && child.isMesh) {
+        child.raycast = () => null;
+      }
+    });
+    return scene;
   }, [cachedMesh]);
 
   const groundOffset = cachedMesh?.groundOffset ?? 0;
+  const interactionBounds = useMemo(() => {
+    if (!cachedMesh) return undefined;
+    return deriveCustomMeshInteractionBounds(cachedMesh.boundingBox.clone(), groundOffset);
+  }, [cachedMesh, groundOffset]);
 
   return (
     <InteractiveObject
@@ -82,6 +93,7 @@ export default function CustomMeshObject({
       initialRotation={rotation}
       initialScale={scale}
       metadata={metadata}
+      interactionBounds={interactionBounds}
     >
       {clonedScene ? (
         <primitive object={clonedScene} position={[0, groundOffset, 0]} />
