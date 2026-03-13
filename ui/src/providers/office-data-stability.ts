@@ -65,6 +65,8 @@ export function buildEmployeeSignature(employees: EmployeeData[]): string {
         buildHeartbeatBubbleSignature(employee.heartbeatBubbles),
         employee.activityTargetSkillId ?? "",
         buildPositionSignature(employee.activityTargetPosition),
+        buildPositionSignature(employee.activityTargetObjectPosition),
+        employee.activityEffectVariant ?? "",
       ].join("|"),
     )
     .join("||");

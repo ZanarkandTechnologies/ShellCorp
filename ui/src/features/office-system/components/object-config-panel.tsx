@@ -19,28 +19,34 @@
  * - MEM-0109
  */
 
-import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, Globe2, Save } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppStore } from "@/lib/app-store";
 import { UI_Z } from "@/lib/z-index";
-import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
+import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 
 import {
   buildOfficeObjectMetadata,
   normalizeHttpUrl,
-  parseOfficeObjectInteractionConfig,
   type OfficeObjectUiBinding,
+  parseOfficeObjectInteractionConfig,
 } from "../office-object-ui";
-import { resolvePersistedOfficeObjectId } from "./office-object-id";
 import { endObjectInteractionTrace } from "../utils/object-interaction-perf";
+import { resolvePersistedOfficeObjectId } from "./office-object-id";
 
 const WORLD_MONITOR_PRESET = {
   title: "World Monitor",
@@ -69,6 +75,13 @@ export function ObjectConfigPanel() {
   const [embedTitle, setEmbedTitle] = useState("");
   const [embedUrl, setEmbedUrl] = useState("");
   const [aspectRatio, setAspectRatio] = useState<"wide" | "square" | "tall">("wide");
+  const [isSkillBindingEnabled, setIsSkillBindingEnabled] = useState(false);
+  const [skillId, setSkillId] = useState("");
+  const [skillLabel, setSkillLabel] = useState("");
+  const [skillEffectMode, setSkillEffectMode] = useState<"fixed" | "random">("fixed");
+  const [skillEffectVariant, setSkillEffectVariant] = useState<"ghost" | "blink">("ghost");
+  const [effectPoolGhost, setEffectPoolGhost] = useState(true);
+  const [effectPoolBlink, setEffectPoolBlink] = useState(true);
   const [statusText, setStatusText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -83,6 +96,13 @@ export function ObjectConfigPanel() {
         ? parsedConfig.uiBinding.aspectRatio
         : "wide",
     );
+    setIsSkillBindingEnabled(Boolean(parsedConfig.skillBinding?.skillId));
+    setSkillId(parsedConfig.skillBinding?.skillId ?? "");
+    setSkillLabel(parsedConfig.skillBinding?.label ?? "");
+    setSkillEffectMode(parsedConfig.skillBinding?.effectMode ?? "fixed");
+    setSkillEffectVariant(parsedConfig.skillBinding?.effectVariant ?? "ghost");
+    setEffectPoolGhost(parsedConfig.skillBinding?.effectPool?.includes("ghost") ?? true);
+    setEffectPoolBlink(parsedConfig.skillBinding?.effectPool?.includes("blink") ?? true);
     setStatusText("");
     endObjectInteractionTrace("builder-panel", String(activeObjectConfigId), "ready", {
       meshType: officeObject.meshType,
@@ -114,6 +134,10 @@ export function ObjectConfigPanel() {
         return;
       }
     }
+    if (isSkillBindingEnabled && !skillId.trim()) {
+      setStatusText("Skill ID is required when skill binding is enabled.");
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -125,25 +149,53 @@ export function ObjectConfigPanel() {
         ? {
             kind: "embed",
             title: embedTitle.trim(),
-            url: normalizedUrl!,
+            url: normalizedUrl ?? "",
             openMode: "panel",
             aspectRatio,
           }
         : { kind: "none" };
+      const nextSkillBinding = isSkillBindingEnabled
+        ? {
+            skillId: skillId.trim(),
+            label: skillLabel.trim() || undefined,
+            effectMode: skillEffectMode,
+            effectVariant: skillEffectMode === "fixed" ? skillEffectVariant : undefined,
+            effectPool:
+              skillEffectMode === "random"
+                ? [
+                    ...(effectPoolGhost ? (["ghost"] as const) : []),
+                    ...(effectPoolBlink ? (["blink"] as const) : []),
+                  ]
+                : undefined,
+          }
+        : null;
+      if (
+        isSkillBindingEnabled &&
+        skillEffectMode === "random" &&
+        !effectPoolGhost &&
+        !effectPoolBlink
+      ) {
+        setStatusText("Choose at least one random effect variant.");
+        setIsSaving(false);
+        return;
+      }
       const metadata = buildOfficeObjectMetadata(existing?.metadata ?? officeObject.metadata, {
         displayName: displayName.trim() || undefined,
         uiBinding: nextUiBinding,
-        skillBinding: parsedConfig.skillBinding,
+        skillBinding: nextSkillBinding,
       });
-      const result = await adapter.upsertOfficeObject({
-        id: persistedId,
-        identifier: existing?.identifier ?? persistedId,
-        meshType: existing?.meshType ?? officeObject.meshType,
-        position: existing?.position ?? officeObject.position,
-        rotation: existing?.rotation ?? officeObject.rotation,
-        scale: existing?.scale ?? officeObject.scale,
-        metadata,
-      }, { currentObjects: current });
+      const result = await adapter.upsertOfficeObject(
+        {
+          id: persistedId,
+          identifier: existing?.identifier ?? persistedId,
+          meshType: existing?.meshType ?? officeObject.meshType,
+          position: existing?.position ?? officeObject.position,
+          rotation: existing?.rotation ?? officeObject.rotation,
+          scale: existing?.scale ?? officeObject.scale,
+          metadata,
+        },
+        { currentObjects: current },
+      );
       if (!result.ok) {
         setStatusText(result.error ?? "Failed to save object config.");
         return;
@@ -168,12 +220,13 @@ export function ObjectConfigPanel() {
           <DialogHeader>
             <DialogTitle>Object Builder</DialogTitle>
             <DialogDescription>
-            Configure runtime UI behavior for this {objectTypeLabel}. Outside builder mode, configured objects open their assigned panel instead of builder controls.
+              Configure runtime UI behavior for this {objectTypeLabel}. Outside builder mode,
+              configured objects open their assigned panel instead of builder controls.
             </DialogDescription>
           </DialogHeader>
         </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-6 px-6 py-4">
             <section className="space-y-3 rounded-lg border p-4">
               <div className="space-y-1">
@@ -212,7 +265,8 @@ export function ObjectConfigPanel() {
               </div>
 
               <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-                Some websites block iframe embedding with CSP or `X-Frame-Options`. The runtime panel includes an external-open fallback for those cases.
+                Some websites block iframe embedding with CSP or `X-Frame-Options`. The runtime
+                panel includes an external-open fallback for those cases.
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -286,6 +340,115 @@ export function ObjectConfigPanel() {
                   <option value="tall">Tall</option>
                 </select>
               </div>
+            </section>
+
+            <section className="space-y-4 rounded-lg border p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold">Skill Binding</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Bind this object to a skill ID so active agent status can snap avatars next to
+                    it.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <Checkbox
+                    id="object-skill-binding-enabled"
+                    checked={isSkillBindingEnabled}
+                    onCheckedChange={(checked) => setIsSkillBindingEnabled(checked === true)}
+                  />
+                  <Label htmlFor="object-skill-binding-enabled">Enabled</Label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="object-skill-id">Skill ID</Label>
+                <Input
+                  id="object-skill-id"
+                  value={skillId}
+                  onChange={(event) => setSkillId(event.target.value)}
+                  placeholder="world-monitor"
+                  disabled={!isSkillBindingEnabled}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="object-skill-label">Skill Label</Label>
+                <Input
+                  id="object-skill-label"
+                  value={skillLabel}
+                  onChange={(event) => setSkillLabel(event.target.value)}
+                  placeholder="World Monitor"
+                  disabled={!isSkillBindingEnabled}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="object-skill-effect-mode">Effect Mode</Label>
+                <select
+                  id="object-skill-effect-mode"
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={skillEffectMode}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    if (next === "fixed" || next === "random") {
+                      setSkillEffectMode(next);
+                    }
+                  }}
+                  disabled={!isSkillBindingEnabled}
+                >
+                  <option value="fixed">Fixed</option>
+                  <option value="random">Random</option>
+                </select>
+              </div>
+
+              {skillEffectMode === "fixed" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="object-skill-effect-variant">Effect Variant</Label>
+                  <select
+                    id="object-skill-effect-variant"
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    value={skillEffectVariant}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      if (next === "ghost" || next === "blink") {
+                        setSkillEffectVariant(next);
+                      }
+                    }}
+                    disabled={!isSkillBindingEnabled}
+                  >
+                    <option value="ghost">Ghost Projection</option>
+                    <option value="blink">Blink Teleport</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="space-y-3 rounded-md border bg-muted/20 p-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Random Effect Pool</p>
+                    <p className="text-xs text-muted-foreground">
+                      Pick the effect variants this object can use when a skill call starts.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="object-skill-effect-pool-ghost"
+                      checked={effectPoolGhost}
+                      onCheckedChange={(checked) => setEffectPoolGhost(checked === true)}
+                      disabled={!isSkillBindingEnabled}
+                    />
+                    <Label htmlFor="object-skill-effect-pool-ghost">Ghost Projection</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="object-skill-effect-pool-blink"
+                      checked={effectPoolBlink}
+                      onCheckedChange={(checked) => setEffectPoolBlink(checked === true)}
+                      disabled={!isSkillBindingEnabled}
+                    />
+                    <Label htmlFor="object-skill-effect-pool-blink">Blink Teleport</Label>
+                  </div>
+                </div>
+              )}
             </section>
 
             <div className="flex items-center justify-between gap-3">

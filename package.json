@@ -23,6 +23,7 @@
     "ui": "vite --config ui/vite.config.ts",
     "ui:build": "vite build --config ui/vite.config.ts",
     "mesh:previews": "tsx scripts/mesh-preview-scan.ts",
+    "office:skill-smoke": "bash scripts/office-skill-smoke.sh",
     "test": "vitest",
     "test:once": "vitest run",
     "test:skills": "vitest run skills/skill-contract.test.ts",

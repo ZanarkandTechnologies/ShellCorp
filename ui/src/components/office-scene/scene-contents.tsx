@@ -176,7 +176,9 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
             name={employee.name}
             position={employee.initialPosition}
             activityTargetPosition={employee.activityTargetPosition}
+            activityTargetObjectPosition={employee.activityTargetObjectPosition}
             activityTargetSkillId={employee.activityTargetSkillId}
+            activityEffectVariant={employee.activityEffectVariant}
             isBusy={employee.isBusy}
             isCEO={employee.isCEO}
             isSupervisor={employee.isSupervisor}

@@ -31,6 +31,9 @@ export type OfficeObjectUiBinding =
 export type OfficeObjectSkillBinding = {
   skillId: string;
   label?: string;
+  effectMode?: "fixed" | "random";
+  effectVariant?: "ghost" | "blink";
+  effectPool?: Array<"ghost" | "blink">;
 } | null;
 
 export interface OfficeObjectInteractionConfig {
@@ -49,6 +52,10 @@ function normalizeAspectRatio(value: unknown): "wide" | "square" | "tall" | unde
   return value === "wide" || value === "square" || value === "tall" ? value : undefined;
 }
 
+function isSkillEffectVariant(value: unknown): value is "ghost" | "blink" {
+  return value === "ghost" || value === "blink";
+}
+
 export function normalizeHttpUrl(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -63,7 +70,9 @@ export function normalizeHttpUrl(value: string): string | null {
   }
 }
 
-export function parseOfficeObjectUiBinding(metadata: Record<string, unknown> | undefined): OfficeObjectUiBinding {
+export function parseOfficeObjectUiBinding(
+  metadata: Record<string, unknown> | undefined,
+): OfficeObjectUiBinding {
   const raw = metadata?.uiBinding;
   if (!isPlainObject(raw)) return DEFAULT_UI_BINDING;
   if (raw.kind !== "embed") return DEFAULT_UI_BINDING;
@@ -85,9 +94,18 @@ export function parseOfficeObjectSkillBinding(
   const raw = metadata?.skillBinding;
   if (!isPlainObject(raw)) return null;
   if (typeof raw.skillId !== "string" || !raw.skillId.trim()) return null;
+  const effectMode =
+    raw.effectMode === "fixed" || raw.effectMode === "random" ? raw.effectMode : undefined;
+  const effectVariant = isSkillEffectVariant(raw.effectVariant) ? raw.effectVariant : undefined;
+  const effectPool = Array.isArray(raw.effectPool)
+    ? raw.effectPool.filter(isSkillEffectVariant)
+    : undefined;
   return {
     skillId: raw.skillId.trim(),
     label: typeof raw.label === "string" && raw.label.trim() ? raw.label.trim() : undefined,
+    effectMode,
+    effectVariant,
+    effectPool: effectPool && effectPool.length > 0 ? [...new Set(effectPool)] : undefined,
   };
 }
 

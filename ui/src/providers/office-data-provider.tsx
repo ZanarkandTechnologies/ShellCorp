@@ -10,6 +10,11 @@ import React, {
   useState,
 } from "react";
 import { normalizeOfficeObjectId } from "@/features/office-system/components/office-object-id";
+import { parseOfficeObjectInteractionConfig } from "@/features/office-system/office-object-ui";
+import {
+  buildSkillEffectSeed,
+  resolveSkillEffectVariant,
+} from "@/features/office-system/skill-effects";
 import {
   buildSkillTargetObjectMap,
   getOfficeSkillAnchorPositionForOccupant,
@@ -493,6 +498,18 @@ function toOfficeData(
     const skillOccupantIndex =
       activeSkillId && skillOccupantIds.length > 0 ? skillOccupantIds.indexOf(agent.agentId) : -1;
     const skillTargetObject = activeSkillId ? skillTargetObjects.get(activeSkillId) : undefined;
+    const activityEffectVariant =
+      activeSkillId && skillTargetObject
+        ? resolveSkillEffectVariant(
+            parseOfficeObjectInteractionConfig(skillTargetObject.metadata).skillBinding ??
+              undefined,
+            buildSkillEffectSeed({
+              agentId: agent.agentId,
+              skillId: activeSkillId,
+              sessionKey: liveStatus?.sessionKey,
+            }),
+          )
+        : undefined;
     const pressure = companyAgent?.projectId
       ? workload.find((item) => item.projectId === companyAgent.projectId)?.queuePressure
       : undefined;
@@ -551,7 +568,9 @@ function toOfficeData(
               skillOccupantIds.length,
             )
           : undefined,
+      activityTargetObjectPosition: skillTargetObject?.position,
       activityTargetSkillId: activeSkillId,
+      activityEffectVariant,
       isBusy: (runtimeAgent?.sessionCount ?? 0) > 0,
       deskId: initialDeskLayout?.deskId as EmployeeData["deskId"],
       isCEO: companyAgent?.role === "ceo" || isMainAgent || index === 0,
@@ -594,6 +613,7 @@ function toOfficeData(
     workload,
     warnings,
     refresh: async () => {},
+    applyOfficeSettings: () => {},
     manualResync: async () => ({ ok: false, error: "adapter_unavailable" }),
     upsertFederationPolicy: async () => ({ ok: false, error: "adapter_unavailable" }),
     upsertProviderIndexProfile: async () => ({ ok: false, error: "adapter_unavailable" }),
@@ -611,6 +631,11 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
   const latestApprovalsRef = useRef<PendingApprovalModel[]>([]);
   const latestLiveStatusSignatureRef = useRef("");
   const liveStatusByConvex = useAgentLiveStatuses(agentIds);
+  const liveStatusByConvexRef = useRef<Record<string, AgentLiveStatus> | undefined>(undefined);
+
+  useEffect(() => {
+    liveStatusByConvexRef.current = liveStatusByConvex;
+  }, [liveStatusByConvex]);
 
   const applyOfficeSettingsValue = useMemo(
     () => (settings: OfficeSettingsModel) => {
@@ -621,7 +646,9 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       }
       const pendingApprovals = latestApprovalsRef.current;
       const statusByAgent =
-        liveStatusByConvex && Object.keys(liveStatusByConvex).length > 0 ? liveStatusByConvex : {};
+        liveStatusByConvexRef.current && Object.keys(liveStatusByConvexRef.current).length > 0
+          ? liveStatusByConvexRef.current
+          : {};
       setValue((current) => {
         const next = stabilizeOfficeData(
           current,
@@ -638,7 +665,7 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
         };
       });
     },
-    [liveStatusByConvex],
+    [],
   );
 
   const load = React.useCallback(async (): Promise<void> => {
@@ -661,8 +688,8 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       );
 
       let statusByAgent: Record<string, AgentLiveStatus> = {};
-      if (liveStatusByConvex && Object.keys(liveStatusByConvex).length > 0) {
-        statusByAgent = liveStatusByConvex;
+      if (liveStatusByConvexRef.current && Object.keys(liveStatusByConvexRef.current).length > 0) {
+        statusByAgent = liveStatusByConvexRef.current;
       } else {
         statusByAgent = await adapter.getAgentsLiveStatus(nextAgentIds);
       }
@@ -698,7 +725,7 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
         upsertProviderIndexProfile: current.upsertProviderIndexProfile,
       }));
     }
-  }, [liveStatusByConvex]);
+  }, []);
 
   useEffect(() => {
     if (!liveStatusByConvex || Object.keys(liveStatusByConvex).length === 0) return;
@@ -775,13 +802,9 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       isLoading: true,
     }));
     void load();
-    const timer = setInterval(() => {
-      void load();
-    }, 15000);
 
     return () => {
       cancelledRef.current = true;
-      clearInterval(timer);
     };
   }, [applyOfficeSettingsValue, load, sharedAdapter]);
 

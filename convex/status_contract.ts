@@ -52,6 +52,7 @@ export type AgentStatusSnapshot = {
   statusText: string;
   bubbles: AgentBubble[];
   currentBeatId?: string;
+  currentSkillId?: string;
 };
 
 export type StatusEventInput = {
@@ -105,6 +106,7 @@ export function reduceStatus(
   let statusText = previous.statusText;
   let bubbles = [...previous.bubbles];
   let currentBeatId = previous.currentBeatId;
+  let currentSkillId = previous.currentSkillId;
 
   if (event.eventType === "heartbeat_start") {
     state = "running";
@@ -115,19 +117,23 @@ export function reduceStatus(
     state = "ok";
     statusText = "Heartbeat OK";
     currentBeatId = undefined;
+    currentSkillId = undefined;
     bubbles = [];
   } else if (event.eventType === "heartbeat_no_work") {
     state = "no_work";
     statusText = "Heartbeat no work";
     currentBeatId = undefined;
+    currentSkillId = undefined;
     bubbles = [];
   } else if (event.eventType === "heartbeat_error") {
     state = "error";
     statusText = event.detail ? `Heartbeat error: ${event.detail}` : "Heartbeat error";
     currentBeatId = undefined;
+    currentSkillId = undefined;
     bubbles = [];
   } else if (event.eventType === "activity_log") {
     const activityType = event.activityType?.trim();
+    if (event.skillId?.trim()) currentSkillId = event.skillId.trim();
     if (activityType === "planning") {
       state = "planning";
       statusText = event.detail?.trim() || event.label.trim() || "Planning";
@@ -143,6 +149,7 @@ export function reduceStatus(
     } else if (activityType === "summary") {
       state = "done";
       statusText = event.detail?.trim() || event.label.trim() || "Summary";
+      currentSkillId = undefined;
       bubbles = withActivityBubble(bubbles, event.label || "Summary");
     } else {
       statusText = event.detail?.trim() || event.label.trim() || statusText;
@@ -151,16 +158,24 @@ export function reduceStatus(
   } else if (event.eventType === "status_report") {
     state = event.state ?? state;
     statusText = event.detail?.trim() || event.label.trim() || statusText;
+    if (event.skillId?.trim()) {
+      currentSkillId = event.skillId.trim();
+    } else if (event.state === "done" || event.state === "ok" || event.state === "idle") {
+      currentSkillId = undefined;
+    }
     bubbles = withActivityBubble(bubbles, event.label || "Status");
   } else if (event.eventType === "skill_start") {
     if (state !== "error" && state !== "blocked") state = "executing";
     statusText = event.detail?.trim() || `Running ${event.label.trim() || "skill"}`;
+    currentSkillId = event.skillId?.trim() || event.label.trim() || currentSkillId;
     bubbles = withActivityBubble(bubbles, event.label || event.skillId || "Skill");
   } else if (event.eventType === "skill_end") {
     if (state === "executing" || state === "running") state = "planning";
     statusText = event.detail?.trim() || `Completed ${event.label.trim() || "skill"}`;
+    currentSkillId = undefined;
     bubbles = withActivityBubble(bubbles, event.label || event.skillId || "Skill");
   } else if (event.eventType === "tool_call" || event.eventType === "skill_call") {
+    if (event.skillId?.trim()) currentSkillId = event.skillId.trim();
     bubbles = withActivityBubble(bubbles, event.label || "Tool");
     if (state === "running" || state === "executing" || state === "planning") {
       statusText = `Running ${event.label.trim() || "tool"}`;
@@ -172,6 +187,7 @@ export function reduceStatus(
     statusText,
     bubbles: trimBubbles(state, bubbles),
     currentBeatId,
+    currentSkillId,
   };
 }
 

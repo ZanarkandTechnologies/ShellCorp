@@ -80,6 +80,10 @@ export type CompanyData = {
 
 export interface EmployeeData extends Employee {
   initialPosition: [number, number, number];
+  activityTargetPosition?: [number, number, number];
+  activityTargetObjectPosition?: [number, number, number];
+  activityTargetSkillId?: string;
+  activityEffectVariant?: "ghost" | "blink";
   isBusy: boolean;
   deskId?: OfficeId<"desks">;
   team: string;

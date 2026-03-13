@@ -1,19 +1,20 @@
-import { internalMutation, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { internalMutation, type MutationCtx } from "./_generated/server";
+import { normalizeTeamId } from "./_utils";
 import {
+  type AgentEventType,
+  type AgentState,
   coerceAgentEventType,
   coerceAgentState,
   reduceStatus,
-  type AgentEventType,
-  type AgentState,
 } from "./status_contract";
-import { normalizeTeamId } from "./_utils";
 
 function initialSnapshot(): {
   state: AgentState;
   statusText: string;
   bubbles: Array<{ id: string; label: string; weight: number }>;
   currentBeatId?: string;
+  currentSkillId?: string;
 } {
   return {
     state: "idle",
@@ -105,6 +106,7 @@ async function applyEvent(params: {
         statusText: existing.statusText,
         bubbles: [...existing.bubbles],
         currentBeatId: existing.currentBeatId,
+        currentSkillId: existing.currentSkillId,
       }
     : initialSnapshot();
 
@@ -125,6 +127,7 @@ async function applyEvent(params: {
       statusText: next.statusText,
       bubbles: next.bubbles,
       currentBeatId: next.currentBeatId,
+      currentSkillId: next.currentSkillId,
       sessionKey: params.sessionKey ?? existing.sessionKey,
       updatedAt: eventTs,
       lastEventAt: now,
@@ -139,6 +142,7 @@ async function applyEvent(params: {
     statusText: next.statusText,
     bubbles: next.bubbles,
     currentBeatId: next.currentBeatId,
+    currentSkillId: next.currentSkillId,
     sessionKey: params.sessionKey,
     updatedAt: eventTs,
     lastEventAt: now,

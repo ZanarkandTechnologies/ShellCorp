@@ -78,6 +78,8 @@ describe("office-data-provider stabilization", () => {
       createEmployee({
         activityTargetSkillId: "world-monitor",
         activityTargetPosition: [4, 0, 8.35],
+        activityTargetObjectPosition: [4, 0, 7],
+        activityEffectVariant: "ghost",
       }),
     ];
 

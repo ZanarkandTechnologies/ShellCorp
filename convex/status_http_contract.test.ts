@@ -49,6 +49,24 @@ describe("status-http-contract", () => {
     expect(parsed?.beatId).toBe("beat-main-1");
   });
 
+  it("parses optional skillId in status payloads", () => {
+    const ingest = parseIngestPayload({
+      agentId: "main",
+      eventType: "activity_log",
+      label: "executing",
+      skillId: "world-monitor",
+    });
+    const report = parseStatusReportPayload({
+      agentId: "main",
+      state: "executing",
+      statusText: "Checking world monitor",
+      stepKey: "main-step-2",
+      skillId: "world-monitor",
+    });
+    expect(ingest?.skillId).toBe("world-monitor");
+    expect(report?.skillId).toBe("world-monitor");
+  });
+
   it("rejects status report payload with blank stepKey", () => {
     expect(
       parseStatusReportPayload({
