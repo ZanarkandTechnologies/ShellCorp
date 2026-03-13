@@ -95,6 +95,25 @@ Notes:
 
 - Use `shellcorp onboarding --launch-ui` if you want the CLI to jump straight into the UI after bootstrap.
 
+## Minimal Demo Flow
+
+Use this when you want to show the actual office instead of a large fake company:
+
+```bash
+npm install
+npm link
+npm run shell -- onboarding --launch-ui
+scripts/reset-demo-office.sh --profile ladder
+```
+
+Then in the product:
+
+1. Start with only the CEO / founder control loop visible.
+2. Ask the CEO to form a `1-claw` team from a small brief.
+3. Review and approve the proposal.
+4. Show the created team board and activity.
+5. Repeat with a `2-claw` or `3-claw` team to show how ShellCorp scales by forming new teams, not by shipping a cluttered default office.
+
 ## Quick Start for Developers
 
 From the repo root:
@@ -133,6 +152,10 @@ Useful commands:
 - `npm run shell -- doctor team-data --json`
 - `npm run shell -- office doctor --json`
 - `npm run shell -- team list --json`
+- `npm run shell -- team proposal list --json`
+- `npm run shell -- team proposal show --proposal-id <proposalId> --json`
+- `scripts/reset-demo-office.sh --profile minimal`
+- `scripts/reset-demo-office.sh --profile ladder`
 
 Developer notes:
 
