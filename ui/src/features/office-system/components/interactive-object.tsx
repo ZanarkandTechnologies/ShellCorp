@@ -10,10 +10,13 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import * as THREE from "three";
 import { OFFICE_INTERACTION_COLORS } from "@/config/office-theme";
+import { constrainOfficeObjectPositionForLayout } from "@/features/office-system/components/office-object-placement";
 import { useAppStore } from "@/lib/app-store";
 import type { OfficeId } from "@/lib/types";
+import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { DraggableController } from "../controllers/draggable-controller";
 import { parseOfficeObjectInteractionConfig } from "../office-object-ui";
@@ -26,6 +29,7 @@ import {
   syncTuple3,
 } from "./interactive-object-vectors";
 import { resolvePersistedOfficeObjectId } from "./office-object-id";
+import { refreshOfficeDataSafely } from "./office-object-refresh";
 
 interface InteractiveObjectProps {
   children: React.ReactNode;
@@ -93,6 +97,7 @@ export function InteractiveObject({
   const controllerRef = useRef<DraggableController | null>(null);
   const { camera, gl } = useThree();
   const adapter = useOpenClawAdapter();
+  const { officeSettings, refresh } = useOfficeDataContext();
   const objectIdString = `object-${objectId}`;
   const [localPosition, setLocalPosition] = useState<[number, number, number]>(initialPosition);
   const [localRotation, setLocalRotation] = useState<[number, number, number]>(initialRotation);
@@ -114,6 +119,15 @@ export function InteractiveObject({
   const activeObjectConfigId = useAppStore((state) => state.activeObjectConfigId);
 
   const interactionConfig = useMemo(() => parseOfficeObjectInteractionConfig(metadata), [metadata]);
+  const formattedName = useMemo(
+    () =>
+      objectType
+        .split("-")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" "),
+    [objectType],
+  );
+  const objectTitle = interactionConfig.displayName ?? formattedName;
   const setGroupRef = useCallback(
     (element: THREE.Group | null) => {
       groupRef.current = element;
@@ -163,8 +177,9 @@ export function InteractiveObject({
       lastConfirmedPositionRef.current = input.position;
       lastConfirmedRotationRef.current = payload.rotation;
       lastConfirmedScaleRef.current = payload.scale ?? initialScale;
+      await refreshOfficeDataSafely(refresh);
     },
-    [adapter, initialRotation, initialScale, metadata, objectType],
+    [adapter, initialRotation, initialScale, metadata, objectType, refresh],
   );
 
   const deleteOfficeObject = useCallback(
@@ -176,8 +191,9 @@ export function InteractiveObject({
       if (!result.ok) {
         throw new Error(result.error ?? "office_object_delete_failed");
       }
+      await refreshOfficeDataSafely(refresh);
     },
-    [adapter],
+    [adapter, refresh],
   );
 
   useEffect(() => {
@@ -209,13 +225,30 @@ export function InteractiveObject({
       gl.domElement,
       handleDragEnd,
       handleDragStateChange,
+      (position) => {
+        const constrained = constrainOfficeObjectPositionForLayout(
+          [position.x, position.y, position.z],
+          officeSettings.officeLayout,
+          objectType,
+        );
+        return new THREE.Vector3(...constrained);
+      },
     );
 
     return () => {
       controllerRef.current?.destroy();
       controllerRef.current = null;
     };
-  }, [camera, gl.domElement, isDragEnabled, objectId, persistOfficeObject, setGlobalDragging]);
+  }, [
+    camera,
+    gl.domElement,
+    isDragEnabled,
+    objectId,
+    objectType,
+    officeSettings.officeLayout,
+    persistOfficeObject,
+    setGlobalDragging,
+  ]);
 
   useEffect(() => {
     if (!isLocallyDragging && groupRef.current) {
@@ -350,13 +383,21 @@ export function InteractiveObject({
   );
 
   const handleDelete = useCallback(async () => {
+    if (objectType === "team-cluster") {
+      toast.error(
+        `Cannot delete ${objectTitle}. Archive or remove the team/project instead of deleting its scene anchor.`,
+      );
+      return;
+    }
     try {
       await deleteOfficeObject({ id: objectId });
       setSelectedObjectId(null);
+      toast.success(`Deleted ${objectTitle}.`);
     } catch (error) {
       console.error(`Failed to delete object ${objectId}:`, error);
+      toast.error(error instanceof Error ? error.message : `Failed to delete ${objectTitle}.`);
     }
-  }, [objectId, deleteOfficeObject, setSelectedObjectId]);
+  }, [deleteOfficeObject, objectId, objectTitle, objectType, setSelectedObjectId]);
 
   const handleMoveMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -519,21 +560,13 @@ export function InteractiveObject({
     ],
   );
 
-  const formattedName = useMemo(
-    () =>
-      objectType
-        .split("-")
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" "),
-    [objectType],
-  );
-  const objectTitle = interactionConfig.displayName ?? formattedName;
   const highlightColor = isSelected
     ? OFFICE_INTERACTION_COLORS.selectionEdge
     : OFFICE_INTERACTION_COLORS.hoverEdge;
   const showInteractionHighlight = showHoverEffect && (isHovered || isSelected);
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: React Three Fiber group handles scene pointer events, not DOM interaction semantics.
     <group
       ref={setGroupRef}
       position={localPosition}

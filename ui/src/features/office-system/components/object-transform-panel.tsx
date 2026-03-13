@@ -18,18 +18,26 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAppStore } from "@/lib/app-store";
+import type { CompanyOfficeObjectModel } from "@/lib/openclaw-types";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { resolvePersistedOfficeObjectId } from "./office-object-id";
-import { clampPositionToOfficeLayout } from "@/lib/office-layout";
-import type { CompanyOfficeObjectModel } from "@/lib/openclaw-types";
+import { constrainOfficeObjectPositionForLayout } from "./office-object-placement";
+import { refreshOfficeDataSafely } from "./office-object-refresh";
 
 type TransformDraft = {
   x: string;
@@ -60,10 +68,6 @@ function getDefaultDraft(input: {
 function parseNumber(value: string, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function getObjectMargin(meshType: string): number {
-  return meshType === "team-cluster" ? 2 : 1;
 }
 
 export function ObjectTransformPanel(): JSX.Element | null {
@@ -151,26 +155,30 @@ export function ObjectTransformPanel(): JSX.Element | null {
       const knownIds = new Set(current.map((item) => item.id));
       const persistedId = resolvePersistedOfficeObjectId(activeObject._id, knownIds);
       const existing = current.find((item) => item.id === persistedId);
-      const nextPosition = clampPositionToOfficeLayout(
+      const nextPosition = constrainOfficeObjectPositionForLayout(
         [
           parseNumber(draft.x, activeObject.position[0]),
           parseNumber(draft.y, activeObject.position[1]),
           parseNumber(draft.z, activeObject.position[2]),
         ],
         officeSettings.officeLayout,
-        getObjectMargin(activeObject.meshType),
+        activeObject.meshType,
       );
       const nextRotation: [number, number, number] = [
         activeObject.rotation?.[0] ?? 0,
         parseNumber(draft.rotationY, activeObject.rotation?.[1] ?? 0),
         activeObject.rotation?.[2] ?? 0,
       ];
-      const nextScalar = Math.min(3, Math.max(0.4, parseNumber(draft.scale, activeObject.scale?.[0] ?? 1)));
+      const nextScalar = Math.min(
+        3,
+        Math.max(0.4, parseNumber(draft.scale, activeObject.scale?.[0] ?? 1)),
+      );
       const result = await adapter.upsertOfficeObject(
         {
           id: persistedId,
           identifier: existing?.identifier ?? persistedId,
-          meshType: (existing?.meshType ?? activeObject.meshType) as CompanyOfficeObjectModel["meshType"],
+          meshType: (existing?.meshType ??
+            activeObject.meshType) as CompanyOfficeObjectModel["meshType"],
           position: nextPosition,
           rotation: nextRotation,
           scale: [nextScalar, nextScalar, nextScalar],
@@ -182,7 +190,7 @@ export function ObjectTransformPanel(): JSX.Element | null {
         setErrorMessage(result.error ?? "Failed to save transform.");
         return;
       }
-      await refresh();
+      await refreshOfficeDataSafely(refresh);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to save transform.");
     } finally {
@@ -197,7 +205,9 @@ export function ObjectTransformPanel(): JSX.Element | null {
           <div className="flex items-start justify-between gap-3">
             <div>
               <CardTitle className="text-sm">Transform {objectLabel}</CardTitle>
-              <CardDescription>Exact builder controls for position, height, rotation, and scale.</CardDescription>
+              <CardDescription>
+                Exact builder controls for position, height, rotation, and scale.
+              </CardDescription>
             </div>
             <Button
               type="button"
@@ -213,7 +223,10 @@ export function ObjectTransformPanel(): JSX.Element | null {
           <div className="grid grid-cols-3 gap-3">
             {(["x", "y", "z"] as const).map((axis) => (
               <div key={axis} className="space-y-2">
-                <Label htmlFor={`transform-${axis}`} className="uppercase text-[11px] tracking-[0.18em] text-muted-foreground">
+                <Label
+                  htmlFor={`transform-${axis}`}
+                  className="uppercase text-[11px] tracking-[0.18em] text-muted-foreground"
+                >
                   {axis}
                 </Label>
                 <Input
@@ -227,7 +240,10 @@ export function ObjectTransformPanel(): JSX.Element | null {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="transform-rotation" className="uppercase text-[11px] tracking-[0.18em] text-muted-foreground">
+              <Label
+                htmlFor="transform-rotation"
+                className="uppercase text-[11px] tracking-[0.18em] text-muted-foreground"
+              >
                 Rotation Y
               </Label>
               <Input
@@ -238,7 +254,10 @@ export function ObjectTransformPanel(): JSX.Element | null {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="transform-scale" className="uppercase text-[11px] tracking-[0.18em] text-muted-foreground">
+              <Label
+                htmlFor="transform-scale"
+                className="uppercase text-[11px] tracking-[0.18em] text-muted-foreground"
+              >
                 Scale
               </Label>
               <Input
@@ -267,7 +286,8 @@ export function ObjectTransformPanel(): JSX.Element | null {
         </CardContent>
         <CardFooter className="justify-between gap-2">
           <p className="text-[11px] text-muted-foreground">
-            X/Z stay clamped to the room. Use this panel for precise height fixes.
+            X/Z snap to valid tile centers and stay clamped to the room margin. Use this panel for
+            precise height fixes.
           </p>
           <Button type="button" size="sm" onClick={() => void save()} disabled={isSaving}>
             {isSaving ? "Saving..." : "Apply"}
