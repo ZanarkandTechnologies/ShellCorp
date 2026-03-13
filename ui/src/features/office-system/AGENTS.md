@@ -9,6 +9,7 @@
 - Agent activity targets are keyed by `skillId`, never by persisted office-object IDs.
 - Office objects own placement and local runtime UI metadata; status events only report semantic activity.
 - Active project team clusters are derived from project/team state, not deletable furniture; builder delete affordances must steer operators toward archive/remove-team flows instead of pretending a cluster delete will remove the underlying team. `MEM-0182`
+- Agent memory inspection must stay memory-first: the employee context panel should lead with parsed `MEMORY.md` and `memory/*.md` entries, while broader workspace files or board workflows remain secondary handoffs instead of the default view. `MEM-0191`
 - Builder object movement must constrain against the live `officeLayout` tile mask, not the nav-grid snap alone, so newly added floor area becomes immediately usable for placement and drag preview matches persisted placement rules. `MEM-0187`
 - Builder object selection should keep the scene radial menu lean (`Move`, `Transform`, `Settings`) and route rotate/scale/delete through the shared transform panel so builder controls do not duplicate across overlays. `MEM-0190`
 - Avatar targeting must remain transient and presentation-only; it must not rewrite persisted desk or object transforms.
