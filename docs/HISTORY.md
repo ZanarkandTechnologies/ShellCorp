@@ -1,5 +1,6 @@
 # HISTORY
 
+2026-03-13 11:20 +0000 | feature | MEM-0164 | cli,onboarding,ui | Extended `shellcorp onboarding` into a staged first-run handoff with visible progress, optional immediate UI launch, and a reusable `shellcorp ui` alias so operators can bootstrap and enter the office from one CLI flow.
 2026-03-13 10:05 +0000 | feature | MEM-0163 | ui,office,employees,animation | Added subtle per-agent avatar motion in the office scene so employees now bob and sway while walking and keep a softer idle/desk breathing loop when stationary, while status/hover overlays stay anchored for readability.
 2026-03-12 23:20 +0000 | feature | MEM-0131 | ui,openclaw,usage,finance | Surfaced OpenClaw token and cost usage in the office UI by aggregating transcript `message.usage` data through the state bridge, extending session timeline usage contracts, adding per-session usage cards to Agent Session, and showing team-level AI burn summaries in Team Overview and Ledger without mutating the canonical account ledger.
 2026-03-12 23:05 +0000 | feature | MEM-0155 | sc12,ui,review,workbench | Reworked the CEO task UI into a board-native enterprise surface: Human Review now routes into the CEO Workbench instead of a separate inbox, task cards use colored lane/tag styling with wrapped titles, and full task memory opens in a centered Notion-style modal above the board.
