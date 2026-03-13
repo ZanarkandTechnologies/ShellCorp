@@ -13,6 +13,8 @@ type PlacementMode = {
   data: Record<string, unknown> | null;
 };
 
+export type BuilderTool = "paint-floor" | "remove-floor" | null;
+
 type ObjectPanelAspectRatio = "wide" | "square" | "tall";
 export type CeoWorkbenchView = "board" | "review";
 
@@ -60,6 +62,8 @@ interface AppState {
   setDebugMode: (enabled: boolean) => void;
   isBuilderMode: boolean;
   setBuilderMode: (enabled: boolean) => void;
+  activeBuilderTool: BuilderTool;
+  setActiveBuilderTool: (tool: BuilderTool) => void;
   isDragging: boolean;
   setIsDragging: (enabled: boolean) => void;
   isAnimatingCamera: boolean;
@@ -70,6 +74,8 @@ interface AppState {
   setSelectedObjectId: (id: string | null) => void;
   activeObjectConfigId: OfficeId<"officeObjects"> | null;
   setActiveObjectConfigId: (id: OfficeId<"officeObjects"> | null) => void;
+  activeObjectTransformId: OfficeId<"officeObjects"> | null;
+  setActiveObjectTransformId: (id: OfficeId<"officeObjects"> | null) => void;
   activeObjectPanel: ActiveObjectPanelState | null;
   setActiveObjectPanel: (panel: ActiveObjectPanelState | null) => void;
   manageAgentEmployeeId: OfficeId<"employees"> | null;
@@ -95,6 +101,10 @@ interface AppState {
   setIsAgentSessionPanelOpen: (isOpen: boolean) => void;
   isSkillsPanelOpen: boolean;
   setIsSkillsPanelOpen: (isOpen: boolean) => void;
+  selectedSkillStudioSkillId: string | null;
+  setSelectedSkillStudioSkillId: (skillId: string | null) => void;
+  skillStudioFocusAgentId: string | null;
+  setSkillStudioFocusAgentId: (agentId: string | null) => void;
   activeTeamId: string | null;
   setActiveTeamId: (id: string | null) => void;
   selectedProjectId: string | null;
@@ -137,6 +147,8 @@ export const useAppStore = create<AppState>()(
     setDebugMode: (enabled) => set({ debugMode: enabled }),
     isBuilderMode: false,
     setBuilderMode: (enabled) => set({ isBuilderMode: enabled }),
+    activeBuilderTool: null,
+    setActiveBuilderTool: (tool) => set({ activeBuilderTool: tool }),
     isDragging: false,
     setIsDragging: (enabled) => set({ isDragging: enabled }),
     isAnimatingCamera: false,
@@ -150,6 +162,9 @@ export const useAppStore = create<AppState>()(
     activeObjectConfigId: null,
     setActiveObjectConfigId: (id) =>
       set((state) => (state.activeObjectConfigId === id ? state : { activeObjectConfigId: id })),
+    activeObjectTransformId: null,
+    setActiveObjectTransformId: (id) =>
+      set((state) => (state.activeObjectTransformId === id ? state : { activeObjectTransformId: id })),
     activeObjectPanel: null,
     // Modal payload is compared structurally so repeated opens of the same state do not trigger extra work.
     setActiveObjectPanel: (panel) =>
@@ -184,6 +199,10 @@ export const useAppStore = create<AppState>()(
     setIsAgentSessionPanelOpen: (isOpen) => set({ isAgentSessionPanelOpen: isOpen }),
     isSkillsPanelOpen: false,
     setIsSkillsPanelOpen: (isOpen) => set({ isSkillsPanelOpen: isOpen }),
+    selectedSkillStudioSkillId: null,
+    setSelectedSkillStudioSkillId: (skillId) => set({ selectedSkillStudioSkillId: skillId }),
+    skillStudioFocusAgentId: null,
+    setSkillStudioFocusAgentId: (agentId) => set({ skillStudioFocusAgentId: agentId }),
     activeTeamId: null,
     setActiveTeamId: (id) => set({ activeTeamId: id }),
     selectedProjectId: null,

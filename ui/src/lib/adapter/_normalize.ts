@@ -81,6 +81,7 @@ import type {
   TeamProposalModel,
 } from "../openclaw-types";
 import { normalizeOfficeDecorSettings } from "../office-decor";
+import { getOfficeFootprintFromLayout, normalizeOfficeLayout } from "../office-layout";
 import { DEFAULT_OFFICE_FOOTPRINT, normalizeOfficeFootprint } from "../office-footprint";
 
 type Json = Record<string, unknown>;
@@ -1085,9 +1086,14 @@ export function toOfficeSettings(entry: unknown): OfficeSettingsModel {
     row.cameraOrientation === "south_west"
       ? row.cameraOrientation
       : "south_east";
+  const fallbackFootprint = normalizeOfficeFootprint(
+    row.officeFootprint ?? DEFAULT_OFFICE_FOOTPRINT,
+  );
+  const officeLayout = normalizeOfficeLayout(row.officeLayout, fallbackFootprint);
   return {
     meshAssetDir,
-    officeFootprint: normalizeOfficeFootprint(row.officeFootprint ?? DEFAULT_OFFICE_FOOTPRINT),
+    officeFootprint: getOfficeFootprintFromLayout(officeLayout),
+    officeLayout,
     decor: normalizeOfficeDecorSettings(row.decor),
     viewProfile,
     orbitControlsEnabled,

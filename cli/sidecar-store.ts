@@ -220,6 +220,11 @@ export interface OfficeSettingsModel {
     width: number;
     depth: number;
   };
+  officeLayout: {
+    version: 1;
+    tileSize: 1;
+    tiles: string[];
+  };
   decor: {
     floorPatternId: OfficeFloorPatternId;
     wallColorId: OfficeWallColorId;
@@ -735,6 +740,59 @@ function normalizeOfficeBackgroundId(value: unknown): OfficeBackgroundId {
   return "shell_haze";
 }
 
+function normalizeOfficeLayout(value: unknown, footprint: { width: number; depth: number }): {
+  version: 1;
+  tileSize: 1;
+  tiles: string[];
+} {
+  const row = asObject(value);
+  const rawTiles = asStringArray(row.tiles);
+  const normalizedTiles = [...new Set(rawTiles.filter((entry) => /^-?\d+:-?\d+$/.test(entry.trim())).map((entry) => entry.trim()))]
+    .sort((left, right) => left.localeCompare(right));
+  if (normalizedTiles.length > 0) {
+    return {
+      version: 1,
+      tileSize: 1,
+      tiles: normalizedTiles,
+    };
+  }
+  const halfWidth = Math.floor(footprint.width / 2);
+  const halfDepth = Math.floor(footprint.depth / 2);
+  const tiles: string[] = [];
+  for (let x = -halfWidth; x <= halfWidth; x += 1) {
+    for (let z = -halfDepth; z <= halfDepth; z += 1) {
+      tiles.push(`${x}:${z}`);
+    }
+  }
+  return {
+    version: 1,
+    tileSize: 1,
+    tiles,
+  };
+}
+
+function deriveOfficeFootprintFromLayout(layout: { tiles: string[] }): { width: number; depth: number } {
+  const parsed = layout.tiles
+    .map((entry) => /^(-?\d+):(-?\d+)$/.exec(entry))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => ({ x: Number(match[1]), z: Number(match[2]) }));
+  if (parsed.length === 0) return { width: 35, depth: 35 };
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+  for (const tile of parsed) {
+    minX = Math.min(minX, tile.x);
+    maxX = Math.max(maxX, tile.x);
+    minZ = Math.min(minZ, tile.z);
+    maxZ = Math.max(maxZ, tile.z);
+  }
+  return {
+    width: maxX - minX + 1,
+    depth: maxZ - minZ + 1,
+  };
+}
+
 function normalizeOfficeSettings(input: unknown): OfficeSettingsModel {
   const row = asObject(input);
   const footprint = asObject(row.officeFootprint);
@@ -746,14 +804,17 @@ function normalizeOfficeSettings(input: unknown): OfficeSettingsModel {
   };
   const viewProfile = asString(row.viewProfile, "free_orbit_3d");
   const cameraOrientation = asString(row.cameraOrientation, "south_east");
+  const normalizedFootprint = {
+    width: normalizeAxis(footprint.width, 35),
+    depth: normalizeAxis(footprint.depth, 35),
+  };
+  const officeLayout = normalizeOfficeLayout(row.officeLayout, normalizedFootprint);
   return {
     ...(asString(row.meshAssetDir).trim()
       ? { meshAssetDir: asString(row.meshAssetDir).trim() }
       : {}),
-    officeFootprint: {
-      width: normalizeAxis(footprint.width, 35),
-      depth: normalizeAxis(footprint.depth, 35),
-    },
+    officeFootprint: deriveOfficeFootprintFromLayout(officeLayout),
+    officeLayout,
     decor: {
       floorPatternId: normalizeOfficeFloorPatternId(decor.floorPatternId),
       wallColorId: normalizeOfficeWallColorId(decor.wallColorId),
@@ -841,6 +902,11 @@ export function createSidecarStore(): SidecarStore {
       normalizeOfficeSettings(
         await readJsonFile(officeSettingsPath, {
           officeFootprint: { width: 35, depth: 35 },
+          officeLayout: {
+            version: 1,
+            tileSize: 1,
+            tiles: [],
+          },
           decor: {
             floorPatternId: "sandstone_tiles",
             wallColorId: "gallery_cream",

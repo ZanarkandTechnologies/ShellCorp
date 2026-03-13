@@ -25,11 +25,13 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { usePlacementSystem } from "@/features/office-system/systems/placement-system";
 import { getGameObjectDefinition } from "@/features/office-system/components/object-registry";
 import { AlertCircle } from "lucide-react";
-import { FLOOR_SIZE } from "@/constants";
+import { getOfficeLayoutBounds, isPointInsideOfficeLayout } from "@/lib/office-layout";
+import { useOfficeDataContext } from "@/providers/office-data-provider";
 
 type PlacementCoordinates = [number, number, number] | null;
 
 export function PlacementHandler() {
+    const { officeSettings } = useOfficeDataContext();
     const {
         isActive,
         currentType: type,
@@ -51,6 +53,7 @@ export function PlacementHandler() {
     const GhostComponent = prefab?.Ghost;
     const hasPendingTeamAssignment = Boolean(data && typeof data.pendingTeamId === "string" && data.pendingTeamId);
     const isCoordinatePlacement = isActive && !hasPendingTeamAssignment;
+    const layoutBounds = getOfficeLayoutBounds(officeSettings.officeLayout);
 
     useEffect(() => {
         if (!isActive) {
@@ -80,6 +83,13 @@ export function PlacementHandler() {
         target.x = Math.round(target.x / snap) * snap;
         target.z = Math.round(target.z / snap) * snap;
         target.y = 0;
+        if (!isPointInsideOfficeLayout([target.x, target.y, target.z], officeSettings.officeLayout)) {
+            hoverPositionRef.current = null;
+            if (ghostRef.current) {
+                ghostRef.current.visible = false;
+            }
+            return;
+        }
         hoverPositionRef.current = [target.x, target.y, target.z];
 
         if (ghostRef.current) {
@@ -128,11 +138,11 @@ export function PlacementHandler() {
         <group>
             {isCoordinatePlacement && !pendingPosition ? (
                 <mesh
-                    position={[0, 0.01, 0]}
+                    position={[layoutBounds.centerX, 0.01, layoutBounds.centerZ]}
                     rotation={[-Math.PI / 2, 0, 0]}
                     onClick={handlePlacementSurfaceClick}
                 >
-                    <planeGeometry args={[FLOOR_SIZE, FLOOR_SIZE]} />
+                    <planeGeometry args={[layoutBounds.width, layoutBounds.depth]} />
                     <meshBasicMaterial transparent opacity={0} depthWrite={false} />
                 </mesh>
             ) : null}

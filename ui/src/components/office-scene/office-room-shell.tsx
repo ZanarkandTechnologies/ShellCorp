@@ -1,143 +1,83 @@
 /**
  * OFFICE ROOM SHELL
  * =================
- * Static floor and wall geometry for the office container.
+ * Tile-based floor and auto-wall geometry for the office container.
  *
  * KEY CONCEPTS:
- * - Room chrome is static presentation and should not carry scene orchestration logic.
+ * - Room chrome is presentation-only and derives from the persisted office layout mask.
+ * - Builder mode should favor readability over decoration, so the floor pattern is intentionally muted while editing.
  *
  * USAGE:
  * - Render inside `SceneContents` and pass the floor ref plus background click handler.
  *
  * MEMORY REFERENCES:
  * - MEM-0143
+ * - MEM-0165
  */
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { Box } from "@react-three/drei";
 import * as THREE from "three";
-import { WALL_HEIGHT, WALL_THICKNESS } from "@/constants";
+import { WALL_HEIGHT } from "@/constants";
 import type { getOfficeTheme } from "@/config/office-theme";
 import type { ThreeEvent } from "@react-three/fiber";
 import { getFloorPatternPreset, getWallColorPreset } from "@/lib/office-decor";
+import {
+  getOfficeLayoutBounds,
+  getOfficeLayoutTileSet,
+  getOfficeLayoutWallSegments,
+  parseOfficeLayoutTileKey,
+  type OfficeLayoutModel,
+} from "@/lib/office-layout";
 import type { OfficeFootprint } from "@/lib/office-footprint";
-import { getOfficeFootprintHalfExtents } from "@/lib/office-footprint";
 import type { OfficeSettingsModel } from "@/lib/openclaw-types";
 import type { OfficeSceneViewSettings } from "./view-profile";
 
 function getWallVisibility(settings: OfficeSceneViewSettings): {
-  showBack: boolean;
-  showFront: boolean;
-  showLeft: boolean;
-  showRight: boolean;
+  showNorth: boolean;
+  showSouth: boolean;
+  showWest: boolean;
+  showEast: boolean;
 } {
   if (settings.viewProfile !== "fixed_2_5d") {
-    return { showBack: true, showFront: true, showLeft: true, showRight: true };
+    return { showNorth: true, showSouth: true, showWest: true, showEast: true };
   }
 
   switch (settings.cameraOrientation) {
     case "south_west":
-      return { showBack: true, showFront: false, showLeft: false, showRight: true };
+      return { showNorth: true, showSouth: false, showWest: false, showEast: true };
     case "north_east":
-      return { showBack: false, showFront: true, showLeft: true, showRight: false };
+      return { showNorth: false, showSouth: true, showWest: true, showEast: false };
     case "north_west":
-      return { showBack: false, showFront: true, showLeft: false, showRight: true };
+      return { showNorth: false, showSouth: true, showWest: false, showEast: true };
     case "south_east":
     default:
-      return { showBack: true, showFront: false, showLeft: true, showRight: false };
+      return { showNorth: true, showSouth: false, showWest: true, showEast: false };
   }
 }
 
-function buildFloorTexture(
-  officeFootprint: OfficeFootprint,
+function resolveFloorTileColor(
   patternId: OfficeSettingsModel["decor"]["floorPatternId"],
-): THREE.CanvasTexture | null {
-  if (typeof document === "undefined") return null;
+  x: number,
+  z: number,
+  sceneBuilderMode: boolean,
+): string {
+  if (sceneBuilderMode) return "#d9ddd8";
   const preset = getFloorPatternPreset(patternId);
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 512;
-  const context = canvas.getContext("2d");
-  if (!context) return null;
-
   const [base, accent, line] = preset.colors;
-  context.fillStyle = base;
-  context.fillRect(0, 0, canvas.width, canvas.height);
-
   if (patternId === "sandstone_tiles") {
-    const tileSize = 64;
-    context.strokeStyle = line;
-    context.lineWidth = 6;
-    for (let x = 0; x <= canvas.width; x += tileSize) {
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, canvas.height);
-      context.stroke();
-    }
-    for (let y = 0; y <= canvas.height; y += tileSize) {
-      context.beginPath();
-      context.moveTo(0, y);
-      context.lineTo(canvas.width, y);
-      context.stroke();
-    }
-    context.fillStyle = accent;
-    for (let x = 0; x < canvas.width; x += tileSize) {
-      for (let y = 0; y < canvas.height; y += tileSize) {
-        context.fillRect(x + 8, y + 8, tileSize - 16, tileSize - 16);
-      }
-    }
-  } else if (patternId === "graphite_grid") {
-    const stripe = 48;
-    context.fillStyle = accent;
-    for (let i = -canvas.height; i < canvas.width; i += stripe) {
-      context.fillRect(i, 0, 16, canvas.height);
-      context.save();
-      context.translate(i, 0);
-      context.transform(1, 0.35, 0, 1, 0, 0);
-      context.fillRect(0, -80, 14, canvas.height + 160);
-      context.restore();
-    }
-    context.strokeStyle = line;
-    context.lineWidth = 4;
-    for (let x = 0; x <= canvas.width; x += 64) {
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, canvas.height);
-      context.stroke();
-    }
-  } else {
-    const plank = 72;
-    context.fillStyle = accent;
-    for (let row = 0; row < canvas.height; row += plank) {
-      const offset = Math.floor(row / plank) % 2 === 0 ? 0 : plank / 2;
-      for (let column = -offset; column < canvas.width; column += plank) {
-        context.fillRect(column, row, plank - 6, plank - 6);
-      }
-    }
-    context.strokeStyle = line;
-    context.lineWidth = 3;
-    for (let row = 0; row <= canvas.height; row += plank) {
-      context.beginPath();
-      context.moveTo(0, row);
-      context.lineTo(canvas.width, row);
-      context.stroke();
-    }
+    return (x + z) % 2 === 0 ? accent : base;
   }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(
-    Math.max(2, officeFootprint.width / 6),
-    Math.max(2, officeFootprint.depth / 6),
-  );
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
+  if (patternId === "graphite_grid") {
+    return x % 3 === 0 || z % 3 === 0 ? line : accent;
+  }
+  return z % 2 === 0 ? accent : base;
 }
 
 export function OfficeRoomShell(props: {
   floorRef: React.RefObject<THREE.Mesh | null>;
   officeFootprint: OfficeFootprint;
+  officeLayout: OfficeLayoutModel;
   officeDecorSettings: OfficeSettingsModel["decor"];
   officeViewSettings: OfficeSceneViewSettings;
   officeTheme: ReturnType<typeof getOfficeTheme>;
@@ -146,96 +86,88 @@ export function OfficeRoomShell(props: {
 }): JSX.Element {
   const {
     floorRef,
-    officeFootprint,
+    officeLayout,
     officeDecorSettings,
     officeViewSettings,
     officeTheme,
     sceneBuilderMode,
     onBackgroundClick,
   } = props;
-  const { halfWidth, halfDepth } = getOfficeFootprintHalfExtents(officeFootprint);
-  const isIsometricView = officeViewSettings.viewProfile === "fixed_2_5d";
-  const wallOpacity = sceneBuilderMode ? 0.16 : isIsometricView ? 0.96 : 1;
-  const { showBack, showFront, showLeft, showRight } = getWallVisibility(officeViewSettings);
-  const floorTexture = useMemo(
-    () => buildFloorTexture(officeFootprint, officeDecorSettings.floorPatternId),
-    [officeDecorSettings.floorPatternId, officeFootprint],
-  );
+  const bounds = useMemo(() => getOfficeLayoutBounds(officeLayout), [officeLayout]);
+  const tileSet = useMemo(() => getOfficeLayoutTileSet(officeLayout), [officeLayout]);
+  const wallSegments = useMemo(() => getOfficeLayoutWallSegments(officeLayout), [officeLayout]);
   const wallColor = getWallColorPreset(officeDecorSettings.wallColorId).color;
-
-  useEffect(
-    () => () => {
-      floorTexture?.dispose();
-    },
-    [floorTexture],
-  );
+  const wallOpacity = sceneBuilderMode ? 0.22 : officeViewSettings.viewProfile === "fixed_2_5d" ? 0.96 : 1;
+  const { showNorth, showSouth, showWest, showEast } = getWallVisibility(officeViewSettings);
 
   return (
     <>
-      <Box
+      <mesh
         ref={floorRef}
-        args={[officeFootprint.width, WALL_THICKNESS, officeFootprint.depth]}
-        position={[0, -WALL_THICKNESS / 2, 0]}
+        position={[bounds.centerX, -0.02, bounds.centerZ]}
+        rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
         name="floor"
         onClick={onBackgroundClick}
       >
-        <meshStandardMaterial
-          color={officeTheme.scene.floor}
-          map={floorTexture ?? undefined}
-          roughness={0.9}
-          metalness={0.05}
-        />
-      </Box>
+        <planeGeometry args={[bounds.width, bounds.depth]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
 
-      {showBack ? (
-        <Box
-          args={[officeFootprint.width, WALL_HEIGHT, WALL_THICKNESS]}
-          position={[0, WALL_HEIGHT / 2, -halfDepth]}
-          castShadow
-          receiveShadow
-          name="wall-back"
-          onClick={onBackgroundClick}
-        >
-          <meshStandardMaterial color={wallColor} transparent opacity={wallOpacity} />
-        </Box>
-      ) : null}
-      {showFront ? (
-        <Box
-          args={[officeFootprint.width, WALL_HEIGHT, WALL_THICKNESS]}
-          position={[0, WALL_HEIGHT / 2, halfDepth]}
-          castShadow
-          receiveShadow
-          name="wall-front"
-          onClick={onBackgroundClick}
-        >
-          <meshStandardMaterial color={wallColor} transparent opacity={wallOpacity} />
-        </Box>
-      ) : null}
-      {showLeft ? (
-        <Box
-          args={[WALL_THICKNESS, WALL_HEIGHT, officeFootprint.depth + WALL_THICKNESS]}
-          position={[-halfWidth, WALL_HEIGHT / 2, 0]}
-          castShadow
-          receiveShadow
-          name="wall-left"
-          onClick={onBackgroundClick}
-        >
-          <meshStandardMaterial color={wallColor} transparent opacity={wallOpacity} />
-        </Box>
-      ) : null}
-      {showRight ? (
-        <Box
-          args={[WALL_THICKNESS, WALL_HEIGHT, officeFootprint.depth + WALL_THICKNESS]}
-          position={[halfWidth, WALL_HEIGHT / 2, 0]}
-          castShadow
-          receiveShadow
-          name="wall-right"
-          onClick={onBackgroundClick}
-        >
-          <meshStandardMaterial color={wallColor} transparent opacity={wallOpacity} />
-        </Box>
-      ) : null}
+      {[...tileSet].map((tileKey) => {
+        const tile = parseOfficeLayoutTileKey(tileKey);
+        if (!tile) return null;
+        return (
+          <Box
+            key={tileKey}
+            args={[1, 0.08, 1]}
+            position={[tile.x, -0.04, tile.z]}
+            receiveShadow
+            name={`floor-tile-${tileKey}`}
+            onClick={onBackgroundClick}
+          >
+            <meshStandardMaterial
+              color={resolveFloorTileColor(
+                officeDecorSettings.floorPatternId,
+                tile.x,
+                tile.z,
+                sceneBuilderMode,
+              )}
+              roughness={0.9}
+              metalness={0.03}
+            />
+          </Box>
+        );
+      })}
+
+      {wallSegments
+        .filter((segment) => {
+          if (segment.id.endsWith(":north")) return showNorth;
+          if (segment.id.endsWith(":south")) return showSouth;
+          if (segment.id.endsWith(":west")) return showWest;
+          if (segment.id.endsWith(":east")) return showEast;
+          return true;
+        })
+        .map((segment) => (
+          <Box
+            key={segment.id}
+            args={[segment.width, WALL_HEIGHT, segment.depth]}
+            position={segment.position}
+            rotation={segment.rotation}
+            castShadow
+            receiveShadow
+            name={`wall-${segment.id}`}
+            onClick={onBackgroundClick}
+          >
+            <meshStandardMaterial
+              color={wallColor}
+              emissive={sceneBuilderMode ? officeTheme.scene.floor : "#000000"}
+              emissiveIntensity={sceneBuilderMode ? 0.05 : 0}
+              transparent
+              opacity={wallOpacity}
+            />
+          </Box>
+        ))}
     </>
   );
 }

@@ -112,6 +112,7 @@ export interface AgentLiveStatus {
   statusText: string;
   updatedAt?: number;
   bubbles: HeartbeatSkillBubble[];
+  currentSkillId?: string;
   latestHeartbeat?: HeartbeatWindow;
 }
 

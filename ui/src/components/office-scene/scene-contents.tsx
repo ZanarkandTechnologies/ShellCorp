@@ -19,21 +19,22 @@
 
 import { OrbitControls } from "@react-three/drei";
 import { useMemo } from "react";
-import { useAppStore } from "@/lib/app-store";
-import { Employee } from "@/features/office-system/components/employee";
-import Desk from "@/features/office-system/components/desk";
-import { SmartGrid } from "@/components/debug/unified-grid-helper";
 import { DestinationDebugger } from "@/components/debug/destination-debugger";
+import { SmartGrid } from "@/components/debug/unified-grid-helper";
 import { PlacementHandler } from "@/components/placement-handler";
 import type { StatusType } from "@/features/nav-system/components/status-indicator";
+import Desk from "@/features/office-system/components/desk";
+import { Employee } from "@/features/office-system/components/employee";
+import { useAppStore } from "@/lib/app-store";
+import { OfficeLayoutEditor } from "./office-layout-editor";
 import { OfficeLighting } from "./office-lighting";
-import { OfficeRoomShell } from "./office-room-shell";
 import { OfficeObjectRenderer } from "./office-object-renderer";
-import { useOfficeSceneTheme, useOfficeSceneCameraTransition } from "./use-office-scene-camera";
-import { useOfficeSceneInteractions } from "./use-office-scene-interactions";
-import { useOfficeSceneBootstrap } from "./use-office-scene-bootstrap";
-import { useOfficeSceneDerivedData } from "./use-office-scene-derived-data";
+import { OfficeRoomShell } from "./office-room-shell";
 import type { OfficeSceneProps } from "./types";
+import { useOfficeSceneBootstrap } from "./use-office-scene-bootstrap";
+import { useOfficeSceneCameraTransition, useOfficeSceneTheme } from "./use-office-scene-camera";
+import { useOfficeSceneDerivedData } from "./use-office-scene-derived-data";
+import { useOfficeSceneInteractions } from "./use-office-scene-interactions";
 import { getOfficeSceneViewState, isFixedOfficeSceneView } from "./view-profile";
 
 export function SceneContents(props: OfficeSceneProps): JSX.Element {
@@ -43,6 +44,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
     desks,
     officeObjects,
     officeFootprint,
+    officeLayout,
     officeDecorSettings,
     officeViewSettings,
     companyId,
@@ -56,9 +58,11 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
   const setAnimatingCamera = useAppStore((state) => state.setAnimatingCamera);
   const isDragging = useAppStore((state) => state.isDragging);
   const placementMode = useAppStore((state) => state.placementMode);
+  const activeBuilderTool = useAppStore((state) => state.activeBuilderTool);
 
   const officeTheme = useOfficeSceneTheme();
   const sceneBuilderMode = isAnimatingCamera ? false : isBuilderMode;
+  const isLayoutEditing = sceneBuilderMode && activeBuilderTool !== null;
   // MEM-0170 decision: fixed 2.5D uses compact scene overlays so Html cards cannot occlude the office.
   const useCompactSceneOverlays = isFixedOfficeSceneView(officeViewSettings);
   const viewState = getOfficeSceneViewState({
@@ -76,7 +80,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
 
   const { orbitControlsRef, floorRef, ceoDeskRef, createRegisteredObjectRef, getObjectRef } =
     useOfficeSceneBootstrap({
-      officeFootprint,
+      officeLayout,
       officeObjectCount:
         officeObjects?.filter((object) => object.meshType !== "wall-art").length ?? 0,
       hasCeoDesk: Boolean(ceoDeskData),
@@ -102,6 +106,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
         teamById={teamById}
         desksByTeamId={desksByTeamId}
         officeFootprint={officeFootprint}
+        officeLayout={officeLayout}
         handleTeamClick={handleTeamClick}
         getObjectRef={getObjectRef}
         createRegisteredObjectRef={createRegisteredObjectRef}
@@ -111,12 +116,11 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
     companyId,
     createRegisteredObjectRef,
     desksByTeamId,
-    enableOfficeObjects,
     getObjectRef,
     handleTeamClick,
+    officeLayout,
     officeFootprint,
     officeObjects,
-    officeViewSettings,
     teamById,
   ]);
 
@@ -124,16 +128,16 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
     <>
       <OfficeLighting
         officeTheme={officeTheme}
-        officeFootprint={officeFootprint}
+        officeLayout={officeLayout}
         officeViewSettings={officeViewSettings}
         sceneBuilderMode={sceneBuilderMode}
       />
 
       <OrbitControls
         ref={orbitControlsRef}
-        enabled={viewState.controlsEnabled}
-        enableRotate={viewState.rotateEnabled}
-        enablePan={viewState.panEnabled}
+        enabled={viewState.controlsEnabled && !isLayoutEditing}
+        enableRotate={viewState.rotateEnabled && !isLayoutEditing}
+        enablePan={viewState.panEnabled && !isLayoutEditing}
         enableZoom={viewState.zoomEnabled}
         maxPolarAngle={viewState.maxPolarAngle}
         minPolarAngle={viewState.minPolarAngle}
@@ -142,12 +146,14 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
       <OfficeRoomShell
         floorRef={floorRef}
         officeFootprint={officeFootprint}
+        officeLayout={officeLayout}
         officeDecorSettings={officeDecorSettings}
         officeViewSettings={officeViewSettings}
         officeTheme={officeTheme}
         sceneBuilderMode={sceneBuilderMode}
         onBackgroundClick={handleBackgroundClick}
       />
+      <OfficeLayoutEditor />
 
       {ceoDeskData && (
         <group ref={ceoDeskRef} name="obstacle-ceoDeskGroup">
@@ -169,6 +175,8 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
             _id={employee._id}
             name={employee.name}
             position={employee.initialPosition}
+            activityTargetPosition={employee.activityTargetPosition}
+            activityTargetSkillId={employee.activityTargetSkillId}
             isBusy={employee.isBusy}
             isCEO={employee.isCEO}
             isSupervisor={employee.isSupervisor}

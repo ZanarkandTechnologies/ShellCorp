@@ -1,4 +1,10 @@
 import * as THREE from 'three';
+import {
+    getOfficeLayoutBounds,
+    getOfficeLayoutTileSet,
+    type OfficeLayoutModel
+} from '../../../lib/office-layout';
+import type { OfficeFootprint } from '@/lib/office-footprint';
 
 // --- Grid Configuration ---
 const CELL_SIZE = 0.5; // Size of each grid cell in world units
@@ -9,6 +15,8 @@ let gridWidth = 0;
 let gridDepth = 0;
 let worldOffsetX = 0;
 let worldOffsetZ = 0;
+let worldMinX = 0;
+let worldMinZ = 0;
 let walkableGrid: boolean[][] = [];
 let currentObstaclePadding = OBSTACLE_PADDING; // Track current obstacle padding
 let currentDeskPadding = DESK_PADDING; // Track current desk padding
@@ -21,6 +29,10 @@ export const getGridData = () => ({
     cellSize: CELL_SIZE,
     worldOffsetX,
     worldOffsetZ,
+    worldMinX,
+    worldMinZ,
+    floorWidth: gridWidth * CELL_SIZE,
+    floorDepth: gridDepth * CELL_SIZE,
     walkableGrid,
     obstaclePadding: currentObstaclePadding,
 	deskPadding: currentDeskPadding,
@@ -55,7 +67,7 @@ class PathNode {
  * @param deskPadding Optional: Override the default desk cluster padding.
  */
 export function initializeGrid(
-    floorSize: number,
+    floorSize: number | OfficeFootprint | OfficeLayoutModel,
     obstacles: THREE.Object3D[],
     obstaclePadding?: number,
     deskPadding?: number
@@ -66,24 +78,49 @@ export function initializeGrid(
     currentObstaclePadding = obstaclePadding !== undefined ? obstaclePadding : OBSTACLE_PADDING;
     currentDeskPadding = deskPadding !== undefined ? deskPadding : DESK_PADDING;
 
-    gridWidth = Math.ceil(floorSize / CELL_SIZE);
-    gridDepth = Math.ceil(floorSize / CELL_SIZE);
-    worldOffsetX = floorSize / 2;
-    worldOffsetZ = floorSize / 2;
-    walkableGrid = Array(gridWidth).fill(null).map(() => Array(gridDepth).fill(true));
+    const layoutBounds = typeof floorSize === 'object' && 'tiles' in floorSize
+        ? getOfficeLayoutBounds(floorSize)
+        : null;
+    const floorWidth = typeof floorSize === 'number' ? floorSize : layoutBounds ? layoutBounds.width : floorSize.width;
+    const floorDepth = typeof floorSize === 'number' ? floorSize : layoutBounds ? layoutBounds.depth : floorSize.depth;
+    gridWidth = Math.ceil(floorWidth / CELL_SIZE);
+    gridDepth = Math.ceil(floorDepth / CELL_SIZE);
+    worldOffsetX = floorWidth / 2;
+    worldOffsetZ = floorDepth / 2;
+    worldMinX = layoutBounds ? layoutBounds.minWorldX : -worldOffsetX;
+    worldMinZ = layoutBounds ? layoutBounds.minWorldZ : -worldOffsetZ;
+    walkableGrid = Array(gridWidth).fill(null).map(() => Array(gridDepth).fill(layoutBounds ? false : true));
 
     console.log(`Initializing A* grid: ${gridWidth}x${gridDepth} (Cell size: ${CELL_SIZE})`);
     console.log(`Using obstacle padding: ${currentObstaclePadding} cells, desk padding: ${currentDeskPadding} cells`);
 
-    // 1. Mark walls (outer boundaries) with extra padding to keep agents away from edges
-    const boundaryPadding = Math.max(2, currentObstaclePadding);
-    for (let i = 0; i < gridWidth; i++) {
-        for (let j = 0; j < boundaryPadding; j++) {
-            // Mark boundary cells as unwalkable with padding
-            if (j < gridDepth) walkableGrid[j][i] = false; // Left boundary
-            if (gridWidth - 1 - j < gridWidth && gridWidth - 1 - j >= 0) walkableGrid[gridWidth - 1 - j][i] = false; // Right boundary
-            if (i < gridWidth) walkableGrid[i][j] = false; // Bottom boundary
-            if (i < gridWidth && gridDepth - 1 - j < gridDepth && gridDepth - 1 - j >= 0) walkableGrid[i][gridDepth - 1 - j] = false; // Top boundary
+    if (layoutBounds) {
+        const tileSet = getOfficeLayoutTileSet(floorSize);
+        for (const tileKey of tileSet) {
+            const [tileXRaw, tileZRaw] = tileKey.split(":");
+            const tileX = Number(tileXRaw);
+            const tileZ = Number(tileZRaw);
+            const min = worldToGrid(tileX - 0.5, tileZ - 0.5);
+            const max = worldToGrid(tileX + 0.5, tileZ + 0.5);
+            for (let x = min.x; x <= max.x; x++) {
+                for (let z = min.z; z <= max.z; z++) {
+                    if (x >= 0 && x < gridWidth && z >= 0 && z < gridDepth) {
+                        walkableGrid[x][z] = true;
+                    }
+                }
+            }
+        }
+    } else {
+        // 1. Mark walls (outer boundaries) with extra padding to keep agents away from edges
+        const boundaryPadding = Math.max(2, currentObstaclePadding);
+        for (let i = 0; i < gridWidth; i++) {
+            for (let j = 0; j < boundaryPadding; j++) {
+                // Mark boundary cells as unwalkable with padding
+                if (j < gridDepth) walkableGrid[j][i] = false; // Left boundary
+                if (gridWidth - 1 - j < gridWidth && gridWidth - 1 - j >= 0) walkableGrid[gridWidth - 1 - j][i] = false; // Right boundary
+                if (i < gridWidth) walkableGrid[i][j] = false; // Bottom boundary
+                if (i < gridWidth && gridDepth - 1 - j < gridDepth && gridDepth - 1 - j >= 0) walkableGrid[i][gridDepth - 1 - j] = false; // Top boundary
+            }
         }
     }
 
@@ -117,8 +154,7 @@ export function initializeGrid(
             // If the obstacle defines its own footprint, use that
             const footprint = obstacle.userData.footprint;
             for (const point of footprint) {
-                const fpX = Math.floor((point.x + floorSize / 2) / CELL_SIZE);
-                const fpZ = Math.floor((point.z + floorSize / 2) / CELL_SIZE);
+                const { x: fpX, z: fpZ } = worldToGrid(point.x, point.z);
                 markObstacle(fpX, fpZ, padding);
             }
         } else {
@@ -165,8 +201,8 @@ export function initializeGrid(
 
 // --- Coordinate Conversion ---
 export function worldToGrid(worldX: number, worldZ: number): { x: number, z: number } {
-    const gridX = Math.floor((worldX + worldOffsetX) / CELL_SIZE);
-    const gridZ = Math.floor((worldZ + worldOffsetZ) / CELL_SIZE);
+    const gridX = Math.floor((worldX - worldMinX) / CELL_SIZE);
+    const gridZ = Math.floor((worldZ - worldMinZ) / CELL_SIZE);
     return {
         x: Math.max(0, Math.min(gridWidth - 1, gridX)),
         z: Math.max(0, Math.min(gridDepth - 1, gridZ))
@@ -174,8 +210,8 @@ export function worldToGrid(worldX: number, worldZ: number): { x: number, z: num
 }
 
 export function gridToWorld(gridX: number, gridZ: number): THREE.Vector3 {
-    const worldX = gridX * CELL_SIZE - worldOffsetX + CELL_SIZE / 2;
-    const worldZ = gridZ * CELL_SIZE - worldOffsetZ + CELL_SIZE / 2;
+    const worldX = worldMinX + gridX * CELL_SIZE + CELL_SIZE / 2;
+    const worldZ = worldMinZ + gridZ * CELL_SIZE + CELL_SIZE / 2;
     return new THREE.Vector3(worldX, 0, worldZ);
 }
 

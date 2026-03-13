@@ -44,6 +44,8 @@ export function OfficeMenu({ className }: SpeedDialProps) {
   const setIsGlobalTeamPanelOpen = useAppStore((state) => state.setIsGlobalTeamPanelOpen);
   const setIsAgentSessionPanelOpen = useAppStore((state) => state.setIsAgentSessionPanelOpen);
   const setIsSkillsPanelOpen = useAppStore((state) => state.setIsSkillsPanelOpen);
+  const setSelectedSkillStudioSkillId = useAppStore((state) => state.setSelectedSkillStudioSkillId);
+  const setSkillStudioFocusAgentId = useAppStore((state) => state.setSkillStudioFocusAgentId);
   const setActiveTeamId = useAppStore((state) => state.setActiveTeamId);
   const setSelectedTeamId = useAppStore((state) => state.setSelectedTeamId);
   const setKanbanFocusAgentId = useAppStore((state) => state.setKanbanFocusAgentId);
@@ -163,8 +165,12 @@ export function OfficeMenu({ className }: SpeedDialProps) {
       {
         id: "global-skills",
         icon: BookOpen,
-        label: "Global Skills",
-        onClick: () => setIsSkillsPanelOpen(true),
+        label: "Skill Studio",
+        onClick: () => {
+          setSelectedSkillStudioSkillId(null);
+          setSkillStudioFocusAgentId(null);
+          setIsSkillsPanelOpen(true);
+        },
         color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
       },
       {
@@ -244,6 +250,8 @@ export function OfficeMenu({ className }: SpeedDialProps) {
       highlightedMenuActionId,
       setIsAgentSessionPanelOpen,
       setIsSkillsPanelOpen,
+      setSelectedSkillStudioSkillId,
+      setSkillStudioFocusAgentId,
       openEmployeeChat,
       setIsCeoWorkbenchOpen,
       setCeoWorkbenchView,

@@ -20,10 +20,11 @@ import { createRef, useCallback, useEffect, useRef } from 'react';
 import type { OrbitControls } from '@react-three/drei';
 import type * as THREE from 'three';
 import { useObjectRegistrationStore } from '@/features/office-system/store/object-registration-store';
-import { FLOOR_SIZE } from '@/constants';
 import { initializeGrid } from '@/features/nav-system/pathfinding/a-star-pathfinding';
+import type { OfficeLayoutModel } from '@/lib/office-layout';
 
 export function useOfficeSceneBootstrap(params: {
+    officeLayout: OfficeLayoutModel;
     officeObjectCount: number;
     hasCeoDesk: boolean;
     onNavigationReady?: () => void;
@@ -37,7 +38,7 @@ export function useOfficeSceneBootstrap(params: {
     ) => (element: THREE.Group | null) => void;
     getObjectRef: (objectId: string) => React.RefObject<THREE.Group | null>;
 } {
-    const { officeObjectCount, hasCeoDesk, onNavigationReady } = params;
+    const { officeLayout, officeObjectCount, hasCeoDesk, onNavigationReady } = params;
     const orbitControlsRef = useRef<React.ElementRef<typeof OrbitControls>>(null);
     const floorRef = useRef<THREE.Mesh>(null);
     const ceoDeskRef = useRef<THREE.Group>(null);
@@ -82,10 +83,10 @@ export function useOfficeSceneBootstrap(params: {
             const expectedCount = officeObjectCount + (hasCeoDesk ? 1 : 0);
 
             if (expectedCount > 0 && objects.length > 0) {
-                initializeGrid(FLOOR_SIZE, objects, 2, 3);
+                initializeGrid(officeLayout, objects, 2, 3);
                 onNavigationReady?.();
             } else if (expectedCount === 0) {
-                initializeGrid(FLOOR_SIZE, [], 2, 3);
+                initializeGrid(officeLayout, [], 2, 3);
                 onNavigationReady?.();
             } else {
                 // Architecture seam:
@@ -96,7 +97,7 @@ export function useOfficeSceneBootstrap(params: {
         }, 500);
 
         return () => clearTimeout(timer);
-    }, [getObjects, hasCeoDesk, officeObjectCount, onNavigationReady, registeredObjectCount]);
+    }, [getObjects, hasCeoDesk, officeLayout, officeObjectCount, onNavigationReady, registeredObjectCount]);
 
     return {
         orbitControlsRef,

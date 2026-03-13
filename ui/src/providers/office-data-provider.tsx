@@ -2,51 +2,52 @@
 
 import React, {
   createContext,
+  type ReactNode,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
-
+import { normalizeOfficeObjectId } from "@/features/office-system/components/office-object-id";
+import {
+  buildSkillTargetObjectMap,
+  getOfficeSkillAnchorPositionForOccupant,
+} from "@/features/office-system/skill-targeting";
 import {
   getAbsoluteDeskPosition,
   getDeskRotation,
   getEmployeePositionAtDesk,
 } from "@/features/office-system/utils/layout";
-import { normalizeOfficeObjectId } from "@/features/office-system/components/office-object-id";
-import type { OpenClawAdapter } from "@/lib/openclaw-adapter";
-import type { Company, DeskLayoutData, EmployeeData, OfficeObject, TeamData } from "@/lib/types";
+import { useAgentLiveStatuses } from "@/hooks/use-agent-live-status";
 import {
   computeBusinessReadinessIssues,
   projectToBusinessBuilderDraft,
 } from "@/lib/business-builder";
-import type {
-  AgentCardModel,
-  AgentLiveStatus,
-  CompanyModel,
-  FederatedTaskProvider,
-  FederationProjectPolicy,
-  PendingApprovalModel,
-  ProviderIndexProfile,
-  ProjectWorkloadSummary,
-  ReconciliationWarning,
-  UnifiedOfficeModel,
-  OfficeSettingsModel,
-} from "@/lib/openclaw-types";
-import { useAgentLiveStatuses } from "@/hooks/use-agent-live-status";
-import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
-import {
-  DEFAULT_OFFICE_FOOTPRINT,
-  type OfficeFootprint,
-} from "@/lib/office-footprint";
+import { DEFAULT_OFFICE_FOOTPRINT } from "@/lib/office-footprint";
 import {
   clampPositionToOfficeLayout,
   createRectangularOfficeLayout,
   getManagementAnchorFromOfficeLayout,
   type OfficeLayoutModel,
 } from "@/lib/office-layout";
+import type { OpenClawAdapter } from "@/lib/openclaw-adapter";
+import type {
+  AgentCardModel,
+  AgentLiveStatus,
+  CompanyModel,
+  FederatedTaskProvider,
+  FederationProjectPolicy,
+  OfficeSettingsModel,
+  PendingApprovalModel,
+  ProjectWorkloadSummary,
+  ProviderIndexProfile,
+  ReconciliationWarning,
+  UnifiedOfficeModel,
+} from "@/lib/openclaw-types";
+import type { Company, DeskLayoutData, EmployeeData, OfficeObject, TeamData } from "@/lib/types";
+import { stabilizeOfficeData } from "@/providers/office-data-stability";
+import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 
 interface OfficeDataContextType {
   company: Company | null;
@@ -59,6 +60,7 @@ interface OfficeDataContextType {
   workload: ProjectWorkloadSummary[];
   warnings: ReconciliationWarning[];
   refresh: () => Promise<void>;
+  applyOfficeSettings: (settings: OfficeSettingsModel) => void;
   manualResync: (
     projectId: string,
     provider?: FederatedTaskProvider,
@@ -234,6 +236,7 @@ function fallbackData(): OfficeDataContextType {
     workload: [],
     warnings: [],
     refresh: async () => {},
+    applyOfficeSettings: () => {},
     manualResync: async () => ({ ok: false, error: "adapter_unavailable" }),
     upsertFederationPolicy: async () => ({ ok: false, error: "adapter_unavailable" }),
     upsertProviderIndexProfile: async () => ({ ok: false, error: "adapter_unavailable" }),
@@ -244,204 +247,6 @@ function fallbackData(): OfficeDataContextType {
 function areStringArraysEqual(current: string[], next: string[]): boolean {
   if (current.length !== next.length) return false;
   return current.every((value, index) => value === next[index]);
-}
-
-function buildPositionSignature(position: [number, number, number] | undefined): string {
-  if (!position) return "";
-  return position.join(",");
-}
-
-function buildCompanySignature(company: Company | null): string {
-  if (!company) return "";
-  return `${company._id}|${company.name}`;
-}
-
-function buildTeamSignature(teams: TeamData[]): string {
-  return teams
-    .map((team) =>
-      [
-        team._id,
-        team.name,
-        team.description,
-        team.deskCount ?? "",
-        buildPositionSignature(team.clusterPosition),
-        (team.services ?? []).join(","),
-        team.wanderLockUntil ?? "",
-        team.businessType ?? "",
-        team.employees.join(","),
-        team.capabilitySkills?.measure ?? "",
-        team.capabilitySkills?.execute ?? "",
-        team.capabilitySkills?.distribute ?? "",
-        team.finances?.revenueCents ?? "",
-        team.finances?.costCents ?? "",
-        team.finances?.profitCents ?? "",
-        (team.resources ?? [])
-          .map((resource) =>
-            [
-              resource.id,
-              resource.type,
-              resource.name,
-              resource.unit,
-              resource.remaining,
-              resource.limit,
-              resource.reserved ?? "",
-              resource.health,
-            ].join(":"),
-          )
-          .join(","),
-        team.businessReadiness?.ready ? "1" : "0",
-        (team.businessReadiness?.issues ?? []).join(","),
-      ].join("|"),
-    )
-    .join("||");
-}
-
-function buildDeskSignature(desks: DeskLayoutData[]): string {
-  return desks.map((desk) => `${desk.id}|${desk.deskIndex}|${desk.team}`).join("||");
-}
-
-function buildHeartbeatBubbleSignature(
-  bubbles: Array<{ label: string; weight?: number }> | undefined,
-): string {
-  return (bubbles ?? []).map((bubble) => `${bubble.label}:${bubble.weight ?? ""}`).join(",");
-}
-
-function buildEmployeeSignature(employees: EmployeeData[]): string {
-  return employees
-    .map((employee) =>
-      [
-        employee._id,
-        employee.companyId ?? "",
-        employee.name,
-        employee.teamId,
-        employee.builtInRole ?? "",
-        employee.jobTitle ?? "",
-        employee.team ?? "",
-        buildPositionSignature(employee.initialPosition),
-        employee.status ?? "",
-        employee.statusMessage ?? "",
-        employee.isBusy ? "1" : "0",
-        employee.isCEO ? "1" : "0",
-        employee.isSupervisor ? "1" : "0",
-        employee.gender ?? "",
-        employee.deskId ?? "",
-        employee.wantsToWander ? "1" : "0",
-        employee.notificationCount ?? 0,
-        employee.notificationPriority ?? 0,
-        employee.heartbeatState ?? "",
-        employee.profileImageUrl ?? "",
-        buildHeartbeatBubbleSignature(employee.heartbeatBubbles),
-      ].join("|"),
-    )
-    .join("||");
-}
-
-function buildOfficeObjectSignature(officeObjects: OfficeObject[]): string {
-  return officeObjects
-    .map((officeObject) =>
-      [
-        officeObject._id,
-        officeObject.meshType,
-        buildPositionSignature(officeObject.position),
-        buildPositionSignature(officeObject.rotation),
-        buildPositionSignature(officeObject.scale),
-        typeof officeObject.metadata?.displayName === "string"
-          ? officeObject.metadata.displayName
-          : "",
-        typeof officeObject.metadata?.teamId === "string" ? officeObject.metadata.teamId : "",
-        typeof officeObject.metadata?.meshPublicPath === "string"
-          ? officeObject.metadata.meshPublicPath
-          : "",
-        typeof officeObject.metadata?.uiBinding?.kind === "string"
-          ? officeObject.metadata.uiBinding.kind
-          : "",
-        typeof officeObject.metadata?.uiBinding?.title === "string"
-          ? officeObject.metadata.uiBinding.title
-          : "",
-        typeof officeObject.metadata?.uiBinding?.url === "string"
-          ? officeObject.metadata.uiBinding.url
-          : "",
-        typeof officeObject.metadata?.uiBinding?.aspectRatio === "string"
-          ? officeObject.metadata.uiBinding.aspectRatio
-          : "",
-        typeof officeObject.metadata?.uiBinding?.openMode === "string"
-          ? officeObject.metadata.uiBinding.openMode
-          : "",
-      ].join("|"),
-    )
-    .join("||");
-}
-
-function buildOfficeSettingsSignature(settings: OfficeDataContextType["officeSettings"]): string {
-  return [
-    settings.meshAssetDir,
-    settings.officeFootprint.width,
-    settings.officeFootprint.depth,
-    settings.decor.floorPatternId,
-    settings.decor.wallColorId,
-    settings.decor.backgroundId,
-    settings.viewProfile,
-    settings.orbitControlsEnabled ? "orbit-on" : "orbit-off",
-    settings.cameraOrientation,
-  ].join("|");
-}
-
-function stabilizeOfficeData(
-  current: OfficeDataContextType,
-  next: OfficeDataContextType,
-): OfficeDataContextType {
-  // These compact signatures are intentionally cheaper than JSON.stringify on every polling tick.
-  const stabilizedCompany =
-    buildCompanySignature(current.company) === buildCompanySignature(next.company)
-      ? current.company
-      : next.company;
-  const stabilizedTeams =
-    buildTeamSignature(current.teams) === buildTeamSignature(next.teams)
-      ? current.teams
-      : next.teams;
-  const stabilizedEmployees =
-    buildEmployeeSignature(current.employees) === buildEmployeeSignature(next.employees)
-      ? current.employees
-      : next.employees;
-  const stabilizedOfficeObjects =
-    buildOfficeObjectSignature(current.officeObjects) ===
-    buildOfficeObjectSignature(next.officeObjects)
-      ? current.officeObjects
-      : next.officeObjects;
-  const stabilizedDesks =
-    buildDeskSignature(current.desks) === buildDeskSignature(next.desks)
-      ? current.desks
-      : next.desks;
-  const stabilizedOfficeSettings =
-    buildOfficeSettingsSignature(current.officeSettings) ===
-    buildOfficeSettingsSignature(next.officeSettings)
-      ? current.officeSettings
-      : next.officeSettings;
-
-  if (
-    current.isLoading === next.isLoading &&
-    current.company === stabilizedCompany &&
-    current.teams === stabilizedTeams &&
-    current.employees === stabilizedEmployees &&
-    current.officeObjects === stabilizedOfficeObjects &&
-    current.desks === stabilizedDesks &&
-    current.officeSettings === stabilizedOfficeSettings &&
-    current.companyModel === next.companyModel &&
-    current.workload === next.workload &&
-    current.warnings === next.warnings
-  ) {
-    return current;
-  }
-
-  return {
-    ...next,
-    company: stabilizedCompany,
-    teams: stabilizedTeams,
-    employees: stabilizedEmployees,
-    officeObjects: stabilizedOfficeObjects,
-    desks: stabilizedDesks,
-    officeSettings: stabilizedOfficeSettings,
-  };
 }
 
 function toOfficeData(
@@ -457,7 +262,6 @@ function toOfficeData(
   const workload = unified.workload;
   const warnings = unified.warnings;
   const officeLayout = officeSettings.officeLayout;
-  const officeFootprint = officeSettings.officeFootprint;
   const agents: AgentCardModel[] = configuredAgents.length > 0 ? configuredAgents : runtimeAgents;
   if (agents.length === 0) return fallbackData();
 
@@ -472,12 +276,12 @@ function toOfficeData(
   const companyAgents = companyModel.agents ?? [];
   const teamClusterAnchorsByTeamId = new Map<string, [number, number, number]>();
   for (const object of sidecarObjects.filter((entry) => entry.meshType === "team-cluster")) {
-      const resolvedTeamId = resolveTeamClusterTeamId(object);
-      if (!resolvedTeamId) continue;
-      teamClusterAnchorsByTeamId.set(
-        resolvedTeamId,
-        clampClusterPositionForLayout(object.position, officeLayout).position,
-      );
+    const resolvedTeamId = resolveTeamClusterTeamId(object);
+    if (!resolvedTeamId) continue;
+    teamClusterAnchorsByTeamId.set(
+      resolvedTeamId,
+      clampClusterPositionForLayout(object.position, officeLayout).position,
+    );
   }
   const ceoAnchor = getManagementAnchorFromOfficeLayout(officeLayout);
 
@@ -634,6 +438,41 @@ function toOfficeData(
     approvalsByAgent.set(approval.agentId, existing);
   }
 
+  const clusterObjects: OfficeObject[] = teams
+    .filter((team) => team.name !== "Management")
+    .map((team, index) => ({
+      _id: `cluster-${team._id}`,
+      companyId,
+      meshType: "team-cluster",
+      position: team.clusterPosition ?? [index * 9 - 4, 0, 8],
+      rotation: [0, 0, 0],
+      metadata: { teamId: team._id },
+    }));
+  const sidecarFurniture: OfficeObject[] = sidecarObjects
+    .filter((item) => item.meshType !== "team-cluster")
+    .map((item) => ({
+      _id: normalizeOfficeObjectId(item.id),
+      companyId,
+      meshType: item.meshType,
+      position: clampPositionToOfficeLayout(item.position, officeLayout, 1),
+      rotation: item.rotation ?? [0, 0, 0],
+      scale: item.scale,
+      metadata: { ...(item.metadata ?? {}) },
+    }));
+  const officeObjects = [
+    ...clusterObjects,
+    ...(sidecarFurniture.length > 0 ? sidecarFurniture : buildDefaultFurnitureObjects(companyId)),
+  ];
+  const skillTargetObjects = buildSkillTargetObjectMap(officeObjects);
+  const skillOccupants = new Map<string, string[]>();
+  for (const agent of agents) {
+    const activeSkillId = liveStatusByAgent[agent.agentId]?.currentSkillId?.trim();
+    if (!activeSkillId) continue;
+    const occupants = skillOccupants.get(activeSkillId) ?? [];
+    occupants.push(agent.agentId);
+    skillOccupants.set(activeSkillId, occupants);
+  }
+
   const employees: EmployeeData[] = agents.map((agent, index) => {
     const companyAgent = companyAgentsById.get(agent.agentId);
     const runtimeAgent = runtimeById.get(agent.agentId);
@@ -649,6 +488,11 @@ function toOfficeData(
       (item) => item.id === companyAgent?.heartbeatProfileId,
     );
     const liveStatus = liveStatusByAgent[agent.agentId];
+    const activeSkillId = liveStatus?.currentSkillId?.trim();
+    const skillOccupantIds = activeSkillId ? (skillOccupants.get(activeSkillId) ?? []) : [];
+    const skillOccupantIndex =
+      activeSkillId && skillOccupantIds.length > 0 ? skillOccupantIds.indexOf(agent.agentId) : -1;
+    const skillTargetObject = activeSkillId ? skillTargetObjects.get(activeSkillId) : undefined;
     const pressure = companyAgent?.projectId
       ? workload.find((item) => item.projectId === companyAgent.projectId)?.queuePressure
       : undefined;
@@ -699,6 +543,15 @@ function toOfficeData(
       name: agent.displayName,
       team: team?.name ?? "OpenClaw Ops",
       initialPosition,
+      activityTargetPosition:
+        skillTargetObject && skillOccupantIndex >= 0
+          ? getOfficeSkillAnchorPositionForOccupant(
+              skillTargetObject,
+              skillOccupantIndex,
+              skillOccupantIds.length,
+            )
+          : undefined,
+      activityTargetSkillId: activeSkillId,
       isBusy: (runtimeAgent?.sessionCount ?? 0) > 0,
       deskId: initialDeskLayout?.deskId as EmployeeData["deskId"],
       isCEO: companyAgent?.role === "ceo" || isMainAgent || index === 0,
@@ -730,32 +583,6 @@ function toOfficeData(
     };
   });
 
-  const clusterObjects: OfficeObject[] = teams
-    .filter((team) => team.name !== "Management")
-    .map((team, index) => ({
-      _id: `cluster-${team._id}`,
-      companyId,
-      meshType: "team-cluster",
-      position: team.clusterPosition ?? [index * 9 - 4, 0, 8],
-      rotation: [0, 0, 0],
-      metadata: { teamId: team._id },
-    }));
-  const sidecarFurniture: OfficeObject[] = sidecarObjects
-    .filter((item) => item.meshType !== "team-cluster")
-    .map((item) => ({
-      _id: normalizeOfficeObjectId(item.id),
-      companyId,
-      meshType: item.meshType,
-      position: clampPositionToOfficeLayout(item.position, officeLayout, 1),
-      rotation: item.rotation ?? [0, 0, 0],
-      scale: item.scale,
-      metadata: { ...(item.metadata ?? {}) },
-    }));
-  const officeObjects = [
-    ...clusterObjects,
-    ...(sidecarFurniture.length > 0 ? sidecarFurniture : buildDefaultFurnitureObjects(companyId)),
-  ];
-
   return {
     company: demoCompany,
     teams,
@@ -785,7 +612,36 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
   const latestLiveStatusSignatureRef = useRef("");
   const liveStatusByConvex = useAgentLiveStatuses(agentIds);
 
-  const load = async (): Promise<void> => {
+  const applyOfficeSettingsValue = useMemo(
+    () => (settings: OfficeSettingsModel) => {
+      const unified = latestUnifiedRef.current;
+      if (!unified) {
+        setValue((current) => ({ ...current, officeSettings: settings }));
+        return;
+      }
+      const pendingApprovals = latestApprovalsRef.current;
+      const statusByAgent =
+        liveStatusByConvex && Object.keys(liveStatusByConvex).length > 0 ? liveStatusByConvex : {};
+      setValue((current) => {
+        const next = stabilizeOfficeData(
+          current,
+          toOfficeData(unified, settings, pendingApprovals, statusByAgent),
+        );
+        if (next === current) return current;
+        return {
+          ...next,
+          refresh: current.refresh,
+          applyOfficeSettings: current.applyOfficeSettings,
+          manualResync: current.manualResync,
+          upsertFederationPolicy: current.upsertFederationPolicy,
+          upsertProviderIndexProfile: current.upsertProviderIndexProfile,
+        };
+      });
+    },
+    [liveStatusByConvex],
+  );
+
+  const load = React.useCallback(async (): Promise<void> => {
     const adapter = adapterRef.current;
     if (!adapter) return;
     try {
@@ -825,6 +681,7 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
         return {
           ...next,
           refresh: current.refresh,
+          applyOfficeSettings: current.applyOfficeSettings,
           manualResync: current.manualResync,
           upsertFederationPolicy: current.upsertFederationPolicy,
           upsertProviderIndexProfile: current.upsertProviderIndexProfile,
@@ -835,12 +692,13 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       setValue((current) => ({
         ...fallbackData(),
         refresh: current.refresh,
+        applyOfficeSettings: current.applyOfficeSettings,
         manualResync: current.manualResync,
         upsertFederationPolicy: current.upsertFederationPolicy,
         upsertProviderIndexProfile: current.upsertProviderIndexProfile,
       }));
     }
-  };
+  }, [liveStatusByConvex]);
 
   useEffect(() => {
     if (!liveStatusByConvex || Object.keys(liveStatusByConvex).length === 0) return;
@@ -860,6 +718,7 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       return {
         ...next,
         refresh: current.refresh,
+        applyOfficeSettings: current.applyOfficeSettings,
         manualResync: current.manualResync,
         upsertFederationPolicy: current.upsertFederationPolicy,
         upsertProviderIndexProfile: current.upsertProviderIndexProfile,
@@ -909,6 +768,7 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
     setValue((current) => ({
       ...current,
       refresh,
+      applyOfficeSettings: applyOfficeSettingsValue,
       manualResync,
       upsertFederationPolicy,
       upsertProviderIndexProfile,
@@ -923,7 +783,7 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       cancelledRef.current = true;
       clearInterval(timer);
     };
-  }, [sharedAdapter]);
+  }, [applyOfficeSettingsValue, load, sharedAdapter]);
 
   const memoizedValue = useMemo(() => value, [value]);
 

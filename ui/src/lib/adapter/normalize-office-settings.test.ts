@@ -6,6 +6,10 @@ describe("office settings normalization", () => {
   it("fills view defaults when older payloads omit them", () => {
     expect(toOfficeSettings({ meshAssetDir: "/tmp/assets" })).toMatchObject({
       meshAssetDir: "/tmp/assets",
+      officeLayout: {
+        version: 1,
+        tileSize: 1,
+      },
       decor: {
         floorPatternId: "sandstone_tiles",
         wallColorId: "gallery_cream",
@@ -30,6 +34,10 @@ describe("office settings normalization", () => {
         cameraOrientation: "north_west",
       }),
     ).toMatchObject({
+      officeLayout: {
+        version: 1,
+        tileSize: 1,
+      },
       decor: {
         floorPatternId: "graphite_grid",
         wallColorId: "sage_mist",
@@ -38,6 +46,29 @@ describe("office settings normalization", () => {
       viewProfile: "fixed_2_5d",
       orbitControlsEnabled: false,
       cameraOrientation: "north_west",
+    });
+  });
+
+  it("derives footprint bounds from persisted office layouts", () => {
+    expect(
+      toOfficeSettings({
+        officeFootprint: { width: 35, depth: 35 },
+        officeLayout: {
+          version: 1,
+          tileSize: 1,
+          tiles: ["0:0", "1:0", "1:1"],
+        },
+      }),
+    ).toMatchObject({
+      officeFootprint: {
+        width: 2,
+        depth: 2,
+      },
+      officeLayout: {
+        version: 1,
+        tileSize: 1,
+        tiles: ["0:0", "1:0", "1:1"],
+      },
     });
   });
 

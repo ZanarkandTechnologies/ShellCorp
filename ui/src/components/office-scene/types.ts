@@ -15,6 +15,7 @@
  */
 
 import type { DeskLayoutData, EmployeeData, OfficeId, OfficeObject, TeamData } from "@/lib/types";
+import type { OfficeLayoutModel } from "@/lib/office-layout";
 import type { OfficeFootprint } from "@/lib/office-footprint";
 import type { OfficeSettingsModel } from "@/lib/openclaw-types";
 
@@ -24,6 +25,7 @@ export interface OfficeSceneProps {
   desks: DeskLayoutData[];
   officeObjects: OfficeObject[];
   officeFootprint: OfficeFootprint;
+  officeLayout: OfficeLayoutModel;
   officeDecorSettings: OfficeSettingsModel["decor"];
   officeViewSettings: Pick<
     OfficeSettingsModel,

@@ -11,6 +11,7 @@ import {
   runSkillStudioDemo,
   saveSkillStudioManifest,
 } from "./skill-studio-state";
+import { normalizeBridgeOfficeSettings, type BridgeOfficeSettings as OfficeSettings } from "./office-settings-bridge";
 
 type JsonObject = Record<string, unknown>;
 type MemoryEntryType = "discovery" | "decision" | "problem" | "solution" | "pattern" | "warning" | "success" | "refactor" | "bugfix" | "feature";
@@ -39,21 +40,6 @@ const DEFAULT_MESH_ASSET_DIR = path.join(OPENCLAW_HOME, "assets", "meshes");
 const CRON_JOBS_PATH = path.join(OPENCLAW_HOME, "cron", "jobs.json");
 const MESH_EXTENSIONS = new Set([".glb", ".gltf"]);
 const MESH_PREVIEW_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
-
-interface OfficeSettings {
-  meshAssetDir?: string;
-  officeFootprint?: {
-    width?: number;
-    depth?: number;
-  };
-  decor?: {
-    floorPatternId?: "sandstone_tiles" | "graphite_grid" | "walnut_parquet";
-    wallColorId?: "gallery_cream" | "sage_mist" | "harbor_blue" | "clay_rose";
-  };
-  viewProfile?: "free_orbit_3d" | "fixed_2_5d";
-  orbitControlsEnabled?: boolean;
-  cameraOrientation?: "north_east" | "north_west" | "south_east" | "south_west";
-}
 
 interface SessionUsageTotals {
   inputTokens: number;
@@ -128,65 +114,15 @@ async function readBody(req: { on: (name: string, cb: (chunk?: Buffer) => void) 
   }
 }
 
-function normalizeOfficeSettings(input: unknown): OfficeSettings {
-  const row = input && typeof input === "object" ? (input as JsonObject) : {};
-  const meshAssetDir =
-    typeof row.meshAssetDir === "string" && row.meshAssetDir.trim()
-      ? path.resolve(row.meshAssetDir.trim())
-      : DEFAULT_MESH_ASSET_DIR;
-  const rawFootprint =
-    row.officeFootprint && typeof row.officeFootprint === "object"
-      ? (row.officeFootprint as JsonObject)
-      : {};
-  const normalizeAxis = (value: unknown, fallback: number): number => {
-    if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-    const rounded = Math.round(value);
-    const bounded = Math.max(15, rounded);
-    return bounded % 2 === 0 ? bounded + 1 : bounded;
-  };
-  const rawDecor = row.decor && typeof row.decor === "object" ? (row.decor as JsonObject) : {};
-  const viewProfile = row.viewProfile === "fixed_2_5d" ? "fixed_2_5d" : "free_orbit_3d";
-  const orbitControlsEnabled = row.orbitControlsEnabled !== false;
-  const cameraOrientation =
-    row.cameraOrientation === "north_east" ||
-    row.cameraOrientation === "north_west" ||
-    row.cameraOrientation === "south_west"
-      ? row.cameraOrientation
-      : "south_east";
-  return {
-    meshAssetDir,
-    officeFootprint: {
-      width: normalizeAxis(rawFootprint.width, 35),
-      depth: normalizeAxis(rawFootprint.depth, 35),
-    },
-    decor: {
-      floorPatternId:
-        rawDecor.floorPatternId === "graphite_grid" || rawDecor.floorPatternId === "walnut_parquet"
-          ? rawDecor.floorPatternId
-          : "sandstone_tiles",
-      wallColorId:
-        rawDecor.wallColorId === "sage_mist" ||
-        rawDecor.wallColorId === "harbor_blue" ||
-        rawDecor.wallColorId === "clay_rose"
-          ? rawDecor.wallColorId
-          : "gallery_cream",
-      backgroundId:
-        rawDecor.backgroundId === "midnight_tide" ||
-        rawDecor.backgroundId === "kelp_fog" ||
-        rawDecor.backgroundId === "estuary_glow"
-          ? rawDecor.backgroundId
-          : "shell_haze",
-    },
-    viewProfile,
-    orbitControlsEnabled,
-    cameraOrientation,
-  };
+function normalizeOfficeSettings(input: unknown): Required<OfficeSettings> {
+  return normalizeBridgeOfficeSettings(input, DEFAULT_MESH_ASSET_DIR);
 }
 
 async function readOfficeSettings(): Promise<OfficeSettings> {
   const raw = await readJsonFile<OfficeSettings>(OFFICE_SETTINGS_PATH, {
     meshAssetDir: DEFAULT_MESH_ASSET_DIR,
     officeFootprint: { width: 35, depth: 35 },
+    officeLayout: { version: 1, tileSize: 1, tiles: [] },
     decor: {
       floorPatternId: "sandstone_tiles",
       wallColorId: "gallery_cream",
