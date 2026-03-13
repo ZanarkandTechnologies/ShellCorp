@@ -31,6 +31,7 @@ import {
   findAvailableDestination,
   releaseEmployeeReservations,
 } from "@/features/nav-system/pathfinding/destination-registry";
+import type { EmployeeAnimationMode } from "./employee-motion";
 
 type DebugPathData = {
   originalPath: THREE.Vector3[] | null;
@@ -52,6 +53,7 @@ type UseEmployeeLocomotionResult = {
   debugPathData: DebugPathData;
   debugDeskDecision: string;
   isGoingToDesk: boolean;
+  animationMode: EmployeeAnimationMode;
 };
 
 export function useEmployeeLocomotion({
@@ -78,6 +80,7 @@ export function useEmployeeLocomotion({
     remainingPath: null,
   });
   const [debugDeskDecision, setDebugDeskDecision] = useState("");
+  const [animationMode, setAnimationMode] = useState<EmployeeAnimationMode>("idle");
 
   const idleTimerRef = useRef(0);
   const debugPathUpdateRef = useRef(0);
@@ -261,6 +264,9 @@ export function useEmployeeLocomotion({
       }
     }
 
+    const nextAnimationMode = isMoving ? "walking" : shouldBeAtDesk ? "working" : "idle";
+    setAnimationMode((prev) => (prev === nextAnimationMode ? prev : nextAnimationMode));
+
     if (debugMode && path && path.length > 0) {
       const now = performance.now();
       if (now - debugPathUpdateRef.current > 500) {
@@ -288,5 +294,5 @@ export function useEmployeeLocomotion({
     }
   }, [debugMode]);
 
-  return { groupRef, debugPathData, debugDeskDecision, isGoingToDesk };
+  return { groupRef, debugPathData, debugDeskDecision, isGoingToDesk, animationMode };
 }

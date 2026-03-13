@@ -11,8 +11,9 @@
  *
  * MEMORY REFERENCES:
  * - MEM-0144
+ * - MEM-0163
  */
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { Box, Edges } from "@react-three/drei";
 import * as THREE from "three";
@@ -46,6 +47,7 @@ import {
   SupervisorHat,
   TeamPlumbob,
 } from "./Decorations";
+import { getEmployeeAnimationPose } from "./employee-motion";
 import { EmployeeStatusBubbles } from "./StatusBubbles";
 import { useEmployeeLocomotion } from "./use-employee-locomotion";
 export interface EmployeeProps {
@@ -110,16 +112,18 @@ const Employee = memo(function Employee({
   const [isHovered, setIsHovered] = useState(false);
   const isHighlighted = highlightedEmployeeIds.has(id);
   const isViewComputerOpen = viewComputerEmployeeId === id;
+  const avatarRef = useRef<THREE.Group>(null);
 
-  const { groupRef, debugDeskDecision, debugPathData, isGoingToDesk } = useEmployeeLocomotion({
-    id,
-    position,
-    isBusy,
-    isCEO,
-    wantsToWander,
-    heartbeatState,
-    debugMode,
-  });
+  const { groupRef, debugDeskDecision, debugPathData, isGoingToDesk, animationMode } =
+    useEmployeeLocomotion({
+      id,
+      position,
+      isBusy,
+      isCEO,
+      wantsToWander,
+      heartbeatState,
+      debugMode,
+    });
 
   const colors = useMemo(
     () => ({
@@ -282,18 +286,31 @@ const Employee = memo(function Employee({
   );
 
   const hoverScale = isHovered && !isSelected ? 1.05 : 1;
-  useFrame(() => {
+  const animationPhase = useMemo(() => {
+    return Array.from(String(id)).reduce((phase, character, index) => {
+      return phase + character.charCodeAt(0) * (index + 1) * 0.01;
+    }, 0);
+  }, [id]);
+
+  useFrame((state) => {
     if (groupRef.current) {
-      if (
+      const isAtRestScale =
         hoverScale === 1 &&
         Math.abs(groupRef.current.scale.x - 1) < 0.001 &&
         Math.abs(groupRef.current.scale.y - 1) < 0.001 &&
-        Math.abs(groupRef.current.scale.z - 1) < 0.001
-      ) {
-        return;
+        Math.abs(groupRef.current.scale.z - 1) < 0.001;
+
+      if (!isAtRestScale) {
+        const targetScale = new THREE.Vector3(hoverScale, hoverScale, hoverScale);
+        groupRef.current.scale.lerp(targetScale, 0.1);
       }
-      const targetScale = new THREE.Vector3(hoverScale, hoverScale, hoverScale);
-      groupRef.current.scale.lerp(targetScale, 0.1);
+    }
+
+    if (avatarRef.current) {
+      const pose = getEmployeeAnimationPose(state.clock.elapsedTime, animationPhase, animationMode);
+      avatarRef.current.position.y = pose.bobY;
+      avatarRef.current.rotation.z = pose.rollZ;
+      avatarRef.current.rotation.y = pose.yawY;
     }
   });
 
@@ -315,41 +332,53 @@ const Employee = memo(function Employee({
           setIsHovered(false);
         }}
       >
-        <Box args={[BODY_WIDTH, LEG_HEIGHT, BODY_WIDTH * 0.6]} position={[0, baseY + LEG_HEIGHT / 2, 0]} castShadow>
-          <meshStandardMaterial color={finalColors.pants} />
-        </Box>
-        <Box args={[BODY_WIDTH, BODY_HEIGHT, BODY_WIDTH * 0.6]} position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT / 2, 0]} castShadow>
-          <meshStandardMaterial color={finalColors.shirt} />
-        </Box>
-
-        {profileImageUrl && profileImageUrl.trim().length > 0 ? (
-          <ProfileHead
-            imageUrl={profileImageUrl}
-            position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT / 2, 0]}
-            skinColor={finalColors.skin}
-            hairColor={finalColors.hair}
-          />
-        ) : (
+        <group ref={avatarRef}>
           <Box
-            args={[HEAD_WIDTH, HEAD_HEIGHT, HEAD_WIDTH]}
-            position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT / 2, 0]}
+            args={[BODY_WIDTH, LEG_HEIGHT, BODY_WIDTH * 0.6]}
+            position={[0, baseY + LEG_HEIGHT / 2, 0]}
             castShadow
           >
-            <meshStandardMaterial color={finalColors.skin} />
+            <meshStandardMaterial color={finalColors.pants} />
           </Box>
-        )}
+          <Box
+            args={[BODY_WIDTH, BODY_HEIGHT, BODY_WIDTH * 0.6]}
+            position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT / 2, 0]}
+            castShadow
+          >
+            <meshStandardMaterial color={finalColors.shirt} />
+          </Box>
 
-        <group position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT + HAIR_HEIGHT / 2, 0]}>
-          <Box args={[HAIR_WIDTH, HAIR_HEIGHT, HAIR_WIDTH]} castShadow>
-            <meshStandardMaterial color={finalColors.hair} />
-          </Box>
-          {isSupervisor ? <SupervisorHat /> : null}
+          {profileImageUrl && profileImageUrl.trim().length > 0 ? (
+            <ProfileHead
+              imageUrl={profileImageUrl}
+              position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT / 2, 0]}
+              skinColor={finalColors.skin}
+              hairColor={finalColors.hair}
+            />
+          ) : (
+            <Box
+              args={[HEAD_WIDTH, HEAD_HEIGHT, HEAD_WIDTH]}
+              position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT / 2, 0]}
+              castShadow
+            >
+              <meshStandardMaterial color={finalColors.skin} />
+            </Box>
+          )}
+
+          <group
+            position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT + HEAD_HEIGHT + HAIR_HEIGHT / 2, 0]}
+          >
+            <Box args={[HAIR_WIDTH, HAIR_HEIGHT, HAIR_WIDTH]} castShadow>
+              <meshStandardMaterial color={finalColors.hair} />
+            </Box>
+            {isSupervisor ? <SupervisorHat /> : null}
+          </group>
+
+          <LobsterClaws color={finalColors.shirt} />
+          <LobsterAntennae />
+          <LobsterEyes />
+          <TeamPlumbob teamId={teamId} />
         </group>
-
-        <LobsterClaws color={finalColors.shirt} />
-        <LobsterAntennae />
-        <LobsterEyes />
-        <TeamPlumbob teamId={teamId} />
 
         {(isHovered || isSelected) && (
           <Edges
