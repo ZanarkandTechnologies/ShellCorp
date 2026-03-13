@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { useAppStore } from "@/lib/app-store";
+import { useAppStore } from "../../lib/app-store";
 
 type ChatMode = "Chat" | "Files" | "Config";
 
@@ -12,7 +12,27 @@ export type LocalChatMessage = {
     text: string;
     createdAt: number;
     kind?: "default" | "working_output";
+    parts?: LocalChatPart[];
 };
+
+export type LocalChatPart =
+    | {
+          kind: "thinking";
+          text?: string;
+          signature?: string;
+          signatureId?: string;
+          signatureType?: string;
+          encrypted?: boolean;
+          summary?: string[];
+      }
+    | {
+          kind: "tool";
+          toolName: string;
+          state: "input-available" | "output-available" | "output-error";
+          input?: unknown;
+          output?: unknown;
+          errorText?: string;
+      };
 
 export type LocalChatThread = {
     _id: string;
@@ -147,4 +167,3 @@ export function useChatActions(): {
         },
     };
 }
-
