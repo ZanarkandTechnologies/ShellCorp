@@ -9,6 +9,7 @@ describe("office settings normalization", () => {
       decor: {
         floorPatternId: "sandstone_tiles",
         wallColorId: "gallery_cream",
+        backgroundId: "shell_haze",
       },
       viewProfile: "free_orbit_3d",
       orbitControlsEnabled: true,
@@ -22,6 +23,7 @@ describe("office settings normalization", () => {
         decor: {
           floorPatternId: "graphite_grid",
           wallColorId: "sage_mist",
+          backgroundId: "kelp_fog",
         },
         viewProfile: "fixed_2_5d",
         orbitControlsEnabled: false,
@@ -31,6 +33,7 @@ describe("office settings normalization", () => {
       decor: {
         floorPatternId: "graphite_grid",
         wallColorId: "sage_mist",
+        backgroundId: "kelp_fog",
       },
       viewProfile: "fixed_2_5d",
       orbitControlsEnabled: false,

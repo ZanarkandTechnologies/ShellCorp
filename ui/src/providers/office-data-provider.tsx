@@ -39,10 +39,14 @@ import { useAgentLiveStatuses } from "@/hooks/use-agent-live-status";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import {
   DEFAULT_OFFICE_FOOTPRINT,
-  clampPositionToOfficeFootprint,
-  getManagementAnchorFromFootprint,
   type OfficeFootprint,
 } from "@/lib/office-footprint";
+import {
+  clampPositionToOfficeLayout,
+  createRectangularOfficeLayout,
+  getManagementAnchorFromOfficeLayout,
+  type OfficeLayoutModel,
+} from "@/lib/office-layout";
 
 interface OfficeDataContextType {
   company: Company | null;
@@ -73,11 +77,11 @@ const CLUSTER_MARGIN = 2;
 
 const demoCompany: Company = { _id: "company-demo", name: "Shell Company" };
 
-function clampClusterPositionForFootprint(
+function clampClusterPositionForLayout(
   position: [number, number, number],
-  footprint: OfficeFootprint,
+  layout: OfficeLayoutModel,
 ): { position: [number, number, number]; clamped: boolean } {
-  const next = clampPositionToOfficeFootprint(position, footprint, CLUSTER_MARGIN);
+  const next = clampPositionToOfficeLayout(position, layout, CLUSTER_MARGIN);
   return {
     position: next,
     clamped: next[0] !== position[0] || next[2] !== position[2],
@@ -216,9 +220,11 @@ function fallbackData(): OfficeDataContextType {
     officeSettings: {
       meshAssetDir: "",
       officeFootprint: DEFAULT_OFFICE_FOOTPRINT,
+      officeLayout: createRectangularOfficeLayout(DEFAULT_OFFICE_FOOTPRINT),
       decor: {
         floorPatternId: "sandstone_tiles",
         wallColorId: "gallery_cream",
+        backgroundId: "shell_haze",
       },
       viewProfile: "free_orbit_3d",
       orbitControlsEnabled: true,
@@ -371,6 +377,9 @@ function buildOfficeSettingsSignature(settings: OfficeDataContextType["officeSet
     settings.meshAssetDir,
     settings.officeFootprint.width,
     settings.officeFootprint.depth,
+    settings.decor.floorPatternId,
+    settings.decor.wallColorId,
+    settings.decor.backgroundId,
     settings.viewProfile,
     settings.orbitControlsEnabled ? "orbit-on" : "orbit-off",
     settings.cameraOrientation,
@@ -447,6 +456,7 @@ function toOfficeData(
   const companyModel = unified.company;
   const workload = unified.workload;
   const warnings = unified.warnings;
+  const officeLayout = officeSettings.officeLayout;
   const officeFootprint = officeSettings.officeFootprint;
   const agents: AgentCardModel[] = configuredAgents.length > 0 ? configuredAgents : runtimeAgents;
   if (agents.length === 0) return fallbackData();
@@ -462,14 +472,14 @@ function toOfficeData(
   const companyAgents = companyModel.agents ?? [];
   const teamClusterAnchorsByTeamId = new Map<string, [number, number, number]>();
   for (const object of sidecarObjects.filter((entry) => entry.meshType === "team-cluster")) {
-    const resolvedTeamId = resolveTeamClusterTeamId(object);
-    if (!resolvedTeamId) continue;
-    teamClusterAnchorsByTeamId.set(
-      resolvedTeamId,
-      clampClusterPositionForFootprint(object.position, officeFootprint).position,
-    );
+      const resolvedTeamId = resolveTeamClusterTeamId(object);
+      if (!resolvedTeamId) continue;
+      teamClusterAnchorsByTeamId.set(
+        resolvedTeamId,
+        clampClusterPositionForLayout(object.position, officeLayout).position,
+      );
   }
-  const ceoAnchor = getManagementAnchorFromFootprint(officeFootprint);
+  const ceoAnchor = getManagementAnchorFromOfficeLayout(officeLayout);
 
   teams.push({
     _id: "team-management",
@@ -496,7 +506,7 @@ function toOfficeData(
       const fallbackAnchor: [number, number, number] = [projectIndex * 9 - 4, 0, 8];
       const clusterPosition =
         teamClusterAnchorsByTeamId.get(teamId) ??
-        clampClusterPositionForFootprint(fallbackAnchor, officeFootprint).position;
+        clampClusterPositionForLayout(fallbackAnchor, officeLayout).position;
       const resources = (project.resources ?? []).map((resource) => {
         const softLimit = resource.policy.softLimit;
         const hardLimit = resource.policy.hardLimit;
@@ -736,7 +746,7 @@ function toOfficeData(
       _id: normalizeOfficeObjectId(item.id),
       companyId,
       meshType: item.meshType,
-      position: clampPositionToOfficeFootprint(item.position, officeFootprint, 1),
+      position: clampPositionToOfficeLayout(item.position, officeLayout, 1),
       rotation: item.rotation ?? [0, 0, 0],
       scale: item.scale,
       metadata: { ...(item.metadata ?? {}) },

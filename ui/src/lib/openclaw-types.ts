@@ -381,9 +381,15 @@ export interface OfficeSettingsModel {
     width: number;
     depth: number;
   };
+  officeLayout: {
+    version: 1;
+    tileSize: 1;
+    tiles: string[];
+  };
   decor: {
     floorPatternId: "sandstone_tiles" | "graphite_grid" | "walnut_parquet";
     wallColorId: "gallery_cream" | "sage_mist" | "harbor_blue" | "clay_rose";
+    backgroundId: "shell_haze" | "midnight_tide" | "kelp_fog" | "estuary_glow";
   };
   viewProfile: "free_orbit_3d" | "fixed_2_5d";
   orbitControlsEnabled: boolean;

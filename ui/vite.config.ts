@@ -170,6 +170,12 @@ function normalizeOfficeSettings(input: unknown): OfficeSettings {
         rawDecor.wallColorId === "clay_rose"
           ? rawDecor.wallColorId
           : "gallery_cream",
+      backgroundId:
+        rawDecor.backgroundId === "midnight_tide" ||
+        rawDecor.backgroundId === "kelp_fog" ||
+        rawDecor.backgroundId === "estuary_glow"
+          ? rawDecor.backgroundId
+          : "shell_haze",
     },
     viewProfile,
     orbitControlsEnabled,
@@ -184,6 +190,7 @@ async function readOfficeSettings(): Promise<OfficeSettings> {
     decor: {
       floorPatternId: "sandstone_tiles",
       wallColorId: "gallery_cream",
+      backgroundId: "shell_haze",
     },
     viewProfile: "free_orbit_3d",
     orbitControlsEnabled: true,

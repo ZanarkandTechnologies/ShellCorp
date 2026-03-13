@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { getOfficeTheme } from "@/config/office-theme";
 import type { OfficeSettingsModel } from "@/lib/openclaw-types";
+import { getBackgroundPreset, type OfficeDecorSettings } from "@/lib/office-decor";
 import { getOfficeSceneViewState, type OfficeSceneViewSettings } from "./view-profile";
 
 function useOfficeSceneIsDarkMode(): boolean {
@@ -46,9 +47,13 @@ function useOfficeSceneIsDarkMode(): boolean {
   return isDarkMode;
 }
 
-export function useOfficeSceneBackground(): string {
+export function useOfficeSceneBackground(decorSettings?: OfficeDecorSettings): string {
   const isDarkMode = useOfficeSceneIsDarkMode();
-  return useMemo(() => getOfficeTheme(isDarkMode).scene.background, [isDarkMode]);
+  return useMemo(() => {
+    if (!decorSettings) return getOfficeTheme(isDarkMode).scene.background;
+    const preset = getBackgroundPreset(decorSettings.backgroundId);
+    return isDarkMode ? preset.darkColor : preset.lightColor;
+  }, [decorSettings, isDarkMode]);
 }
 
 export function useOfficeSceneTheme(): ReturnType<typeof getOfficeTheme> {

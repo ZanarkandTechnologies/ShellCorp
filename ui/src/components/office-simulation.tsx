@@ -27,7 +27,7 @@ import { OfficeLoader } from './office-loader';
 // Main Office Simulation Component
 export default function OfficeSimulation() {
     // Fetch office data from database (reactive!)
-    const { company, teams, employees, desks, officeObjects, isLoading } = useOfficeDataContext();
+    const { company, teams, employees, desks, officeObjects, officeSettings, isLoading } = useOfficeDataContext();
 
     // Get team options dialog state from app store with selectors
     const isTeamOptionsDialogOpen = useAppStore(state => state.isTeamOptionsDialogOpen);
@@ -115,6 +115,9 @@ export default function OfficeSimulation() {
             {sceneShellReady ? (
                 <OfficeScene
                     teams={teams}
+                    officeFootprint={officeSettings.officeFootprint}
+                    officeDecorSettings={officeSettings.decor}
+                    officeViewSettings={officeSettings}
                     employees={employees}
                     desks={desks}
                     officeObjects={officeObjects}

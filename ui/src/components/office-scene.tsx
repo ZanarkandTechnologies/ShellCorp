@@ -30,7 +30,7 @@ import {
 import type { OfficeSceneProps } from "@/components/office-scene/types";
 
 const OfficeScene = memo((props: OfficeSceneProps) => {
-  const background = useOfficeSceneBackground();
+  const background = useOfficeSceneBackground(props.officeDecorSettings);
   const initialCameraConfig = getInitialOfficeCameraConfig(props.officeViewSettings);
   const viewComputerEmployeeId = useAppStore((state) => state.viewComputerEmployeeId);
   const viewComputerInitialProjectId = useAppStore((state) => state.viewComputerInitialProjectId);
