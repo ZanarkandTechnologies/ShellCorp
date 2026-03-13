@@ -108,6 +108,8 @@ const Employee = memo(function Employee({
   const setSelectedProjectId = useAppStore((state) => state.setSelectedProjectId);
   const setKanbanFocusAgentId = useAppStore((state) => state.setKanbanFocusAgentId);
   const highlightedEmployeeIds = useAppStore((state) => state.highlightedEmployeeIds);
+  const isOfficeOnboardingVisible = useAppStore((state) => state.isOfficeOnboardingVisible);
+  const officeOnboardingStep = useAppStore((state) => state.officeOnboardingStep);
 
   const [isHovered, setIsHovered] = useState(false);
   const isHighlighted = highlightedEmployeeIds.has(id);
@@ -181,6 +183,7 @@ const Employee = memo(function Employee({
         icon: MessageSquare,
         color: "blue",
         position: "top" as const,
+        isHighlighted: isOfficeOnboardingVisible && officeOnboardingStep === "open-chat" && Boolean(isCEO),
         onClick: () => {
           setSelectedObjectId(null);
           onClick(id);
@@ -266,8 +269,10 @@ const Employee = memo(function Employee({
       setActiveTeamId,
       setIsTeamPanelOpen,
       setKanbanFocusAgentId,
+      isOfficeOnboardingVisible,
       setManageAgentEmployeeId,
       setMemoryPanelEmployeeId,
+      officeOnboardingStep,
       setSelectedObjectId,
       setSelectedProjectId,
       setSelectedTeamId,
@@ -315,6 +320,14 @@ const Employee = memo(function Employee({
   });
 
   const baseY = -TOTAL_HEIGHT / 2;
+  const onboardingPrompt =
+    isOfficeOnboardingVisible && isCEO
+      ? officeOnboardingStep === "click-ceo"
+        ? "Click me"
+        : officeOnboardingStep === "open-chat" && isSelected
+          ? "Open Chat"
+          : null
+      : null;
 
   return (
     <>
@@ -402,6 +415,7 @@ const Employee = memo(function Employee({
           totalHeight={TOTAL_HEIGHT}
           debugMode={debugMode}
           debugDeskDecision={debugDeskDecision}
+          onboardingPrompt={onboardingPrompt}
         />
 
         <ContextMenu

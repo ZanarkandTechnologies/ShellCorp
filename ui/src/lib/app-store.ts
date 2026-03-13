@@ -5,6 +5,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 
 import type { OfficeId } from "@/lib/types";
 import type { TeamData } from "@/lib/types";
+import type { OfficeOnboardingStep } from "@/lib/office-onboarding";
 
 type PlacementMode = {
   active: boolean;
@@ -108,6 +109,12 @@ interface AppState {
   setSelectedSessionKey: (sessionKey: string | null) => void;
   isSettingsModalOpen: boolean;
   setIsSettingsModalOpen: (isOpen: boolean) => void;
+  isFurnitureShopOpen: boolean;
+  setIsFurnitureShopOpen: (isOpen: boolean) => void;
+  isOfficeOnboardingVisible: boolean;
+  setIsOfficeOnboardingVisible: (isVisible: boolean) => void;
+  officeOnboardingStep: OfficeOnboardingStep | null;
+  setOfficeOnboardingStep: (step: OfficeOnboardingStep | null) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -191,6 +198,12 @@ export const useAppStore = create<AppState>()(
     setSelectedSessionKey: (sessionKey) => set({ selectedSessionKey: sessionKey }),
     isSettingsModalOpen: false,
     setIsSettingsModalOpen: (isOpen) => set({ isSettingsModalOpen: isOpen }),
+    isFurnitureShopOpen: false,
+    setIsFurnitureShopOpen: (isOpen) => set({ isFurnitureShopOpen: isOpen }),
+    isOfficeOnboardingVisible: false,
+    setIsOfficeOnboardingVisible: (isVisible) => set({ isOfficeOnboardingVisible: isVisible }),
+    officeOnboardingStep: null,
+    setOfficeOnboardingStep: (step) => set({ officeOnboardingStep: step }),
   })),
 );
 

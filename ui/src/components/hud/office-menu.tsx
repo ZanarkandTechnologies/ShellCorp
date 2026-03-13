@@ -51,8 +51,11 @@ export function OfficeMenu({ className }: SpeedDialProps) {
   const placementMode = useAppStore((state) => state.placementMode);
   const setIsCeoWorkbenchOpen = useAppStore((state) => state.setIsCeoWorkbenchOpen);
   const setCeoWorkbenchView = useAppStore((state) => state.setCeoWorkbenchView);
+  const isFurnitureShopOpen = useAppStore((state) => state.isFurnitureShopOpen);
+  const setIsFurnitureShopOpen = useAppStore((state) => state.setIsFurnitureShopOpen);
+  const isOfficeOnboardingVisible = useAppStore((state) => state.isOfficeOnboardingVisible);
+  const officeOnboardingStep = useAppStore((state) => state.officeOnboardingStep);
 
-  const [isFurnitureShopOpen, setIsFurnitureShopOpen] = useState(false);
   const [isApprovalQueueOpen, setIsApprovalQueueOpen] = useState(false);
   const [isOrganizationOpen, setIsOrganizationOpen] = useState(false);
   const [approvalCount, setApprovalCount] = useState(0);
@@ -113,6 +116,16 @@ export function OfficeMenu({ className }: SpeedDialProps) {
     setIsGlobalTeamPanelOpen(true);
   }, [setActiveTeamId, setIsGlobalTeamPanelOpen, setKanbanFocusAgentId, setSelectedTeamId]);
 
+  const shouldGuideMenu =
+    isOfficeOnboardingVisible &&
+    (officeOnboardingStep === "open-shop" || officeOnboardingStep === "open-team");
+  const highlightedMenuActionId =
+    officeOnboardingStep === "open-shop"
+      ? "office-shop"
+      : officeOnboardingStep === "open-team"
+        ? "team-workspace"
+        : null;
+
   const speedDialItems: SpeedDialItem[] = useMemo(
     () => [
       {
@@ -135,6 +148,10 @@ export function OfficeMenu({ className }: SpeedDialProps) {
         label: "Team Workspace",
         onClick: openGlobalTeamWorkspace,
         color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
+        buttonClassName:
+          highlightedMenuActionId === "team-workspace"
+            ? "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse"
+            : undefined,
       },
       {
         id: "agent-session",
@@ -208,6 +225,10 @@ export function OfficeMenu({ className }: SpeedDialProps) {
         label: "Office Shop",
         onClick: () => setIsFurnitureShopOpen(true),
         color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
+        buttonClassName:
+          highlightedMenuActionId === "office-shop"
+            ? "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse"
+            : undefined,
       },
       {
         id: "settings",
@@ -220,6 +241,7 @@ export function OfficeMenu({ className }: SpeedDialProps) {
     [
       navigate,
       openGlobalTeamWorkspace,
+      highlightedMenuActionId,
       setIsAgentSessionPanelOpen,
       setIsSkillsPanelOpen,
       openEmployeeChat,
@@ -244,6 +266,12 @@ export function OfficeMenu({ className }: SpeedDialProps) {
         direction="vertical"
         triggerIcon={Menu}
         triggerColor="bg-accent hover:bg-accent/90 text-accent-foreground"
+        triggerClassName={
+          shouldGuideMenu
+            ? "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse"
+            : undefined
+        }
+        forceOpen={shouldGuideMenu}
         className={className}
       />
       <OrganizationPanel

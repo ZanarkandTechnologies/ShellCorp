@@ -35,6 +35,7 @@ type EmployeeStatusBubblesProps = {
   totalHeight: number;
   debugMode: boolean;
   debugDeskDecision: string;
+  onboardingPrompt?: string | null;
 };
 
 export const EmployeeStatusBubbles = memo(function EmployeeStatusBubbles({
@@ -51,6 +52,7 @@ export const EmployeeStatusBubbles = memo(function EmployeeStatusBubbles({
   totalHeight,
   debugMode,
   debugDeskDecision,
+  onboardingPrompt,
 }: EmployeeStatusBubblesProps) {
   return (
     <>
@@ -89,6 +91,21 @@ export const EmployeeStatusBubbles = memo(function EmployeeStatusBubbles({
           </div>
         </Html>
       )}
+
+      {onboardingPrompt ? (
+        <Html
+          position={[0, totalHeight + 1.05, 0]}
+          center
+          zIndexRange={[100, 0]}
+          style={{ pointerEvents: "none", userSelect: "none" }}
+        >
+          <div className="animate-in fade-in zoom-in-95 duration-200">
+            <div className="rounded-full border border-primary/30 bg-background/95 px-3 py-1.5 text-xs font-semibold text-primary shadow-lg">
+              {onboardingPrompt}
+            </div>
+          </div>
+        </Html>
+      ) : null}
 
       {debugMode && debugDeskDecision ? (
         <Html

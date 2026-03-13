@@ -6,6 +6,7 @@ import { LogsDrawer } from './hud/logs-drawer';
 import { LogsToggleButton } from './hud/logs-toggle-button';
 import { GatewayStatusPill } from './hud/gateway-status-pill';
 import { OfficeMenu } from './hud/office-menu';
+import { OfficeOnboardingPanel } from './hud/office-onboarding-panel';
 import { CeoWorkbenchPanel } from './hud/ceo-workbench-panel';
 import { useOfficeDataContext } from '@/providers/office-data-provider';
 import { useAppStore } from '@/lib/app-store';
@@ -165,6 +166,7 @@ export default function OfficeSimulation() {
                             <OfficeMenu />
                         </div>
                     </div>
+                    <OfficeOnboardingPanel />
 
                     <div className="pointer-events-none absolute bottom-4 right-4 z-[65]">
                         <LogsToggleButton isOpen={isLogsDrawerOpen} onToggle={() => setIsLogsDrawerOpen((prev) => !prev)} />
