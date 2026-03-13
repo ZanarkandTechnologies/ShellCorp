@@ -18,7 +18,8 @@ Office objects can now carry metadata-driven runtime UI bindings while keeping b
 **Behavior**:
 
 - **Builder mode**:
-  - Furniture/custom objects expose radial controls for move, rotate, resize, delete, and settings
+  - Furniture/custom objects expose `Move`, `Transform`, and `Settings` in the in-scene radial controls
+  - The draggable Transform panel opens from the `Transform` radial action and owns rotate, resize, and delete
   - Settings open the Object Builder panel for embed configuration
 - **Normal mode**:
   - Builder controls are hidden for office objects
