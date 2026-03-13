@@ -2,7 +2,7 @@
 
 **Status**: Draft  
 **Created**: 2026-02-21  
-**Updated**: 2026-02-26  
+**Updated**: 2026-03-13  
 **Author**: gpt-5.3-codex
 
 ## Documentation Indexes
@@ -12,29 +12,29 @@
 
 ## Job To Be Done
 
-When a small team runs many autonomous agents on one VPS, they need a single gamified control center that makes sessions, agents, memory, and skills easy to inspect and steer without rebuilding the underlying agent runtime.
+When a founder runs a small autonomous company on one VPS, they need a minimal office that lets them ask the CEO agent to form teams, review those proposals, approve them, and inspect active work without rebuilding the underlying agent runtime.
 
 ## Audience
 
 - Founders and small teams already running OpenClaw on a VPS
-- Operators who need visual control over many agents/sessions
+- Operators who need a compact way to create and steer small teams
 - Teams that prefer local state directories over additional hosted infrastructure
 
 ## Problem
 
-OpenClaw already solves agent runtime, routing, and plugin loading. The missing layer is a high-quality office UI that maps the existing OpenClaw state into understandable operational views for day-to-day multi-agent management.
+OpenClaw already solves agent runtime, routing, and plugin loading. The missing layer is not a huge simulated company. It is a founder control surface that turns CEO-led team formation and small-team oversight into a clean, repeatable workflow.
 
 ## Solution
 
 Build Shell Company as a UI-first control center on top of OpenClaw:
 
 1. **State mapping layer**: map OpenClaw state directories and gateway APIs into UI view models.
-2. **Gamified office UX**: keep and expand existing visualization and game logic.
+2. **Minimal office UX**: keep the office metaphor, but optimize it for a small number of meaningful surfaces instead of a crowded default company.
 3. **Plugin-first integrations**: package Notion logic as an OpenClaw plugin instead of internal gateway code.
-4. **Operational surfaces**: improve memory and skill visibility for agent orchestration.
-5. **Federated work orchestration**: unify external board work (Notion/Vibe/internal) into one operator surface.
-6. **Personalized agent presence**: let operators configure identity, appearance, and office style as a first-class product value.
-7. **Office decor controls**: let operators apply simple room styling such as floor patterns, wall colors, and wall art without introducing heavy 3D authoring workflows.
+4. **CEO team-formation workflow**: make CEO chat, proposal persistence, founder review, and CLI-backed execution the primary product path.
+5. **Operational surfaces**: improve memory and skill visibility for the active CEO/team workflow.
+6. **Federated work orchestration**: unify external board work (Notion/Vibe/internal) into one operator surface.
+7. **Personalized presence and decor**: let operators style the office after the core founder-control loop is working.
 
 ## Core Platform Behaviors
 
@@ -46,17 +46,18 @@ Build Shell Company as a UI-first control center on top of OpenClaw:
 
 ## MVP Focus
 
-Single VPS, one shared OpenClaw instance, many agents:
+Single VPS, one shared OpenClaw instance, a small number of active teams:
 
-- Show agent roster from OpenClaw state
-- Show per-agent sessions and session activity timeline
+- Show the CEO and active team roster from OpenClaw state
 - Support basic chat send/steer actions to OpenClaw
+- Ship the CEO-led team proposal and approval loop as the main office workflow
+- Show per-team board/activity context for newly created teams
 - Ship Notion plugin in-repo and wired for MVP workflows
-- Ship upgraded Memory and Skills panels in the office UI
+- Ship practical Memory and Skills panels for active operators, not broad office clutter
 
 ## Phase 2 Expansion Focus
 
-After MVP baseline stabilizes, Shell Company extends from "OpenClaw observability UI" to a personalized autonomous company cockpit:
+After MVP baseline stabilizes, Shell Company extends from "minimal founder-control office" to a broader autonomous company cockpit:
 
 - Keep operators in their preferred external tools (Notion/Vibe) while showing one unified mission view in Shell Company.
 - Treat ticket lifecycle and agent-session lifecycle as linked operational primitives.
@@ -66,7 +67,8 @@ After MVP baseline stabilizes, Shell Company extends from "OpenClaw observabilit
 
 ## Goals
 
-- Preserve and enhance the gamified office UI as the primary product value
+- Make CEO-led team formation the primary product value
+- Keep the office small, readable, and useful by default
 - Provide reliable session and agent observability from real OpenClaw state
 - Package Notion integration as an OpenClaw extension with schema-driven config
 - Keep architecture simple: local VPS state first, no mandatory external DB
@@ -84,6 +86,7 @@ After MVP baseline stabilizes, Shell Company extends from "OpenClaw observabilit
 - Large connector marketplace beyond Notion in first slice
 - Replacing OpenClaw core session/routing internals
 - Rebuilding full Notion/Vibe UX inside Shell Company
+- Shipping a large default office full of prebuilt teams just to make the UI feel busy
 - Attempting fully automatic multi-master conflict resolution in first federation slice
 
 ## Constraints
@@ -93,16 +96,18 @@ After MVP baseline stabilizes, Shell Company extends from "OpenClaw observabilit
 - In-repo plugin development model for fast iteration
 - Spec-first workflow for major scope changes
 - Security-first defaults for plugin trust and secret handling
+- Demo defaults should bias toward a tiny office and a small number of meaningful teams
 - External-provider write ownership must remain explicit and deterministic per project
 - Sync behavior must be observable/auditable in UI with failure states surfaced to operators
 - Personalization assets must not block agent/runtime orchestration features
 
 ## Success Metrics
 
-- Operators can view active agents and sessions from OpenClaw-backed data
-- Session timeline and chat bridge work for at least one real project flow
+- Founders can create a team through the CEO proposal loop and execute it through ShellCorp CLI
+- Operators can view the CEO and active teams from OpenClaw-backed data
+- Session timeline and chat bridge work for at least one real founder-to-team flow
 - Notion plugin loads and runs under OpenClaw plugin system
-- Memory and Skills panels show actionable state for multiple agents
+- Memory and Skills panels show actionable state for the CEO and active demo teams
 - Docs/README/specs fully reflect this OpenClaw-first architecture
 - Operators can track combined board activity from multiple providers in one ShellCorp view
 - Operators can close tickets through a clear ticket=session lifecycle rule with explicit close semantics
@@ -114,7 +119,7 @@ After MVP baseline stabilizes, Shell Company extends from "OpenClaw observabilit
 - Data-shape mismatches between UI assumptions and OpenClaw state formats
 - Plugin safety issues if extension trust boundaries are weak
 - Hard deletion of old backend paths may remove fallback debugging tools too early
-- UI complexity can outpace MVP reliability if adapter contracts are not strict
+- UI complexity can outpace MVP reliability if the product keeps too many office surfaces active at once
 - Federation sync conflicts can cause operator confusion if ownership rules are ambiguous
 - Scope expansion across orchestration + personalization can reduce shipping velocity
 - Provider schema drift can break context-indexed tool generation if contracts are too loose

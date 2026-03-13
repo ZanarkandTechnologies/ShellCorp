@@ -1,8 +1,8 @@
 # Shell Company
 
-Gamified control center UI for OpenClaw multi-agent operations.
+Minimal AI office for OpenClaw teams.
 
-ShellCorp keeps OpenClaw as the runtime source of truth and adds a UI-first office for setup, inspection, and operator control.
+ShellCorp keeps OpenClaw as the runtime source of truth and adds a founder-facing office for one job first: ask the CEO to form a team, review the proposal, approve it, and then manage the resulting company from one place.
 
 ## Repo Map
 
@@ -20,6 +20,25 @@ Canonical local state lives under `~/.openclaw`, especially:
 - `~/.openclaw/openclaw.json`
 - `~/.openclaw/company.json`
 - `~/.openclaw/office-objects.json`
+
+## What To Demo
+
+The smallest convincing ShellCorp demo is not a huge pre-populated office. It is a tight loop:
+
+1. Install the ShellCorp CLI.
+2. Run onboarding.
+3. Ask the CEO to form a team for an idea.
+4. Review the proposal in the office.
+5. Approve it.
+6. Watch the new team appear and start working.
+
+For staged demos, use progressive company shapes instead of a large permanent roster:
+
+- `1-claw company`: one focused executor team
+- `2-claw company`: executor plus operator/reviewer split
+- `3-claw company`: executor plus operator plus growth/analysis split
+
+All of those should be created through the CEO + team-formation workflow, not hardcoded as static office content.
 
 ## Quick Start for Users
 
@@ -59,8 +78,10 @@ After that:
 
 1. Open the UI.
 2. Complete the in-app onboarding flow.
-3. Use the Decoration panel or `shellcorp office decor ...` commands to set floor patterns, wall colors, backgrounds, and fixed-slot paintings.
-4. Use the rest of the UI to learn the office panels, CEO controls, and connector setup.
+3. Ask the CEO agent to create your first team proposal.
+4. Approve the proposal in User Tasks / the CEO workbench flow.
+5. Inspect the created team in the office and board surfaces.
+6. Use `shellcorp office decor ...` only after the core founder workflow is working.
 
 Notes:
 
