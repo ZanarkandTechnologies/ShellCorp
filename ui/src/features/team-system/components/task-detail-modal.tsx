@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { UI_Z } from "@/lib/z-index";
 import { Textarea } from "@/components/ui/textarea";
+import { TaskMemoryView } from "./task-memory-view";
 import {
   PRIORITY_COLORS,
   STATUS_COLORS,
@@ -332,6 +333,7 @@ export function TaskDetailModal({
           {/* Notes */}
           <div className="space-y-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Task Memory</p>
+            <TaskMemoryView notes={task.notes} variant="compact" />
             <Textarea
               value={notesDraft}
               onChange={(e) => {
