@@ -71,42 +71,247 @@ import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 
 type TabId = "catalog" | "decor" | "custom" | "import";
 
+/** meshType passed to placement system; must match object-registry and office-object-renderer */
+type BuiltInMeshType = "plant" | "couch" | "bookshelf" | "pantry";
+
 interface BuiltInCatalogItem {
   id: string;
+  meshType: BuiltInMeshType;
   name: string;
   description: string;
-  category: string;
+  category: "Plants" | "Office" | "Leisure" | "Miscellaneous";
+  /** Image path under public, e.g. /furniture/plant.png */
+  imagePath: string;
   icon: React.ComponentType<{ className?: string }>;
 }
 
+const FURNITURE_CATEGORIES: BuiltInCatalogItem["category"][] = [
+  "Plants",
+  "Office",
+  "Leisure",
+  "Miscellaneous",
+];
+
 const BUILT_IN_ITEMS: BuiltInCatalogItem[] = [
+  // Plants (6)
   {
-    id: "desk",
-    name: "Office Desk",
-    description: "Standard workstation desk included with the core office kit.",
-    category: "Furniture",
+    id: "plant-potted",
+    meshType: "plant",
+    name: "Potted Plant",
+    description: "Classic potted plant for a touch of green.",
+    category: "Plants",
+    imagePath: "/furniture/plant.png",
     icon: Monitor,
   },
   {
-    id: "couch",
-    name: "Lounge Couch",
-    description: "Minimal waiting area couch for team collaboration spaces.",
-    category: "Lounge",
-    icon: Sofa,
+    id: "plant-succulent",
+    meshType: "plant",
+    name: "Succulent",
+    description: "Low-maintenance succulent for desks and shelves.",
+    category: "Plants",
+    imagePath: "/furniture/plant.png",
+    icon: Monitor,
   },
   {
+    id: "plant-fern",
+    meshType: "plant",
+    name: "Fern",
+    description: "Lush fern for corners and waiting areas.",
+    category: "Plants",
+    imagePath: "/furniture/plant.png",
+    icon: Monitor,
+  },
+  {
+    id: "plant-cactus",
+    meshType: "plant",
+    name: "Cactus",
+    description: "Desert cactus for a modern look.",
+    category: "Plants",
+    imagePath: "/furniture/plant.png",
+    icon: Monitor,
+  },
+  {
+    id: "plant-palm",
+    meshType: "plant",
+    name: "Palm",
+    description: "Tall palm for open spaces.",
+    category: "Plants",
+    imagePath: "/furniture/plant.png",
+    icon: Monitor,
+  },
+  {
+    id: "plant-monstera",
+    meshType: "plant",
+    name: "Monstera",
+    description: "Trendy monstera for breakout areas.",
+    category: "Plants",
+    imagePath: "/furniture/plant.png",
+    icon: Monitor,
+  },
+  // Office (6)
+  {
     id: "bookshelf",
+    meshType: "bookshelf",
     name: "Bookshelf",
-    description: "Neutral storage shelf for office props and decor scenes.",
-    category: "Storage",
+    description: "Neutral storage shelf for office props and decor.",
+    category: "Office",
+    imagePath: "/furniture/bookshelf.png",
+    icon: Library,
+  },
+  {
+    id: "bookshelf-tall",
+    meshType: "bookshelf",
+    name: "Tall Bookshelf",
+    description: "Floor-to-ceiling style storage unit.",
+    category: "Office",
+    imagePath: "/furniture/bookshelf.png",
     icon: Library,
   },
   {
     id: "pantry",
+    meshType: "pantry",
     name: "Pantry Counter",
     description: "Pantry module for kitchen corners and social zones.",
-    category: "Utility",
+    category: "Office",
+    imagePath: "/furniture/pantry.png",
     icon: Briefcase,
+  },
+  {
+    id: "pantry-supply",
+    meshType: "pantry",
+    name: "Supply Cabinet",
+    description: "Storage for supplies and snacks.",
+    category: "Office",
+    imagePath: "/furniture/pantry.png",
+    icon: Briefcase,
+  },
+  {
+    id: "bookshelf-storage",
+    meshType: "bookshelf",
+    name: "Storage Shelf",
+    description: "Compact shelf for documents and items.",
+    category: "Office",
+    imagePath: "/furniture/bookshelf.png",
+    icon: Library,
+  },
+  {
+    id: "pantry-counter",
+    meshType: "pantry",
+    name: "Break Room Counter",
+    description: "Counter with fridge and microwave.",
+    category: "Office",
+    imagePath: "/furniture/pantry.png",
+    icon: Briefcase,
+  },
+  // Leisure (6)
+  {
+    id: "couch",
+    meshType: "couch",
+    name: "Lounge Couch",
+    description: "Minimal waiting area couch for collaboration.",
+    category: "Leisure",
+    imagePath: "/furniture/couch.png",
+    icon: Sofa,
+  },
+  {
+    id: "couch-sofa",
+    meshType: "couch",
+    name: "Sofa",
+    description: "Comfortable sofa for breakout areas.",
+    category: "Leisure",
+    imagePath: "/furniture/couch.png",
+    icon: Sofa,
+  },
+  {
+    id: "couch-beanbag",
+    meshType: "couch",
+    name: "Bean Bag",
+    description: "Casual seating for informal zones.",
+    category: "Leisure",
+    imagePath: "/furniture/couch.png",
+    icon: Sofa,
+  },
+  {
+    id: "couch-armchair",
+    meshType: "couch",
+    name: "Armchair",
+    description: "Single armchair for reading nooks.",
+    category: "Leisure",
+    imagePath: "/furniture/couch.png",
+    icon: Sofa,
+  },
+  {
+    id: "couch-ottoman",
+    meshType: "couch",
+    name: "Ottoman",
+    description: "Footrest or extra seating.",
+    category: "Leisure",
+    imagePath: "/furniture/couch.png",
+    icon: Sofa,
+  },
+  {
+    id: "couch-loveseat",
+    meshType: "couch",
+    name: "Love Seat",
+    description: "Two-person love seat for small spaces.",
+    category: "Leisure",
+    imagePath: "/furniture/couch.png",
+    icon: Sofa,
+  },
+  // Miscellaneous (6)
+  {
+    id: "misc-plant",
+    meshType: "plant",
+    name: "Corner Plant",
+    description: "Filler plant for empty corners.",
+    category: "Miscellaneous",
+    imagePath: "/furniture/plant.png",
+    icon: Monitor,
+  },
+  {
+    id: "misc-couch",
+    meshType: "couch",
+    name: "Accent Seat",
+    description: "Extra seating for visitors.",
+    category: "Miscellaneous",
+    imagePath: "/furniture/couch.png",
+    icon: Sofa,
+  },
+  {
+    id: "misc-bookshelf",
+    meshType: "bookshelf",
+    name: "Display Shelf",
+    description: "Showcase for awards and mementos.",
+    category: "Miscellaneous",
+    imagePath: "/furniture/bookshelf.png",
+    icon: Library,
+  },
+  {
+    id: "misc-pantry",
+    meshType: "pantry",
+    name: "Coffee Station",
+    description: "Compact coffee and snack station.",
+    category: "Miscellaneous",
+    imagePath: "/furniture/pantry.png",
+    icon: Briefcase,
+  },
+  {
+    id: "misc-plant2",
+    meshType: "plant",
+    name: "Reception Plant",
+    description: "Welcoming plant for reception areas.",
+    category: "Miscellaneous",
+    imagePath: "/furniture/plant.png",
+    icon: Monitor,
+  },
+  {
+    id: "misc-bookshelf2",
+    meshType: "bookshelf",
+    name: "Magazine Rack",
+    description: "Shelf for magazines and brochures.",
+    category: "Miscellaneous",
+    imagePath: "/furniture/bookshelf.png",
+    icon: Library,
   },
 ];
 
@@ -131,6 +336,7 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
   const [isSavingDir, setIsSavingDir] = useState(false);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [meshError, setMeshError] = useState<string | null>(null);
+  const [failedFurnitureImageIds, setFailedFurnitureImageIds] = useState<Set<string>>(new Set());
   const [decorStatus, setDecorStatus] = useState<string | null>(null);
   const [isSavingDecor, setIsSavingDecor] = useState(false);
   const [draftFloorPatternId, setDraftFloorPatternId] = useState<OfficeFloorPatternId>(
@@ -204,6 +410,7 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
   useEffect(() => {
     if (!isOpen) {
       setFailedPreviewByAssetId({});
+      setFailedFurnitureImageIds(new Set());
     }
   }, [isOpen]);
 
@@ -361,41 +568,76 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     });
   };
 
+  const startBuiltInPlacement = (item: BuiltInCatalogItem) => {
+    if (!company) return;
+    onOpenChange(false);
+    startPlacement(item.meshType, {
+      companyId: company._id,
+      displayName: item.name,
+    });
+  };
+
   const renderCatalog = () => (
     <div className="space-y-6">
       <div className="rounded-lg border bg-card text-card-foreground p-5">
         <div>
           <h3 className="font-semibold text-lg">Built-in Catalog</h3>
           <p className="text-sm text-muted-foreground">
-            Static assets bundled with ShellCorp. These are fast to load and always available.
+            Place furniture on the office floor. Click Place, then click in the scene to set position.
           </p>
         </div>
       </div>
 
-      <div>
-        <h3 className="text-base font-semibold mb-4">Available Items</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          {BUILT_IN_ITEMS.map((item) => (
-            <Card
-              key={item.id}
-              className="flex flex-col overflow-hidden border-border/70 shadow-none"
-            >
-              <div className="h-28 bg-muted/40 flex items-center justify-center border-b">
-                <item.icon className="w-10 h-10 text-muted-foreground/50" />
-              </div>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">{item.name}</CardTitle>
-                <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
-              </CardHeader>
-              <CardContent className="pt-0 pb-4 mt-auto">
-                <span className="inline-flex rounded-md border px-2 py-1 text-xs text-muted-foreground">
-                  {item.category}
-                </span>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
+      {FURNITURE_CATEGORIES.map((category) => {
+        const items = BUILT_IN_ITEMS.filter((item) => item.category === category);
+        if (items.length === 0) return null;
+        return (
+          <div key={category}>
+            <h3 className="text-base font-semibold mb-4">{category}</h3>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              {items.map((item) => (
+                <Card
+                  key={item.id}
+                  className="flex flex-col overflow-hidden border-border/70 shadow-none"
+                >
+                  <div className="h-28 bg-muted/40 flex items-center justify-center border-b overflow-hidden">
+                    {!failedFurnitureImageIds.has(item.id) ? (
+                      <img
+                        src={item.imagePath}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        onError={() =>
+                          setFailedFurnitureImageIds((prev) => new Set(prev).add(item.id))
+                        }
+                      />
+                    ) : (
+                      <item.icon className="w-10 h-10 text-muted-foreground/50" />
+                    )}
+                  </div>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{item.name}</CardTitle>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
+                  </CardHeader>
+                  <CardContent className="pt-0 pb-2 mt-auto">
+                    <span className="inline-flex rounded-md border px-2 py-1 text-xs text-muted-foreground">
+                      {item.category}
+                    </span>
+                  </CardContent>
+                  <CardFooter className="pt-0">
+                    <Button
+                      className="w-full"
+                      onClick={() => startBuiltInPlacement(item)}
+                      disabled={!company}
+                    >
+                      Place
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 

@@ -60,6 +60,18 @@ Important:
 - ShellCorp does not replace OpenClaw setup.
 - If OpenClaw has not created `~/.openclaw/openclaw.json` and the main CEO agent `main`, the ShellCorp office will not show the main agent correctly.
 
+**OpenClaw onboarding (do this first):**
+
+1. Install and run the OpenClaw onboarding wizard (recommended on macOS/Linux or Windows via WSL2):
+   ```bash
+   openclaw onboard
+   ```
+2. Use **QuickStart** for the fastest path (default workspace, gateway on port 18789, coding tool profile). The wizard creates `~/.openclaw/openclaw.json`, seeds the workspace, and configures model/auth.
+3. OpenClaw’s default single-agent setup uses agent id **`main`**, which is what ShellCorp expects. If you added agents manually and don’t have `main`, either add it (`openclaw agents add main` and use the default workspace) or ensure `~/.openclaw/openclaw.json` has `agents.list` with an entry whose `id` is `"main"`.
+4. Then run ShellCorp onboarding (see below).
+
+Docs: [Onboarding Wizard (CLI)](https://docs.openclaw.ai/start/wizard), [CLI Onboarding Reference](https://docs.openclaw.ai/start/wizard-cli-reference).
+
 From the repo root:
 
 ```bash
