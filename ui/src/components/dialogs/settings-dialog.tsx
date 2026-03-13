@@ -9,6 +9,7 @@ import { useAppStore } from "@/lib/app-store";
 import { getGatewayUiConfig, saveGatewayUiConfig } from "@/lib/gateway-config";
 import { useGateway } from "@/providers/gateway-provider";
 import { UI_Z } from "@/lib/z-index";
+import { setOfficeOnboardingCompleted } from "@/lib/office-onboarding";
 
 type SettingsDialogProps = {
     trigger?: React.ReactNode;
@@ -24,6 +25,8 @@ export default function SettingsDialog({ trigger, open, onOpenChange }: Settings
     const setDebugMode = useAppStore(state => state.setDebugMode);
     const isBuilderMode = useAppStore(state => state.isBuilderMode);
     const setBuilderMode = useAppStore(state => state.setBuilderMode);
+    const setIsOfficeOnboardingVisible = useAppStore(state => state.setIsOfficeOnboardingVisible);
+    const setOfficeOnboardingStep = useAppStore(state => state.setOfficeOnboardingStep);
     const { connected } = useGateway();
     const gatewayConfig = useMemo(() => getGatewayUiConfig(), []);
     const [gatewayBaseInput, setGatewayBaseInput] = useState(gatewayConfig.gatewayBase);
@@ -68,6 +71,14 @@ export default function SettingsDialog({ trigger, open, onOpenChange }: Settings
         }
     }
 
+
+    function handleReplayOnboarding(): void {
+        setOfficeOnboardingCompleted(false);
+        setIsOfficeOnboardingVisible(true);
+        setOfficeOnboardingStep("click-ceo");
+        setDialogOpen(false);
+    }
+
     return (
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto" style={{ zIndex: UI_Z.panelBase }}>
@@ -105,6 +116,16 @@ export default function SettingsDialog({ trigger, open, onOpenChange }: Settings
                             size="sm"
                         >
                             {isBuilderMode ? 'On' : 'Off'}
+                        </Button>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-1">
+                            <Label>Onboarding Tour</Label>
+                            <span className="text-xs text-muted-foreground">Replay the guided AI Office intro and CEO-first onboarding flow.</span>
+                        </div>
+                        <Button onClick={handleReplayOnboarding} variant="outline" size="sm">
+                            Replay
                         </Button>
                     </div>
 
