@@ -1,0 +1,283 @@
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { Command } from "commander";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { registerOnboardingCommands } from "./onboarding-commands.js";
+
+async function setupRepoFixture(): Promise<{ repoRoot: string; stateDir: string }> {
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), "shellcorp-onboarding-repo-"));
+  const stateDir = path.join(repoRoot, "state");
+  await mkdir(path.join(repoRoot, "templates", "openclaw"), { recursive: true });
+  await mkdir(path.join(repoRoot, "templates", "sidecar"), { recursive: true });
+  await mkdir(path.join(repoRoot, "ui"), { recursive: true });
+  await mkdir(path.join(repoRoot, "extensions", "notion"), { recursive: true });
+
+  await writeFile(
+    path.join(repoRoot, "templates", "openclaw", "openclaw.template.json"),
+    `${JSON.stringify(
+      {
+        version: 1,
+        tools: { profile: "coding" },
+        hooks: { internal: { enabled: true, entries: { "shellcorp-status": { enabled: true } } } },
+        agents: {
+          defaults: {
+            heartbeat: { every: "3m", includeReasoning: true, target: "last", prompt: "heartbeat" },
+          },
+          list: [],
+        },
+        plugins: { load: { paths: [] } },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf-8",
+  );
+  await writeFile(
+    path.join(repoRoot, "templates", "sidecar", "company.template.json"),
+    `${JSON.stringify(
+      {
+        version: 1,
+        departments: [
+          { id: "dept-ceo", name: "CEO Office", description: "", goal: "" },
+          { id: "dept-products", name: "Product Studio", description: "", goal: "" },
+        ],
+        projects: [],
+        agents: [
+          {
+            agentId: "main",
+            role: "ceo",
+            heartbeatProfileId: "hb-ceo",
+            isCeo: true,
+            lifecycleState: "active",
+          },
+        ],
+        roleSlots: [],
+        heartbeatProfiles: [
+          {
+            id: "hb-ceo",
+            role: "ceo",
+            cadenceMinutes: 15,
+            teamDescription: "",
+            productDetails: "",
+            goal: "",
+          },
+        ],
+        tasks: [],
+        channelBindings: [],
+        federationPolicies: [],
+        providerIndexProfiles: [],
+      },
+      null,
+      2,
+    )}\n`,
+    "utf-8",
+  );
+  await writeFile(
+    path.join(repoRoot, "templates", "sidecar", "office-objects.template.json"),
+    "[]\n",
+    "utf-8",
+  );
+  await writeFile(
+    path.join(repoRoot, "templates", "sidecar", "pending-approvals.template.json"),
+    "[]\n",
+    "utf-8",
+  );
+  await writeFile(
+    path.join(repoRoot, "ui", ".env.example"),
+    `${[
+      "VITE_GATEWAY_URL=http://127.0.0.1:18789",
+      "VITE_GATEWAY_TOKEN=",
+      "VITE_STATE_URL=http://127.0.0.1:5173",
+    ].join("\n")}\n`,
+    "utf-8",
+  );
+  await writeFile(
+    path.join(repoRoot, ".env.local"),
+    `${["CONVEX_URL=https://demo.convex.cloud", "NOTION_API_KEY=secret_test"].join("\n")}\n`,
+    "utf-8",
+  );
+
+  return { repoRoot, stateDir };
+}
+
+async function seedOpenclawMainAgent(stateDir: string): Promise<void> {
+  await mkdir(stateDir, { recursive: true });
+  await writeFile(
+    path.join(stateDir, "openclaw.json"),
+    `${JSON.stringify(
+      {
+        version: 1,
+        agents: {
+          list: [
+            {
+              id: "main",
+              name: "CEO Agent",
+              workspace: path.join(stateDir, "workspace-main"),
+            },
+          ],
+        },
+        plugins: { load: { paths: [] } },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf-8",
+  );
+}
+
+async function runCommand(args: string[]): Promise<void> {
+  const program = new Command();
+  registerOnboardingCommands(program);
+  await program.parseAsync(args, { from: "user" });
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  delete process.env.OPENCLAW_STATE_DIR;
+  delete process.env.SHELLCORP_REPO_ROOT;
+  process.exitCode = undefined;
+});
+
+describe("onboarding CLI", () => {
+  it("fails preflight when OpenClaw has not been initialized yet", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(["onboarding", "--yes", "--json"]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      ok: boolean;
+      preflight?: { ok: boolean; issues?: string[] };
+    };
+    expect(payload.ok).toBe(false);
+    expect(payload.preflight?.ok).toBe(false);
+    expect(payload.preflight?.issues).toContain("missing_openclaw_config");
+    expect(payload.preflight?.issues).toContain("missing_main_agent");
+  });
+
+  it("bootstraps required sidecars and generates ui env from repo env", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+
+    await runCommand(["onboarding", "--yes", "--style", "cozy", "--gateway-token", "token-123"]);
+
+    const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const company = JSON.parse(companyRaw) as { officeStylePreset?: string };
+    expect(company.officeStylePreset).toBe("cozy");
+
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclaw = JSON.parse(openclawRaw) as {
+      plugins?: {
+        load?: { paths?: string[] };
+        entries?: { "notion-shell"?: { config?: { webhook?: { path?: string } } } };
+      };
+    };
+    expect(openclaw.plugins?.load?.paths).toContain(path.join(repoRoot, "extensions", "notion"));
+    expect(openclaw.plugins?.entries?.["notion-shell"]?.config?.webhook?.path).toBe(
+      "/plugins/notion-shell/webhook",
+    );
+
+    const uiEnvRaw = await readFile(path.join(repoRoot, "ui", ".env.local"), "utf-8");
+    expect(uiEnvRaw).toContain("VITE_GATEWAY_TOKEN=token-123");
+    expect(uiEnvRaw).toContain("VITE_CONVEX_URL=https://demo.convex.cloud");
+
+    const approvalsRaw = await readFile(path.join(stateDir, "pending-approvals.json"), "utf-8");
+    expect(JSON.parse(approvalsRaw)).toEqual([]);
+  });
+
+  it("preserves existing ui env keys and avoids duplicating plugin paths on rerun", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+
+    await mkdir(stateDir, { recursive: true });
+    await writeFile(
+      path.join(stateDir, "openclaw.json"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          plugins: { load: { paths: ["./extensions/notion"] } },
+          agents: {
+            list: [
+              {
+                id: "main",
+                name: "CEO Agent",
+                workspace: path.join(stateDir, "workspace-main"),
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
+    await writeFile(
+      path.join(repoRoot, "ui", ".env.local"),
+      "CUSTOM_FLAG=keepme\nVITE_GATEWAY_URL=http://localhost:9999\n",
+      "utf-8",
+    );
+
+    await runCommand(["onboarding", "--yes"]);
+
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclaw = JSON.parse(openclawRaw) as {
+      plugins?: { load?: { paths?: string[] } };
+    };
+    expect(openclaw.plugins?.load?.paths).toEqual(["./extensions/notion"]);
+
+    const uiEnvRaw = await readFile(path.join(repoRoot, "ui", ".env.local"), "utf-8");
+    expect(uiEnvRaw).toContain("CUSTOM_FLAG=keepme");
+    expect(uiEnvRaw).toContain("VITE_GATEWAY_URL=http://localhost:9999");
+  });
+
+  it("refreshes VITE_CONVEX_URL from the repo root env on rerun", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+
+    await writeFile(
+      path.join(repoRoot, "ui", ".env.local"),
+      "VITE_CONVEX_URL=https://old-ui.convex.site\n",
+      "utf-8",
+    );
+    await writeFile(
+      path.join(repoRoot, ".env.local"),
+      "CONVEX_URL=https://fresh-root.convex.site\n",
+      "utf-8",
+    );
+
+    await runCommand(["onboarding", "--yes"]);
+
+    const uiEnvRaw = await readFile(path.join(repoRoot, "ui", ".env.local"), "utf-8");
+    expect(uiEnvRaw).toContain("VITE_CONVEX_URL=https://fresh-root.convex.site");
+  });
+
+  it("reports structured json output with doctor status", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(["onboarding", "--yes", "--json"]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      ok: boolean;
+      preflight?: { ok: boolean };
+      doctor?: { teamData?: { ok: boolean }; officeObjects?: { ok: boolean } };
+      uiEnv?: { VITE_CONVEX_URL?: string };
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.preflight?.ok).toBe(true);
+    expect(payload.doctor?.teamData?.ok).toBe(true);
+    expect(payload.doctor?.officeObjects?.ok).toBe(true);
+    expect(payload.uiEnv?.VITE_CONVEX_URL).toBe("https://demo.convex.cloud");
+  });
+});

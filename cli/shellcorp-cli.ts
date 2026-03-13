@@ -19,8 +19,9 @@
  */
 import { Command } from "commander";
 import { registerOfficeCommands } from "./office-commands.js";
-import { registerDoctorCommands } from "./team-commands/index.js";
-import { registerTeamCommands } from "./team-commands/index.js";
+import { registerOnboardingCommands } from "./onboarding-commands.js";
+import { registerDoctorCommands, registerTeamCommands } from "./team-commands/index.js";
+import { registerUiCommands } from "./ui-commands.js";
 
 async function main(): Promise<void> {
   // Avoid throwing on broken pipe when output is being piped to a consumer that exits early.
@@ -32,11 +33,10 @@ async function main(): Promise<void> {
   });
 
   const program = new Command();
-  program
-    .name("shellcorp")
-    .description("ShellCorp team management CLI")
-    .version("0.1.0");
+  program.name("shellcorp").description("ShellCorp setup and team management CLI").version("0.1.0");
 
+  registerOnboardingCommands(program);
+  registerUiCommands(program);
   registerTeamCommands(program);
   registerDoctorCommands(program);
   registerOfficeCommands(program);
@@ -45,4 +45,3 @@ async function main(): Promise<void> {
 }
 
 void main();
-
