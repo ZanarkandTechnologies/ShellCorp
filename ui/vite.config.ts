@@ -4,6 +4,7 @@ import { mkdir, readdir, readFile, writeFile, stat } from "node:fs/promises";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { buildNewTeamClusterObject } from "../cli/team-cluster-placement";
 import {
   getSkillStudioDetail,
   listSkillStudioCatalog,
@@ -1683,19 +1684,14 @@ function shellcorpStateBridge() {
             const currentObjects = normalizeOfficeObjects(await readJsonFile<unknown[]>(OFFICE_OBJECTS_PATH, []));
             const clusterId = `team-cluster-${teamId}`;
             const nextObjects = currentObjects.filter((entry) => String(entry.id ?? "") !== clusterId);
-            nextObjects.push({
-              id: clusterId,
-              identifier: clusterId,
-              meshType: "team-cluster",
-              position: [0, 0, 8],
-              rotation: [0, 0, 0],
-              metadata: {
+            nextObjects.push(
+              buildNewTeamClusterObject({
+                existingObjects: currentObjects,
                 teamId,
                 name,
                 description,
-                services: [],
-              },
-            } satisfies JsonObject);
+              }) satisfies JsonObject,
+            );
             await mkdir(path.dirname(OFFICE_OBJECTS_PATH), { recursive: true });
             await writeFile(OFFICE_OBJECTS_PATH, `${JSON.stringify(nextObjects, null, 2)}\n`, "utf-8");
           }

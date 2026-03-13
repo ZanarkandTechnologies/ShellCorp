@@ -11,11 +11,13 @@
  *
  * MEMORY REFERENCES:
  * - MEM-0104
+ * - MEM-0183
  */
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { access, cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { buildNewTeamClusterObject } from "../team-cluster-placement.js";
 import {
   createSidecarStore,
   type AgentRole,
@@ -501,19 +503,14 @@ export function upsertTeamCluster(
   if (existingIndex === -1) {
     return [
       ...officeObjects,
-      {
-        id: `team-cluster-${input.teamId}`,
-        identifier: `team-cluster-${input.teamId}`,
-        meshType: "team-cluster",
-        position: [0, 0, 8],
-        rotation: [0, 0, 0],
-        metadata: {
-          teamId: input.teamId,
-          name: input.name,
-          description: input.description,
-          services: [],
-        },
-      },
+      // MEM-0183 decision: new project-backed team clusters claim the next open office slot
+      // on first creation, but later metadata updates preserve the existing anchor.
+      buildNewTeamClusterObject({
+        existingObjects: officeObjects,
+        teamId: input.teamId,
+        name: input.name,
+        description: input.description,
+      }),
     ];
   }
   const next = [...officeObjects];
