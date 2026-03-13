@@ -15,7 +15,13 @@
  * - MEM-0144 refactor: Phase 3c folder split
  */
 import { useEffect, useMemo, useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -36,7 +42,6 @@ import type {
 import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { useGateway } from "@/providers/gateway-provider";
-import type { EmployeeData } from "@/lib/types";
 import { UI_Z } from "@/lib/z-index";
 import { extractAgentId } from "@/lib/entity-utils";
 import { buildTeamAiUsageSummary } from "@/lib/session-usage";
@@ -52,8 +57,14 @@ function cloneConfig<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function resolveAgentConfigDraft(config: Record<string, unknown> | null, agentId: string): AgentConfigDraft {
-  const agentsNode = config?.agents && typeof config.agents === "object" ? (config.agents as Record<string, unknown>) : {};
+function resolveAgentConfigDraft(
+  config: Record<string, unknown> | null,
+  agentId: string,
+): AgentConfigDraft {
+  const agentsNode =
+    config?.agents && typeof config.agents === "object"
+      ? (config.agents as Record<string, unknown>)
+      : {};
   const list = Array.isArray(agentsNode.list) ? agentsNode.list : [];
   const entry = list.find((item) => {
     if (!item || typeof item !== "object") return false;
@@ -69,15 +80,22 @@ function resolveAgentConfigDraft(config: Record<string, unknown> | null, agentId
     const row = modelNode as Record<string, unknown>;
     primaryModel = String(row.primary ?? row.model ?? "");
     if (Array.isArray(row.fallbacks)) {
-      fallbackModels = row.fallbacks.filter((item): item is string => typeof item === "string").join(", ");
+      fallbackModels = row.fallbacks
+        .filter((item): item is string => typeof item === "string")
+        .join(", ");
     }
   }
-  const toolsNode = entry?.tools && typeof entry.tools === "object" ? (entry.tools as Record<string, unknown>) : {};
+  const toolsNode =
+    entry?.tools && typeof entry.tools === "object" ? (entry.tools as Record<string, unknown>) : {};
   const toolsAllow = Array.isArray(toolsNode.alsoAllow)
     ? toolsNode.alsoAllow.filter((item): item is string => typeof item === "string")
     : [];
-  const toolsDeny = Array.isArray(toolsNode.deny) ? toolsNode.deny.filter((item): item is string => typeof item === "string") : [];
-  const skillsArray = Array.isArray(entry?.skills) ? entry.skills.filter((item): item is string => typeof item === "string") : null;
+  const toolsDeny = Array.isArray(toolsNode.deny)
+    ? toolsNode.deny.filter((item): item is string => typeof item === "string")
+    : [];
+  const skillsArray = Array.isArray(entry?.skills)
+    ? entry.skills.filter((item): item is string => typeof item === "string")
+    : null;
   const skillsMode = skillsArray === null ? "all" : skillsArray.length === 0 ? "none" : "selected";
   return {
     primaryModel,
@@ -98,7 +116,9 @@ function buildNextConfig(
   const next = cloneConfig(currentConfig);
   const root = next as Record<string, unknown>;
   const agentsNode =
-    root.agents && typeof root.agents === "object" ? (root.agents as Record<string, unknown>) : ({} as Record<string, unknown>);
+    root.agents && typeof root.agents === "object"
+      ? (root.agents as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
   const list = Array.isArray(agentsNode.list) ? (cloneConfig(agentsNode.list) as unknown[]) : [];
   const idx = list.findIndex((item) => {
     if (!item || typeof item !== "object") return false;
@@ -214,10 +234,17 @@ export function ManageAgentModal(): JSX.Element {
   const [filesState, setFilesState] = useState<FilesState>(EMPTY_FILES_STATE);
 
   const preferredAgentId = extractAgentId(employee?._id ?? null);
-  const isDraftDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(baseDraft), [draft, baseDraft]);
-  const activeFile = filesState.activeName ? filesState.list?.files.find((file) => file.name === filesState.activeName) ?? null : null;
-  const activeFileBase = activeFile ? filesState.baseByName[activeFile.name] ?? "" : "";
-  const activeFileDraft = activeFile ? filesState.draftByName[activeFile.name] ?? activeFileBase : "";
+  const isDraftDirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(baseDraft),
+    [draft, baseDraft],
+  );
+  const activeFile = filesState.activeName
+    ? (filesState.list?.files.find((file) => file.name === filesState.activeName) ?? null)
+    : null;
+  const activeFileBase = activeFile ? (filesState.baseByName[activeFile.name] ?? "") : "";
+  const activeFileDraft = activeFile
+    ? (filesState.draftByName[activeFile.name] ?? activeFileBase)
+    : "";
   const isActiveFileDirty = activeFile ? activeFileDraft !== activeFileBase : false;
 
   useEffect(() => {
@@ -226,7 +253,7 @@ export function ManageAgentModal(): JSX.Element {
     setLoadError("");
     setSaveStatus("");
     setFilesState(EMPTY_FILES_STATE);
-  }, [isOpen, preferredAgentId]);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -235,7 +262,14 @@ export function ManageAgentModal(): JSX.Element {
       setIsLoading(true);
       setLoadError("");
       try {
-        const [nextAgentsList, configSnapshot, nextChannels, nextCronStatus, nextCronJobs, skillItems] = await Promise.all([
+        const [
+          nextAgentsList,
+          configSnapshot,
+          nextChannels,
+          nextCronStatus,
+          nextCronJobs,
+          skillItems,
+        ] = await Promise.all([
           adapter.getAgentsList(),
           adapter.getConfigSnapshot(),
           adapter.getChannelsStatus(),
@@ -246,7 +280,9 @@ export function ManageAgentModal(): JSX.Element {
         if (cancelled) return;
         setAgentsList(nextAgentsList);
         const pickedAgentId =
-          (preferredAgentId && nextAgentsList.agents.some((agent) => agent.id === preferredAgentId) && preferredAgentId) ||
+          (preferredAgentId &&
+            nextAgentsList.agents.some((agent) => agent.id === preferredAgentId) &&
+            preferredAgentId) ||
           nextAgentsList.defaultId ||
           nextAgentsList.agents[0]?.id ||
           null;
@@ -257,7 +293,8 @@ export function ManageAgentModal(): JSX.Element {
         setCronJobs(nextCronJobs);
         setFallbackSkills(skillItems);
       } catch (error) {
-        if (!cancelled) setLoadError(error instanceof Error ? error.message : "bootstrap_load_failed");
+        if (!cancelled)
+          setLoadError(error instanceof Error ? error.message : "bootstrap_load_failed");
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -288,7 +325,8 @@ export function ManageAgentModal(): JSX.Element {
       setSaveStatus("");
     }
     void loadAgentData().catch((error) => {
-      if (!cancelled) setLoadError(error instanceof Error ? error.message : "failed_to_load_agent_data");
+      if (!cancelled)
+        setLoadError(error instanceof Error ? error.message : "failed_to_load_agent_data");
     });
     return () => {
       cancelled = true;
@@ -310,7 +348,11 @@ export function ManageAgentModal(): JSX.Element {
         const usageRows = await Promise.all(
           sessions.map(async (session) => {
             try {
-              const timeline = await adapter.getSessionTimeline(selectedAgentId, session.sessionKey, 120);
+              const timeline = await adapter.getSessionTimeline(
+                selectedAgentId,
+                session.sessionKey,
+                120,
+              );
               return {
                 sessionKey: session.sessionKey,
                 updatedAt: session.updatedAt,
@@ -345,7 +387,9 @@ export function ManageAgentModal(): JSX.Element {
           totalTrackedCostUsd: summary.totalTrackedCostUsd,
           totalTokens: summary.totalTokens,
           trackedSessions: summary.trackedSessions,
-          ...(failedSessions > 0 ? { unavailableText: `usage unavailable for ${failedSessions} session(s)` } : {}),
+          ...(failedSessions > 0
+            ? { unavailableText: `usage unavailable for ${failedSessions} session(s)` }
+            : {}),
         });
       } catch (error) {
         if (!cancelled) {
@@ -369,7 +413,11 @@ export function ManageAgentModal(): JSX.Element {
   useEffect(() => {
     if (!isOpen || !selectedAgentId || activeTab !== "files") return;
     if (!gatewayConnected) {
-      setFilesState((current) => ({ ...current, loading: false, error: "gateway_not_connected:agents.files.list" }));
+      setFilesState((current) => ({
+        ...current,
+        loading: false,
+        error: "gateway_not_connected:agents.files.list",
+      }));
       return;
     }
     if (filesState.list?.agentId === selectedAgentId) return;
@@ -377,7 +425,12 @@ export function ManageAgentModal(): JSX.Element {
       setFilesState((current) => ({ ...current, loading: true, error: "" }));
       try {
         const list = await adapter.listAgentFiles(selectedAgentId);
-        setFilesState((current) => ({ ...current, list, activeName: list.files[0]?.name ?? null, loading: false }));
+        setFilesState((current) => ({
+          ...current,
+          list,
+          activeName: list.files[0]?.name ?? null,
+          loading: false,
+        }));
       } catch (error) {
         setFilesState((current) => ({
           ...current,
@@ -411,7 +464,15 @@ export function ManageAgentModal(): JSX.Element {
         }));
       }
     })();
-  }, [adapter, activeTab, filesState.activeName, filesState.baseByName, gatewayConnected, isOpen, selectedAgentId]);
+  }, [
+    adapter,
+    activeTab,
+    filesState.activeName,
+    filesState.baseByName,
+    gatewayConnected,
+    isOpen,
+    selectedAgentId,
+  ]);
 
   async function refreshConfigOnly(): Promise<void> {
     if (!selectedAgentId) return;
@@ -430,7 +491,11 @@ export function ManageAgentModal(): JSX.Element {
   async function refreshFilesList(): Promise<void> {
     if (!selectedAgentId) return;
     if (!gatewayConnected) {
-      setFilesState((current) => ({ ...current, loading: false, error: "gateway_not_connected:agents.files.list" }));
+      setFilesState((current) => ({
+        ...current,
+        loading: false,
+        error: "gateway_not_connected:agents.files.list",
+      }));
       return;
     }
     setFilesState((current) => ({ ...current, loading: true, error: "" }));
@@ -443,7 +508,7 @@ export function ManageAgentModal(): JSX.Element {
         activeName:
           current.activeName && list.files.some((file) => file.name === current.activeName)
             ? current.activeName
-            : list.files[0]?.name ?? null,
+            : (list.files[0]?.name ?? null),
       }));
     } catch (error) {
       setFilesState((current) => ({
@@ -490,7 +555,11 @@ export function ManageAgentModal(): JSX.Element {
   async function handleSaveFile(): Promise<void> {
     if (!selectedAgentId || !activeFile) return;
     if (!gatewayConnected) {
-      setFilesState((current) => ({ ...current, saving: false, error: "gateway_not_connected:agents.files.set" }));
+      setFilesState((current) => ({
+        ...current,
+        saving: false,
+        error: "gateway_not_connected:agents.files.set",
+      }));
       return;
     }
     const content = activeFileDraft;
@@ -507,7 +576,9 @@ export function ManageAgentModal(): JSX.Element {
             ? {
                 ...current.list,
                 files: current.list.files.some((entry) => entry.name === result.file.name)
-                  ? current.list.files.map((entry) => (entry.name === result.file.name ? (result.file as AgentFileEntry) : entry))
+                  ? current.list.files.map((entry) =>
+                      entry.name === result.file.name ? (result.file as AgentFileEntry) : entry,
+                    )
                   : [...current.list.files, result.file as AgentFileEntry],
               }
             : current.list,
@@ -540,7 +611,11 @@ export function ManageAgentModal(): JSX.Element {
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabId)} className="w-full">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as TabId)}
+          className="w-full"
+        >
           <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="files">Files</TabsTrigger>
@@ -575,7 +650,12 @@ export function ManageAgentModal(): JSX.Element {
               />
             </TabsContent>
             <TabsContent value="tools" className="space-y-4">
-              <ToolsPanel draft={draft} setDraft={setDraft} toolsCatalog={toolsCatalog} onReloadConfig={refreshConfigOnly} />
+              <ToolsPanel
+                draft={draft}
+                setDraft={setDraft}
+                toolsCatalog={toolsCatalog}
+                onReloadConfig={refreshConfigOnly}
+              />
             </TabsContent>
             <TabsContent value="skills" className="space-y-4">
               <SkillsPanel
@@ -601,7 +681,10 @@ export function ManageAgentModal(): JSX.Element {
           <Button variant="outline" onClick={() => setManageAgentEmployeeId(null)}>
             Close
           </Button>
-          <Button onClick={() => void handleSaveConfig()} disabled={!isDraftDirty || isSavingConfig || !selectedAgentId}>
+          <Button
+            onClick={() => void handleSaveConfig()}
+            disabled={!isDraftDirty || isSavingConfig || !selectedAgentId}
+          >
             {isSavingConfig ? "Saving..." : "Save Changes"}
           </Button>
         </div>
