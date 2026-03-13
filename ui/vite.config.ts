@@ -1955,7 +1955,7 @@ function shellcorpStateBridge() {
 }
 
 export default defineConfig({
-  root: "ui",
+  root: __dirname,
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },

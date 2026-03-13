@@ -11,8 +11,9 @@ This file is loaded every loop. Keep it operational and concise.
 ## Validation (Backpressure)
 
 - Tests: `npm run test:once`
-- Typecheck: `npm run typecheck`
-- Build: `npm run build`
+- Typecheck: `npm run typecheck` (workspace-wide)
+- Root-only typecheck: `npm run typecheck:root`
+- Build: `npm run build` (root-owned TypeScript program)
 
 ## Docs State
 
