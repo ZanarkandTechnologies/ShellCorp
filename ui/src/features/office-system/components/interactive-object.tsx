@@ -1,16 +1,6 @@
 import { type ThreeEvent, useThree } from "@react-three/fiber";
-import {
-  Move,
-  RotateCcw,
-  RotateCw,
-  Settings,
-  SlidersVertical,
-  Trash2,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
+import { Move, Settings, SlidersVertical } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
 import * as THREE from "three";
 import { OFFICE_INTERACTION_COLORS } from "@/config/office-theme";
 import { constrainOfficeObjectPositionForLayout } from "@/features/office-system/components/office-object-placement";
@@ -22,6 +12,7 @@ import { DraggableController } from "../controllers/draggable-controller";
 import { parseOfficeObjectInteractionConfig } from "../office-object-ui";
 import { beginObjectInteractionTrace } from "../utils/object-interaction-perf";
 import { ContextMenu, type MenuAction } from "./context-menu";
+import { getBuilderClickAction } from "./interactive-object.builder";
 import {
   DEFAULT_INTERACTIVE_OBJECT_POSITION,
   DEFAULT_INTERACTIVE_OBJECT_ROTATION,
@@ -58,19 +49,23 @@ interface InteractiveObjectProps {
   };
 }
 
-export function getBuilderClickAction(params: {
-  isSelected: boolean;
-  allowSettings: boolean;
-}): "select" | "open-config" | "clear-selection" {
-  const { isSelected, allowSettings } = params;
-  if (!isSelected) return "select";
-  return allowSettings ? "open-config" : "clear-selection";
-}
-
 /**
- * INTERACTIVE OBJECT - Unified Component
- * ======================================
- * All-in-one component for selectable, draggable 3D objects in the office scene.
+ * INTERACTIVE OBJECT
+ * ==================
+ * Unified component for selectable, draggable 3D office objects.
+ *
+ * KEY CONCEPTS:
+ * - Builder-mode selection keeps the scene menu lean and routes exact transforms into the shared panel on demand.
+ * - Persisted office-object writes stay in this component; builder HUD panels trigger the higher-level flows.
+ *
+ * USAGE:
+ * - Wrap office furniture/custom meshes that need builder interactions.
+ * - Pass runtime `metadata` so embed-bound objects can open their routed viewer outside builder mode.
+ *
+ * MEMORY REFERENCES:
+ * - MEM-0187
+ * - MEM-0188
+ * - MEM-0189
  */
 export function InteractiveObject({
   children,
@@ -84,9 +79,6 @@ export function InteractiveObject({
   customActions,
   onSettings,
   metadata,
-  supportsScaling = true,
-  allowDelete = true,
-  allowRotation = true,
   allowSettings = true,
   allowTransform = true,
   externalGroupRef,
@@ -180,20 +172,6 @@ export function InteractiveObject({
       await refreshOfficeDataSafely(refresh);
     },
     [adapter, initialRotation, initialScale, metadata, objectType, refresh],
-  );
-
-  const deleteOfficeObject = useCallback(
-    async (input: { id: string }): Promise<void> => {
-      const current = await adapter.getOfficeObjects();
-      const knownIds = new Set(current.map((item) => item.id));
-      const persistedId = resolvePersistedOfficeObjectId(input.id, knownIds);
-      const result = await adapter.deleteOfficeObject(persistedId, { currentObjects: current });
-      if (!result.ok) {
-        throw new Error(result.error ?? "office_object_delete_failed");
-      }
-      await refreshOfficeDataSafely(refresh);
-    },
-    [adapter, refresh],
   );
 
   useEffect(() => {
@@ -330,11 +308,13 @@ export function InteractiveObject({
       if (clickAction === "open-config") {
         beginObjectInteractionTrace("builder-panel", String(objectId), { source: "repeat-click" });
         setSelectedObjectId(null);
+        setActiveObjectTransformId(null);
         setActiveObjectConfigId(objectId);
         return;
       }
       if (clickAction === "clear-selection") {
         setSelectedObjectId(null);
+        setActiveObjectTransformId(null);
         return;
       }
 
@@ -346,6 +326,7 @@ export function InteractiveObject({
       interactionConfig.displayName,
       interactionConfig.uiBinding,
       setActiveObjectConfigId,
+      setActiveObjectTransformId,
       isBuilderMode,
       isLocallyDragging,
       isSelected,
@@ -355,49 +336,6 @@ export function InteractiveObject({
       setSelectedObjectId,
     ],
   );
-
-  const handleRotate90 = useCallback(
-    async (direction: "left" | "right") => {
-      const rotationIncrement = direction === "right" ? Math.PI / 2 : -Math.PI / 2;
-      const newRotationY = localRotation[1] + rotationIncrement;
-      const newRotArray: [number, number, number] = [
-        localRotation[0],
-        newRotationY,
-        localRotation[2],
-      ];
-
-      setLocalRotation(newRotArray);
-
-      try {
-        await persistOfficeObject({
-          id: String(objectId),
-          position: localPosition,
-          rotation: newRotArray,
-        });
-      } catch (error) {
-        console.error(`Failed to update ${objectId} rotation:`, error);
-        setLocalRotation(lastConfirmedRotationRef.current);
-      }
-    },
-    [localPosition, localRotation, objectId, persistOfficeObject],
-  );
-
-  const handleDelete = useCallback(async () => {
-    if (objectType === "team-cluster") {
-      toast.error(
-        `Cannot delete ${objectTitle}. Archive or remove the team/project instead of deleting its scene anchor.`,
-      );
-      return;
-    }
-    try {
-      await deleteOfficeObject({ id: objectId });
-      setSelectedObjectId(null);
-      toast.success(`Deleted ${objectTitle}.`);
-    } catch (error) {
-      console.error(`Failed to delete object ${objectId}:`, error);
-      toast.error(error instanceof Error ? error.message : `Failed to delete ${objectTitle}.`);
-    }
-  }, [deleteOfficeObject, objectId, objectTitle, objectType, setSelectedObjectId]);
 
   const handleMoveMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -409,27 +347,6 @@ export function InteractiveObject({
       }
     },
     [isDragEnabled],
-  );
-
-  const handleScale = useCallback(
-    async (delta: number) => {
-      const currentScalar = Number.isFinite(localScale[0]) ? localScale[0] : 1;
-      const nextScalar = Math.min(3, Math.max(0.4, Number((currentScalar + delta).toFixed(2))));
-      const nextScale: [number, number, number] = [nextScalar, nextScalar, nextScalar];
-      setLocalScale(nextScale);
-      try {
-        await persistOfficeObject({
-          id: String(objectId),
-          position: localPosition,
-          rotation: localRotation,
-          scale: nextScale,
-        });
-      } catch (error) {
-        console.error(`Failed to update ${objectId} scale:`, error);
-        setLocalScale(lastConfirmedScaleRef.current);
-      }
-    },
-    [localPosition, localRotation, localScale, objectId, persistOfficeObject],
   );
 
   const handleSettings = useCallback(() => {
@@ -467,30 +384,6 @@ export function InteractiveObject({
           onClick: () => {},
           onMouseDown: handleMoveMouseDown,
         },
-        ...(allowRotation
-          ? ([
-              {
-                id: "rotate-right",
-                label: "Rotate +90°",
-                icon: RotateCw,
-                color: "green",
-                position: "right",
-                onClick: () => handleRotate90("right"),
-              },
-            ] satisfies MenuAction[])
-          : []),
-        ...(allowDelete
-          ? ([
-              {
-                id: "delete",
-                label: "Delete",
-                icon: Trash2,
-                color: "red",
-                position: "bottom",
-                onClick: handleDelete,
-              },
-            ] satisfies MenuAction[])
-          : []),
         ...(allowSettings
           ? ([
               {
@@ -498,19 +391,8 @@ export function InteractiveObject({
                 label: "Settings",
                 icon: Settings,
                 color: "gray",
-                position: "left",
+                position: "right",
                 onClick: handleSettings,
-              },
-            ] satisfies MenuAction[])
-          : []),
-        ...(allowRotation
-          ? ([
-              {
-                id: "rotate-left",
-                label: "Rotate -90°",
-                icon: RotateCcw,
-                color: "green",
-                onClick: () => handleRotate90("left"),
               },
             ] satisfies MenuAction[])
           : []),
@@ -521,42 +403,19 @@ export function InteractiveObject({
                 label: "Transform",
                 icon: SlidersVertical,
                 color: "indigo",
+                position: "left",
                 onClick: handleTransform,
-              },
-            ] satisfies MenuAction[])
-          : []),
-        ...(supportsScaling
-          ? ([
-              {
-                id: "scale-up",
-                label: "Scale +",
-                icon: ZoomIn,
-                color: "purple",
-                onClick: () => handleScale(0.2),
-              },
-              {
-                id: "scale-down",
-                label: "Scale -",
-                icon: ZoomOut,
-                color: "amber",
-                onClick: () => handleScale(-0.2),
               },
             ] satisfies MenuAction[])
           : []),
       ],
     [
       customActions,
-      handleDelete,
       handleMoveMouseDown,
-      handleRotate90,
-      handleScale,
       handleSettings,
       handleTransform,
-      allowDelete,
-      allowRotation,
       allowSettings,
       allowTransform,
-      supportsScaling,
     ],
   );
 
@@ -628,7 +487,10 @@ export function InteractiveObject({
 
       <ContextMenu
         isOpen={isBuilderMode && isSelected && activeObjectConfigId !== objectId}
-        onClose={() => setSelectedObjectId(null)}
+        onClose={() => {
+          setSelectedObjectId(null);
+          setActiveObjectTransformId(null);
+        }}
         actions={actions}
         title={objectTitle}
         perfObjectId={String(objectId)}
