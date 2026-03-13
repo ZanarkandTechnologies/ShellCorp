@@ -84,6 +84,7 @@ export function OfficeLayoutEditor(): JSX.Element | null {
   const adapter = useOpenClawAdapter();
   const { officeSettings, officeObjects, teams, applyOfficeSettings } = useOfficeDataContext();
   const isBuilderMode = useAppStore((state) => state.isBuilderMode);
+  const debugMode = useAppStore((state) => state.debugMode);
   const activeBuilderTool = useAppStore((state) => state.activeBuilderTool);
   const [strokeCells, setStrokeCells] = useState<Set<string>>(new Set());
   const [isPainting, setIsPainting] = useState(false);
@@ -141,6 +142,7 @@ export function OfficeLayoutEditor(): JSX.Element | null {
             .filter((team) => Array.isArray(team.clusterPosition))
             .map((team) => ({
               key: String(team._id),
+              name: team.name,
               position: team.clusterPosition as [number, number, number],
               label: getTeamOverlayLabel(
                 team.name,
@@ -386,18 +388,20 @@ export function OfficeLayoutEditor(): JSX.Element | null {
         </mesh>
       ))}
 
-      {previewCoordinateLabels.map((cell) => (
-        <Html
-          key={`label-${cell.key}`}
-          position={[cell.x, 0.22, cell.z]}
-          center
-          distanceFactor={18}
-        >
-          <div className="rounded border border-border/70 bg-background/92 px-1.5 py-0.5 text-[10px] font-medium text-foreground shadow-sm">
-            {cell.x}:{cell.z}
-          </div>
-        </Html>
-      ))}
+      {debugMode
+        ? previewCoordinateLabels.map((cell) => (
+            <Html
+              key={`label-${cell.key}`}
+              position={[cell.x, 0.22, cell.z]}
+              center
+              distanceFactor={18}
+            >
+              <div className="rounded border border-border/70 bg-background/92 px-1.5 py-0.5 text-[10px] font-medium text-foreground shadow-sm">
+                {cell.x}:{cell.z}
+              </div>
+            </Html>
+          ))
+        : null}
 
       {paintMode === "remove" ? (
         <>
@@ -414,7 +418,9 @@ export function OfficeLayoutEditor(): JSX.Element | null {
             distanceFactor={16}
           >
             <div className="rounded border border-red-500/60 bg-background/92 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm">
-              Management ({managementAnchor[0]}:{managementAnchor[2]})
+              {debugMode
+                ? `Management (${managementAnchor[0]}:${managementAnchor[2]})`
+                : "Management"}
             </div>
           </Html>
 
@@ -433,7 +439,7 @@ export function OfficeLayoutEditor(): JSX.Element | null {
                 distanceFactor={16}
               >
                 <div className="rounded border border-sky-500/60 bg-background/92 px-2 py-1 text-[10px] font-medium text-foreground shadow-sm">
-                  {overlay.label}
+                  {debugMode ? overlay.label : overlay.name}
                 </div>
               </Html>
             </group>
@@ -450,9 +456,11 @@ export function OfficeLayoutEditor(): JSX.Element | null {
             Painted tiles stay in preview until you click <strong>Apply</strong>. Exiting builder
             mode does not auto-save the current stroke.
           </p>
-          <p className="mt-1 text-muted-foreground">
-            Tile coordinates use integer center points like <strong>-16:-11</strong>.
-          </p>
+          {debugMode ? (
+            <p className="mt-1 text-muted-foreground">
+              Tile coordinates use integer center points like <strong>-16:-11</strong>.
+            </p>
+          ) : null}
           {errorMessage ? <p className="mt-2 text-destructive">{errorMessage}</p> : null}
           <div className="mt-3 flex items-center justify-between gap-2">
             <span className="text-muted-foreground">
