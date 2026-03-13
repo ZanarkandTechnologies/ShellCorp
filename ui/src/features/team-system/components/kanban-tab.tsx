@@ -62,7 +62,14 @@ export function KanbanTab({
   const columns = statusColumns(visibleTasks);
 
   const employeeOptions = useMemo(
-    () => teamEmployees.map((e) => ({ id: e._id, name: e.name })),
+    () =>
+      teamEmployees
+        .map((employee) => {
+          const rawId = String(employee._id ?? "").trim();
+          const agentId = rawId.startsWith("employee-") ? rawId.slice("employee-".length) : rawId;
+          return { id: agentId, name: employee.name };
+        })
+        .filter((employee) => employee.id.length > 0),
     [teamEmployees],
   );
 
