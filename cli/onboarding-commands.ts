@@ -18,13 +18,16 @@
  * - MEM-0104
  * - MEM-0161
  * - MEM-0164
+ * - MEM-0178
  */
 
+import { execFile as execFileCallback } from "node:child_process";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import type { Command } from "commander";
 import {
   cliBlue,
@@ -65,6 +68,13 @@ type OnboardingResult = {
   uiEnvPath: string;
   uiEnvStatus: FileStatus;
   uiEnv: Record<string, string>;
+  cliInstall: {
+    attempted: boolean;
+    ok: boolean;
+    status: "installed" | "skipped" | "failed";
+    command: string;
+    note: string;
+  };
   doctor: {
     teamData: { ok: boolean; issues: string[] };
     officeObjects: {
@@ -81,6 +91,8 @@ type OnboardingOptions = {
   gatewayToken?: string;
   stateUrl?: string;
   convexUrl?: string;
+  installCli?: boolean;
+  skipInstallCli?: boolean;
   launchUi?: boolean;
   yes?: boolean;
   json?: boolean;
@@ -114,6 +126,14 @@ const SHELLCORP_BANNER = `
 `;
 const UI_START_COMMAND = "`npm run shell -- ui`";
 const UI_ALIAS_COMMAND = "`shellcorp ui`";
+const CLI_INSTALL_COMMAND = "`npm link`";
+const defaultExecFile = promisify(execFileCallback);
+type OnboardingExecFileRunner = (file: string, args: string[], options: {
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+}) => Promise<{ stdout: string | Buffer; stderr: string | Buffer }>;
+let execFileRunner: OnboardingExecFileRunner = async (file, args, options) =>
+  defaultExecFile(file, args, options);
 
 type OpenclawPreflight = {
   ok: boolean;
@@ -490,13 +510,17 @@ function chooseUiEnvValues(inputValues: {
 
 function buildNextSteps(inputValues: {
   uiEnv: Record<string, string>;
+  cliInstall: OnboardingResult["cliInstall"];
   openclawChanged: boolean;
   repoRoot: string;
 }): string[] {
   const steps = [
     "Start or restart the OpenClaw gateway so ShellCorp config changes are picked up.",
-    `Run ${UI_START_COMMAND} from the repo root and open the ShellCorp UI.`,
+    inputValues.cliInstall.ok
+      ? `Use ${UI_ALIAS_COMMAND} or ${UI_START_COMMAND} from the repo root to open the ShellCorp UI.`
+      : `Run ${CLI_INSTALL_COMMAND} from the repo root for the global \`shellcorp\` alias, or use ${UI_START_COMMAND} directly.`,
     "Use the in-app onboarding flow to finish connector setup and learn the office controls.",
+    "Ask the CEO agent to draft a team proposal, then review and approve it as your first office workflow.",
   ];
   if (!inputValues.uiEnv.VITE_CONVEX_URL.trim()) {
     steps.splice(
@@ -519,21 +543,80 @@ function buildNextSteps(inputValues: {
   return steps;
 }
 
+async function installShellcorpCli(params: {
+  repoRoot: string;
+  requested: boolean;
+}): Promise<OnboardingResult["cliInstall"]> {
+  const command = "npm link";
+  if (!params.requested) {
+    return {
+      attempted: false,
+      ok: false,
+      status: "skipped",
+      command,
+      note: "CLI install skipped. Run `npm link` later if you want the global `shellcorp` alias.",
+    };
+  }
+  const packageJsonPath = path.join(params.repoRoot, "package.json");
+  if (!(await fileExists(packageJsonPath))) {
+    return {
+      attempted: false,
+      ok: false,
+      status: "skipped",
+      command,
+      note: "CLI install skipped because the repo root does not contain a package.json for `npm link`.",
+    };
+  }
+  try {
+    await execFileRunner("npm", ["link"], {
+      cwd: params.repoRoot,
+      env: process.env,
+    });
+    return {
+      attempted: true,
+      ok: true,
+      status: "installed",
+      command,
+      note: "Global `shellcorp` alias is installed for this repo.",
+    };
+  } catch (error) {
+    const detail =
+      error instanceof Error && error.message.trim() ? error.message.trim() : "unknown_error";
+    return {
+      attempted: true,
+      ok: false,
+      status: "failed",
+      command,
+      note: `CLI install failed (${detail}). Run \`npm link\` manually from the repo root if you want the global alias.`,
+    };
+  }
+}
+
+export function setOnboardingExecFileRunnerForTests(
+  runner: OnboardingExecFileRunner | null,
+): void {
+  execFileRunner =
+    runner ??
+    (async (file, args, options) => defaultExecFile(file, args, options));
+}
+
 export function registerOnboardingCommands(program: Command): void {
   const store = createSidecarStore();
   program
     .command("onboarding")
-    .description("Bootstrap first-run sidecars, plugin config, UI env, and doctor checks")
+    .description("Bootstrap first-run sidecars, plugin config, CLI alias, UI env, and doctor checks")
     .option("--style <preset>", "Office style preset: default|pixel|brutalist|cozy")
     .option("--gateway-url <url>", "Gateway URL for the UI")
     .option("--gateway-token <token>", "Gateway bearer token for the UI")
     .option("--state-url <url>", "State bridge URL for the UI")
     .option("--convex-url <url>", "Convex URL for the UI")
+    .option("--install-cli", "Run `npm link` from the repo root during onboarding")
+    .option("--skip-install-cli", "Skip the `npm link` step during onboarding", false)
     .option("--launch-ui", "Start the UI after onboarding completes", false)
     .option("--yes", "Use defaults without interactive prompts", false)
     .option("--json", "Output JSON", false)
     .action(async (opts: OnboardingOptions) => {
-      const totalSteps = 7;
+      const totalSteps = 8;
       const stepPausesEnabled = !opts.json && input.isTTY && output.isTTY;
       if (!opts.json) {
         printOnboardingIntro();
@@ -657,7 +740,37 @@ export function registerOnboardingCommands(program: Command): void {
       }
 
       if (!opts.json) {
-        printStepStart(5, totalSteps, "Generating UI environment");
+        printStepStart(5, totalSteps, "Installing ShellCorp CLI");
+      }
+      const shouldInstallCli =
+        opts.skipInstallCli === true
+          ? false
+          : opts.installCli === true
+            ? true
+            : !opts.json &&
+              opts.yes !== true &&
+              (await promptForYesNo({
+                question: "Install the global `shellcorp` CLI alias now with `npm link`?",
+                defaultValue: true,
+                skipPrompt: false,
+              }));
+      const cliInstall = await installShellcorpCli({
+        repoRoot,
+        requested: shouldInstallCli,
+      });
+      if (!opts.json) {
+        const cliNote =
+          cliInstall.status === "installed"
+            ? "ShellCorp CLI alias is ready."
+            : cliInstall.status === "skipped"
+              ? "CLI alias install skipped."
+              : "CLI alias install failed; you can still continue with repo-local commands.";
+        printStepDone(cliNote);
+        await pauseBetweenSteps(stepPausesEnabled);
+      }
+
+      if (!opts.json) {
+        printStepStart(6, totalSteps, "Generating UI environment");
       }
       const currentUiEnv = await readDotEnvFile(uiEnvPath);
       const rootEnv = await readDotEnvFile(rootEnvPath);
@@ -686,13 +799,15 @@ export function registerOnboardingCommands(program: Command): void {
       }
       if (!opts.json) {
         printStepDone(
-          `UI env is ready. Start the UI with ${UI_START_COMMAND}, or ${UI_ALIAS_COMMAND} after \`npm link\`.`,
+          cliInstall.ok
+            ? `UI env is ready. Start the UI with ${UI_ALIAS_COMMAND} or ${UI_START_COMMAND}.`
+            : `UI env is ready. Start the UI with ${UI_START_COMMAND}, or run ${CLI_INSTALL_COMMAND} first for ${UI_ALIAS_COMMAND}.`,
         );
         await pauseBetweenSteps(stepPausesEnabled);
       }
 
       if (!opts.json) {
-        printStepStart(6, totalSteps, "Running doctor checks");
+        printStepStart(7, totalSteps, "Running doctor checks");
       }
       const company = await store.readCompanyModel();
       const objects = await store.readOfficeObjects();
@@ -707,12 +822,14 @@ export function registerOnboardingCommands(program: Command): void {
         uiEnvPath,
         uiEnvStatus,
         uiEnv: nextUiEnvValues,
+        cliInstall,
         doctor: {
           teamData: { ok: teamIssues.length === 0, issues: teamIssues },
           officeObjects: { ok: officeIssues.length === 0, invalid: officeIssues },
         },
         nextSteps: buildNextSteps({
           uiEnv: nextUiEnvValues,
+          cliInstall,
           openclawChanged: openclawStatus !== "unchanged",
           repoRoot,
         }),
@@ -723,7 +840,7 @@ export function registerOnboardingCommands(program: Command): void {
       }
 
       if (!opts.json) {
-        printStepStart(7, totalSteps, "Handing off to the UI");
+        printStepStart(8, totalSteps, "Handing off to the UI");
       }
       const shouldLaunchUi =
         !opts.json &&
@@ -738,7 +855,9 @@ export function registerOnboardingCommands(program: Command): void {
         if (!opts.json) {
           console.log(
             cliDim(
-              `Starting the UI now. When you stop it, rerun ${UI_START_COMMAND}, or ${UI_ALIAS_COMMAND} after \`npm link\`.`,
+              cliInstall.ok
+                ? `Starting the UI now. When you stop it, rerun ${UI_ALIAS_COMMAND} or ${UI_START_COMMAND}.`
+                : `Starting the UI now. When you stop it, rerun ${UI_START_COMMAND}, or install the alias first with ${CLI_INSTALL_COMMAND}.`,
             ),
           );
           console.log("");
@@ -746,12 +865,16 @@ export function registerOnboardingCommands(program: Command): void {
         await startUiDevServer({ cwd: repoRoot, propagateSignal: false });
         if (!opts.json) {
           printStepDone(
-            `UI launch finished. Rerun ${UI_START_COMMAND}, or ${UI_ALIAS_COMMAND} after \`npm link\`.`,
+            cliInstall.ok
+              ? `UI launch finished. Rerun ${UI_ALIAS_COMMAND} or ${UI_START_COMMAND}.`
+              : `UI launch finished. Rerun ${UI_START_COMMAND}, or run ${CLI_INSTALL_COMMAND} first for ${UI_ALIAS_COMMAND}.`,
           );
         }
       } else if (!opts.json) {
         printStepDone(
-          `UI launch skipped. Start it later with ${UI_START_COMMAND}, or ${UI_ALIAS_COMMAND} after \`npm link\`.`,
+          cliInstall.ok
+            ? `UI launch skipped. Start it later with ${UI_ALIAS_COMMAND} or ${UI_START_COMMAND}.`
+            : `UI launch skipped. Start it later with ${UI_START_COMMAND}, or run ${CLI_INSTALL_COMMAND} first for ${UI_ALIAS_COMMAND}.`,
         );
       }
 
@@ -774,6 +897,13 @@ export function registerOnboardingCommands(program: Command): void {
           )}`,
         );
         console.log(`- ${cliKeyValue("openclaw.json:", result.sidecars["openclaw.json"], "ok")}`);
+        console.log(
+          `- ${cliKeyValue(
+            "cli alias:",
+            result.cliInstall.status,
+            result.cliInstall.ok ? "ok" : result.cliInstall.status === "failed" ? "warn" : "info",
+          )}`,
+        );
         console.log(`- ${cliKeyValue("ui/.env.local:", result.uiEnvStatus, "ok")}`);
         console.log(
           `- ${cliKeyValue(
@@ -794,9 +924,14 @@ export function registerOnboardingCommands(program: Command): void {
         for (const step of result.nextSteps) {
           console.log(`- ${cliStatus(step, "info")}`);
         }
+        if (result.cliInstall.status === "failed") {
+          console.log(`- ${cliStatus(result.cliInstall.note, "warn")}`);
+        }
         console.log(
           `- ${cliStatus(
-            `Start the UI now with ${UI_START_COMMAND}, or ${UI_ALIAS_COMMAND} after \`npm link\`.`,
+            result.cliInstall.ok
+              ? `Start the UI now with ${UI_ALIAS_COMMAND} or ${UI_START_COMMAND}.`
+              : `Start the UI now with ${UI_START_COMMAND}, or run ${CLI_INSTALL_COMMAND} first for ${UI_ALIAS_COMMAND}.`,
             "ok",
           )}`,
         );

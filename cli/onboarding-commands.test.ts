@@ -3,9 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { registerOnboardingCommands } from "./onboarding-commands.js";
+import {
+  registerOnboardingCommands,
+  setOnboardingExecFileRunnerForTests,
+} from "./onboarding-commands.js";
 
-async function setupRepoFixture(): Promise<{ repoRoot: string; stateDir: string }> {
+async function setupRepoFixture(input: {
+  withPackageJson?: boolean;
+} = {}): Promise<{ repoRoot: string; stateDir: string }> {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), "shellcorp-onboarding-repo-"));
   const stateDir = path.join(repoRoot, "state");
   await mkdir(path.join(repoRoot, "templates", "openclaw"), { recursive: true });
@@ -97,6 +102,26 @@ async function setupRepoFixture(): Promise<{ repoRoot: string; stateDir: string 
     `${["CONVEX_URL=https://demo.convex.cloud", "NOTION_API_KEY=secret_test"].join("\n")}\n`,
     "utf-8",
   );
+  if (input.withPackageJson === true) {
+    await mkdir(path.join(repoRoot, "bin"), { recursive: true });
+    await writeFile(
+      path.join(repoRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "shellcorp-test-fixture",
+          version: "0.0.0",
+          private: true,
+          bin: {
+            shellcorp: "./bin/shellcorp.js",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
+    await writeFile(path.join(repoRoot, "bin", "shellcorp.js"), "#!/usr/bin/env node\n", "utf-8");
+  }
 
   return { repoRoot, stateDir };
 }
@@ -134,6 +159,7 @@ async function runCommand(args: string[]): Promise<void> {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  setOnboardingExecFileRunnerForTests(null);
   delete process.env.OPENCLAW_STATE_DIR;
   delete process.env.SHELLCORP_REPO_ROOT;
   process.exitCode = undefined;
@@ -271,13 +297,96 @@ describe("onboarding CLI", () => {
     const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
       ok: boolean;
       preflight?: { ok: boolean };
+      cliInstall?: { status?: string; attempted?: boolean };
       doctor?: { teamData?: { ok: boolean }; officeObjects?: { ok: boolean } };
       uiEnv?: { VITE_CONVEX_URL?: string };
     };
     expect(payload.ok).toBe(true);
     expect(payload.preflight?.ok).toBe(true);
+    expect(payload.cliInstall?.status).toBe("skipped");
+    expect(payload.cliInstall?.attempted).toBe(false);
     expect(payload.doctor?.teamData?.ok).toBe(true);
     expect(payload.doctor?.officeObjects?.ok).toBe(true);
     expect(payload.uiEnv?.VITE_CONVEX_URL).toBe("https://demo.convex.cloud");
+  });
+
+  it("skips CLI install in --yes mode unless explicitly requested", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture({ withPackageJson: true });
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const execRunner = vi.fn(async () => ({ stdout: "", stderr: "" }));
+    setOnboardingExecFileRunnerForTests(execRunner);
+
+    await runCommand(["onboarding", "--yes", "--json"]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      cliInstall?: { status?: string; attempted?: boolean };
+    };
+    expect(payload.cliInstall?.status).toBe("skipped");
+    expect(payload.cliInstall?.attempted).toBe(false);
+    expect(execRunner).not.toHaveBeenCalled();
+  });
+
+  it("runs npm link when --install-cli is requested", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture({ withPackageJson: true });
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const execRunner = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    setOnboardingExecFileRunnerForTests(execRunner);
+
+    await runCommand(["onboarding", "--yes", "--install-cli", "--json"]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      cliInstall?: { status?: string; attempted?: boolean; ok?: boolean };
+    };
+    expect(execRunner).toHaveBeenCalledWith("npm", ["link"], expect.objectContaining({ cwd: repoRoot }));
+    expect(payload.cliInstall?.status).toBe("installed");
+    expect(payload.cliInstall?.attempted).toBe(true);
+    expect(payload.cliInstall?.ok).toBe(true);
+  });
+
+  it("records CLI install failure without failing onboarding", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture({ withPackageJson: true });
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const execRunner = vi.fn().mockRejectedValue(new Error("boom"));
+    setOnboardingExecFileRunnerForTests(execRunner);
+
+    await runCommand(["onboarding", "--yes", "--install-cli", "--json"]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      ok?: boolean;
+      cliInstall?: { status?: string; attempted?: boolean; ok?: boolean; note?: string };
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.cliInstall?.status).toBe("failed");
+    expect(payload.cliInstall?.attempted).toBe(true);
+    expect(payload.cliInstall?.ok).toBe(false);
+    expect(payload.cliInstall?.note).toContain("Run `npm link` manually");
+  });
+
+  it("lets --skip-install-cli override --install-cli", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture({ withPackageJson: true });
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const execRunner = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+    setOnboardingExecFileRunnerForTests(execRunner);
+
+    await runCommand(["onboarding", "--yes", "--install-cli", "--skip-install-cli", "--json"]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      cliInstall?: { status?: string; attempted?: boolean };
+    };
+    expect(payload.cliInstall?.status).toBe("skipped");
+    expect(payload.cliInstall?.attempted).toBe(false);
+    expect(execRunner).not.toHaveBeenCalled();
   });
 });

@@ -57,6 +57,7 @@ From the repo root:
 
 ```bash
 npm install
+npm link
 npm run shell -- onboarding
 npm run shell -- ui
 ```
@@ -67,6 +68,7 @@ What `shellcorp onboarding` does:
 - creates missing ShellCorp sidecar JSON under `~/.openclaw`
 - creates or updates `~/.openclaw/openclaw.json` with the minimum ShellCorp wiring
 - adds the in-repo Notion plugin load path and default `notion-shell` entry
+- offers to install the global `shellcorp` CLI alias with `npm link`
 - asks for a basic office style preset
 - shows a staged bootstrap flow so you can see each setup phase complete
 - generates `ui/.env.local` with safe `VITE_*` values
@@ -88,7 +90,9 @@ Notes:
 - If you already ran `npx convex dev`, `shellcorp onboarding` will reuse the Convex URL from the repo-root `.env.local`.
 - If you have a protected gateway, set `VITE_GATEWAY_TOKEN` when prompted or rerun `shellcorp onboarding --gateway-token <token>`.
 - Start the UI with `npm run shell -- ui` from the repo root.
-- If you prefer a global CLI, run `npm link` and then use `shellcorp onboarding` / `shellcorp ui`.
+- `shellcorp onboarding` can run `npm link` for you, or you can run it manually first.
+- In non-interactive flows such as `--yes`, pass `--install-cli` if you want onboarding to run `npm link`.
+
 - Use `shellcorp onboarding --launch-ui` if you want the CLI to jump straight into the UI after bootstrap.
 
 ## Quick Start for Developers
@@ -97,6 +101,7 @@ From the repo root:
 
 ```bash
 npm install
+npm link
 npm run shell -- onboarding --yes
 npm run shell -- ui
 ```
@@ -112,6 +117,8 @@ npm run build
 Useful commands:
 
 - `npm run shell -- onboarding --json`
+- `npm run shell -- onboarding --install-cli`
+- `npm run shell -- onboarding --skip-install-cli`
 - `npm run shell -- onboarding --launch-ui`
 - `npm run shell -- ui`
 - `npm run shell -- office decor docs`
@@ -131,6 +138,8 @@ Developer notes:
 
 - The CLI and UI both read ShellCorp sidecars from `~/.openclaw`.
 - The UI reads `VITE_*` values from `ui/.env.local`; backend/private env stays in the repo-root `.env.local`.
+- The global `shellcorp` alias comes from the package `bin` entry plus `npm link`.
+
 - `templates/` is only for bootstrap and scaffolding. It is not the live source of truth after onboarding runs.
 
 ## More Docs
