@@ -1,5 +1,22 @@
 "use client";
 
+/**
+ * OFFICE MENU
+ * ===========
+ * Global office launcher for top-level HUD surfaces.
+ *
+ * KEY CONCEPTS:
+ * - Keeps the operator menu focused on current ShellCorp workflows.
+ * - Routes CEO proposal review through the shared CEO Workbench Human Review view.
+ *
+ * USAGE:
+ * - Mounted from `office-simulation.tsx`.
+ *
+ * MEMORY REFERENCES:
+ * - MEM-0155
+ * - MEM-0192
+ */
+
 import { useMemo, useCallback, useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import {
@@ -11,7 +28,6 @@ import {
   Settings,
   ShoppingBag,
   Users,
-  ShieldCheck,
   Activity,
   ClipboardList,
   BriefcaseBusiness,
@@ -20,9 +36,7 @@ import { SpeedDial, type SpeedDialItem } from "@/components/ui/speed-dial";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "@/lib/app-store";
 import { FurnitureShop } from "./furniture-shop";
-import { ApprovalQueue } from "./approval-queue";
 import { useChatActions } from "@/features/chat-system/chat-store";
-import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { OrganizationPanel } from "./organization-panel";
 import { api } from "../../../../convex/_generated/api";
 import { isConvexEnabled } from "@/providers/convex-provider";
@@ -33,7 +47,6 @@ interface SpeedDialProps {
 }
 
 export function OfficeMenu({ className }: SpeedDialProps) {
-  const adapter = useOpenClawAdapter();
   const convexEnabled = isConvexEnabled();
   const navigate = useNavigate();
   // Use selectors to prevent unnecessary re-renders
@@ -58,9 +71,7 @@ export function OfficeMenu({ className }: SpeedDialProps) {
   const isOfficeOnboardingVisible = useAppStore((state) => state.isOfficeOnboardingVisible);
   const officeOnboardingStep = useAppStore((state) => state.officeOnboardingStep);
 
-  const [isApprovalQueueOpen, setIsApprovalQueueOpen] = useState(false);
   const [isOrganizationOpen, setIsOrganizationOpen] = useState(false);
-  const [approvalCount, setApprovalCount] = useState(0);
   const companyBoard = useQuery(
     api.board.getCompanyBoardTasks,
     convexEnabled ? { taskType: "team_proposal" } : "skip",
@@ -73,24 +84,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
     });
     return countSc12PendingReviewTasks(tasks);
   }, [companyBoard, convexEnabled]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const approvals = await adapter.getPendingApprovals();
-        if (!cancelled) setApprovalCount(approvals.length);
-      } catch {
-        /* ignore */
-      }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), 10_000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [adapter]);
   // Legacy team/agent manager dialogs were intentionally stripped from this UI flow.
   const canOpenAgentManager = false;
   const canOpenTeamManager = false;
@@ -99,7 +92,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
   useEffect(() => {
     if (!placementMode.active) return;
     setIsFurnitureShopOpen(false);
-    setIsApprovalQueueOpen(false);
     setIsOrganizationOpen(false);
   }, [placementMode.active]);
 
@@ -207,17 +199,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
             : "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
       },
       {
-        id: "approvals",
-        icon: ShieldCheck,
-        label: "Approvals",
-        onClick: () => setIsApprovalQueueOpen(true),
-        badge: approvalCount > 0 ? approvalCount : undefined,
-        color:
-          approvalCount > 0
-            ? "bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30"
-            : "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-      },
-      {
         id: "builder-mode",
         icon: Hammer,
         label: "Builder Mode",
@@ -256,8 +237,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
       setIsCeoWorkbenchOpen,
       setCeoWorkbenchView,
       userTaskCount,
-      approvalCount,
-      setIsApprovalQueueOpen,
       handleBuilderModeToggle,
       isAnimatingCamera,
       setIsOrganizationOpen,
@@ -290,9 +269,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
       />
       {isFurnitureShopOpen ? (
         <FurnitureShop isOpen={isFurnitureShopOpen} onOpenChange={setIsFurnitureShopOpen} />
-      ) : null}
-      {isApprovalQueueOpen ? (
-        <ApprovalQueue isOpen={isApprovalQueueOpen} onOpenChange={setIsApprovalQueueOpen} />
       ) : null}
     </>
   );

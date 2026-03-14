@@ -15,6 +15,7 @@
  * MEMORY REFERENCES:
  * - MEM-0155
  * - MEM-0160
+ * - MEM-0192
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -141,7 +142,7 @@ export function CeoTaskDetailModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[90vh] max-w-[min(1380px,96vw)] overflow-hidden border border-border bg-background p-0 text-foreground shadow-2xl"
+        className="flex h-[92vh] max-h-[980px] !w-[96vw] sm:!max-w-[1600px] flex-col overflow-hidden border border-border bg-background p-0 text-foreground shadow-2xl"
         style={{ zIndex: UI_Z.panelModal }}
         overlayStyle={{
           zIndex: UI_Z.panelModal - 1,
@@ -194,14 +195,14 @@ export function CeoTaskDetailModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <ScrollArea className="min-h-0 border-r border-border">
-            <div className="space-y-6 px-8 py-8 xl:px-10">
+        <div className="grid min-h-0 flex-1 gap-0 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,440px)]">
+          <ScrollArea className="min-h-0 border-b border-border xl:border-r xl:border-b-0">
+            <div className="space-y-6 px-6 py-6 sm:px-8 sm:py-8 xl:px-12 xl:py-10">
               <TaskMemoryView notes={task.notes} variant="full" />
             </div>
           </ScrollArea>
 
-          <div className="space-y-6 bg-card px-6 py-8">
+          <div className="min-h-0 space-y-6 overflow-y-auto bg-card px-6 py-6 sm:px-8 sm:py-8">
             <div className="space-y-3">
               <div className="text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
                 Review
@@ -215,7 +216,7 @@ export function CeoTaskDetailModal({
                   className="mt-3 min-h-[132px] rounded-none border-border bg-background text-sm text-foreground shadow-none"
                   disabled={isSubmitting || task.isMock}
                 />
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                   <Button
                     className="h-10 rounded-none px-4 text-sm"
                     disabled={isSubmitting || task.isMock || task.approvalState === "executed"}
