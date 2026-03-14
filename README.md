@@ -1,53 +1,70 @@
-# Shell Company
+# ShellCorp
 
-Minimal AI office for OpenClaw teams.
+Fun, founder-facing AI office orchestration for OpenClaw.
 
-ShellCorp keeps OpenClaw as the runtime source of truth and adds a founder-facing office for one job first: ask the CEO to form a team, review the proposal, approve it, and then manage the resulting company from one place.
+ShellCorp gives you one AI office to run a business goal, spawn focused teams, and steer work without replacing the underlying agent runtime. OpenClaw stays the system of record for agents, sessions, routing, and plugins. ShellCorp adds the office, the CLI, the review loops, and the operator surfaces that make the whole thing usable.
 
-## Repo Map
+## What Is ShellCorp?
 
-The repo is split into a few main surfaces:
+If OpenClaw is the runtime, ShellCorp is the office.
 
-- `cli/`: the ShellCorp CLI, including onboarding, team management, office commands, and doctor checks
-- `convex/`: the Convex backend contracts, HTTP endpoints, and event/status persistence
-- `extensions/`: in-repo OpenClaw extensions, starting with the Notion plugin
-- `skills/`: agent-facing skills and workflow/tooling packages used by the ShellCorp platform
-- `ui/`: the Vite/React office UI and its local state bridge
-- `templates/`: bootstrap files for OpenClaw config, sidecars, and workspace scaffolding
+ShellCorp is a UI-first control layer for founders and operators who want to run a small autonomous business from one place. Instead of juggling raw terminals, scattered configs, and hand-wired team coordination, you start with one office, ask the CEO to form a team around a goal, review the proposal, approve it, and monitor the work from the office or the CLI.
 
-Package management is workspace-based:
+The product is intentionally different from a static "spawn a giant company" model:
 
-- root `package.json`: orchestration scripts, shared tooling, and root-owned code
-- `ui/package.json`: UI/runtime web dependencies
-- `cli/package.json`: CLI/runtime Node dependencies
-- `extensions/notion/package.json`: Notion plugin metadata and plugin-local runtime dependencies
+- start with one office, not a crowded org chart
+- create teams around a concrete goal when they are needed
+- keep OpenClaw as the runtime source of truth
+- make orchestration operational, but also playful and expressive
 
-Canonical local state lives under `~/.openclaw`, especially:
+## How It Works
 
-- `~/.openclaw/openclaw.json`
-- `~/.openclaw/company.json`
-- `~/.openclaw/office-objects.json`
+1. Define the business or goal you want to pursue.
+2. Ask the CEO agent to form a focused team around that goal.
+3. Review the proposal in ShellCorp and approve the work.
+4. Manage the resulting team from the office, the board surfaces, and the CLI.
 
-## What To Demo
+The main MVP loop is founder control, not artificial office scale.
 
-The smallest convincing ShellCorp demo is not a huge pre-populated office. It is a tight loop:
+## Why ShellCorp Is Different
 
-1. Install the ShellCorp CLI.
-2. Run onboarding.
-3. Ask the CEO to form a team for an idea.
-4. Review the proposal in the office.
-5. Approve it.
-6. Watch the new team appear and start working.
+- `OpenClaw-native`: ShellCorp sits on top of OpenClaw instead of rebuilding its runtime, session, routing, or plugin systems.
+- `One office first`: the core unit is one AI office that can spawn teams for a mission, not a pre-populated multi-company dashboard.
+- `Founder workflow`: CEO-led team formation, founder review, and approval are the primary product path.
+- `Fun to operate`: the office is meant to feel alive, customizable, and rewarding to use, not just administratively correct.
+- `Skills-aware`: ShellCorp includes tooling to inspect, understand, and use skills more effectively across agents.
 
-For staged demos, use progressive company shapes instead of a large permanent roster:
+## ShellCorp Is Right For You If
 
-- `1-claw company`: one focused executor team
-- `2-claw company`: executor plus operator/reviewer split
-- `3-claw company`: executor plus operator plus growth/analysis split
+- you already use OpenClaw and want a founder-facing orchestration layer on top
+- you want to define a business goal and let agents organize into focused teams around it
+- you need one place to monitor sessions, proposals, board state, memory, and skills
+- you want CLI control and office UI together instead of choosing one or the other
+- you want the system to feel playful and customizable while still being operationally useful
 
-All of those should be created through the CEO + team-formation workflow, not hardcoded as static office content.
+## Features
 
-## Quick Start for Users
+- `CEO-led team formation`: create teams through a proposal and approval loop instead of hardcoding a company upfront
+- `Office UI`: run ShellCorp from a visual office with focused operator surfaces instead of a pile of raw terminals
+- `ShellCorp CLI`: onboard, manage teams, inspect office state, run doctor checks, and handle office decor from the command line
+- `Skills workbench`: inspect skills, demos, file-backed metadata, and per-agent skill configuration from one place
+- `Memory and session visibility`: inspect agent memory, session context, and current work state from OpenClaw-backed data
+- `Plugin-first integrations`: keep integrations aligned with OpenClaw's plugin model, starting with the in-repo Notion plugin
+- `Mesh and personalization path`: support agent personalization and mesh/image wrapper flows so the office can feel more alive over time
+- `Office decor and style`: customize the office once the core founder-control loop is in place
+- `Federated operations`: unify team and board context across ShellCorp and external providers without replacing the source systems
+
+## Problems ShellCorp Solves
+
+| Without ShellCorp | With ShellCorp |
+| --- | --- |
+| You have OpenClaw agents, configs, sidecars, and terminals, but no clear founder control surface. | You get one office and one workflow for forming teams, reviewing proposals, and overseeing active work. |
+| You can run agents, but the jump from "one agent" to "a business with teams" is mostly manual. | The CEO can propose a team around a goal and ShellCorp gives you a reviewable path to approve and manage it. |
+| You lose the story of what the office is doing because runtime details live in too many places. | ShellCorp brings memory, skills, sessions, boards, and team context into one operator-facing layer. |
+| Your tooling feels purely operational and hard to enjoy using. | ShellCorp treats the office as both a control surface and a place you can personalize, decorate, and grow. |
+| You want to use skills and integrations more intentionally, but discovery and operator visibility are weak. | ShellCorp adds skill-aware UI and CLI workflows so agents and operators can use the repo's skill system more effectively. |
+
+## Quickstart
 
 Prerequisites:
 
@@ -88,22 +105,13 @@ After that:
 1. Open the UI.
 2. Complete the in-app onboarding flow.
 3. Ask the CEO agent to create your first team proposal.
-4. Approve the proposal in User Tasks / the CEO workbench flow.
+4. Approve the proposal in `Human Review` inside the CEO Workbench.
 5. Inspect the created team in the office and board surfaces.
-6. Use `shellcorp office decor ...` only after the core founder workflow is working.
-
-Notes:
-
-- If you already ran `npx convex dev`, `shellcorp onboarding` will reuse the Convex URL from the repo-root `.env.local`.
-- If you have a protected gateway, set `VITE_GATEWAY_TOKEN` when prompted or rerun `shellcorp onboarding --gateway-token <token>`.
-- Start the UI with `npm run shell -- ui` from the repo root.
-- `shellcorp onboarding` can run `npm link` for you, or you can run it manually first.
-- In non-interactive flows such as `--yes`, pass `--install-cli` if you want onboarding to run `npm link`.
-- Use `shellcorp onboarding --launch-ui` if you want the CLI to jump straight into the UI after bootstrap.
+6. Use `shellcorp office decor ...` after the core founder workflow is working.
 
 ## Minimal Demo Flow
 
-Use this when you want to show the actual office instead of a large fake company:
+Use this when you want to show the product story clearly instead of loading a crowded office:
 
 ```bash
 npm install
@@ -114,13 +122,50 @@ scripts/reset-demo-office.sh --profile ladder
 
 Then in the product:
 
-1. Start with only the CEO / founder control loop visible.
+1. Start with only the CEO and founder control loop visible.
 2. Ask the CEO to form a `1-claw` team from a small brief.
 3. Review and approve the proposal.
 4. Show the created team board and activity.
-5. Repeat with a `2-claw` or `3-claw` team to show how ShellCorp scales by forming new teams, not by shipping a cluttered default office.
+5. Repeat with a `2-claw` or `3-claw` team to show that ShellCorp scales by spawning focused teams, not by shipping a giant default company.
 
-## Quick Start for Developers
+## FAQ
+
+### How is ShellCorp different from OpenClaw?
+
+OpenClaw is the runtime and source of truth. ShellCorp is the orchestration and office layer on top of it. ShellCorp uses OpenClaw state, routing, sessions, and plugins, then adds a founder-facing office, CEO team-formation workflow, CLI controls, review surfaces, and richer operator visibility.
+
+### Is ShellCorp only for a research lab?
+
+No. The product can support research-oriented workflows, but the broader model is "run a business with one AI office and spawn teams around goals." The current MVP is especially focused on defining and operating a business through that office.
+
+### What does the CLI do?
+
+The ShellCorp CLI handles onboarding, UI launch, team and proposal management, doctor checks, office commands, and decor workflows. It is a first-class part of the product, not just a developer utility.
+
+### What is the office personalization story?
+
+ShellCorp includes office decor, style presets, and a broader personalization path for meshes and agent presence. The product direction is to keep the office useful first, then make it increasingly expressive and fun to inhabit.
+
+### How do skills fit into ShellCorp?
+
+Skills are part of how ShellCorp makes agents easier to understand and operate. The repo includes a skill catalog, tests, demos, and UI/CLI surfaces that help operators inspect what skills exist and how they should be used.
+
+## Repo Map
+
+- `cli/`: the ShellCorp CLI, including onboarding, team management, office commands, and doctor checks
+- `convex/`: backend contracts, HTTP endpoints, and event/status persistence
+- `extensions/`: in-repo OpenClaw extensions, starting with the Notion plugin
+- `skills/`: agent-facing skills and workflow/tooling packages used by the ShellCorp platform
+- `ui/`: the Vite/React office UI and its local state bridge
+- `templates/`: bootstrap files for OpenClaw config, sidecars, and workspace scaffolding
+
+Canonical local state lives under `~/.openclaw`, especially:
+
+- `~/.openclaw/openclaw.json`
+- `~/.openclaw/company.json`
+- `~/.openclaw/office-objects.json`
+
+## Development
 
 From the repo root:
 
@@ -137,18 +182,6 @@ Validation:
 npm run test:once
 npm run typecheck
 npm run build
-```
-
-Workspace note:
-
-- `npm run typecheck` is the workspace-wide TypeScript gate and includes the UI package.
-- `npm run typecheck:root` checks only the repo-root/CLI/Convex TypeScript program.
-- `npm run build` currently preserves the narrower root-owned build gate; use `npm run ui:build` for the Vite bundle.
-
-Install from the repo root so npm workspaces wire the UI and CLI packages together:
-
-```bash
-npm install
 ```
 
 Useful commands:
@@ -175,8 +208,11 @@ Useful commands:
 - `scripts/reset-demo-office.sh --profile minimal`
 - `scripts/reset-demo-office.sh --profile ladder`
 
-Developer notes:
+Notes:
 
+- `npm run typecheck` is the workspace-wide TypeScript gate and includes the UI package.
+- `npm run typecheck:root` checks only the repo-root/CLI/Convex TypeScript program.
+- `npm run build` currently preserves the narrower root-owned build gate; use `npm run ui:build` for the Vite bundle.
 - The CLI and UI both read ShellCorp sidecars from `~/.openclaw`.
 - The UI reads `VITE_*` values from `ui/.env.local`; backend/private env stays in the repo-root `.env.local`.
 - The global `shellcorp` alias comes from the package `bin` entry plus `npm link`.

@@ -31,7 +31,7 @@ Build Shell Company as a UI-first control center on top of OpenClaw:
 1. **State mapping layer**: map OpenClaw state directories and gateway APIs into UI view models.
 2. **Minimal office UX**: keep the office metaphor, but optimize it for a small number of meaningful surfaces instead of a crowded default company.
 3. **Plugin-first integrations**: package Notion logic as an OpenClaw plugin instead of internal gateway code.
-4. **CEO team-formation workflow**: make CEO chat, proposal persistence, founder review, and CLI-backed execution the primary product path.
+4. **CEO team-formation workflow**: make CEO chat, proposal persistence, board-native founder review in the CEO Workbench, and CLI-backed execution the primary product path.
 5. **Operational surfaces**: improve memory and skill visibility for the active CEO/team workflow.
 6. **Federated work orchestration**: unify external board work (Notion/Vibe/internal) into one operator surface.
 7. **Personalized presence and decor**: let operators style the office after the core founder-control loop is working.
