@@ -22,8 +22,10 @@
  */
 
 import { execFile as execFileCallback } from "node:child_process";
+import { existsSync } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as delay } from "node:timers/promises";
@@ -48,6 +50,7 @@ import {
   createSidecarStore,
   type JsonObject,
   type OfficeStylePreset,
+  resolveOpenclawHome,
 } from "./sidecar-store.js";
 import { runDoctor } from "./team-commands/_shared.js";
 import { startUiDevServer } from "./ui-commands.js";
@@ -145,6 +148,11 @@ type OpenclawPreflight = {
 function resolveRepoRoot(): string {
   const override = process.env.SHELLCORP_REPO_ROOT?.trim();
   if (override) return path.resolve(override);
+  // When run via "npm run shell -- onboarding", cwd may be the cli workspace dir. Resolve repo root from this file's location.
+  const thisDir = path.dirname(fileURLToPath(import.meta.url));
+  const candidateRoot = path.resolve(thisDir, "..");
+  const templatesMarker = path.join(candidateRoot, "templates", "sidecar", "company.template.json");
+  if (existsSync(templatesMarker)) return candidateRoot;
   return path.resolve(process.cwd());
 }
 
@@ -201,6 +209,33 @@ function runOpenclawPreflight(params: {
     openclawConfigPresent: params.openclawConfigPresent,
     mainAgentPresent,
     issues,
+  };
+}
+
+function ensureMainAgentInConfig(config: JsonObject): JsonObject {
+  const agents = asObject(config.agents);
+  const list = asArray(agents.list);
+  const hasMain = list.some(
+    (entry) => entry && typeof entry === "object" && typeof (entry as Record<string, unknown>).id === "string" && (entry as Record<string, unknown>).id === "main",
+  );
+  if (hasMain) return config;
+  const openclawHome = resolveOpenclawHome();
+  const defaults = asObject(agents.defaults);
+  const defaultWorkspace =
+    typeof defaults.workspace === "string" && defaults.workspace.trim()
+      ? defaults.workspace.trim()
+      : path.join(openclawHome, "workspace");
+  const mainEntry: Record<string, unknown> = {
+    id: "main",
+    name: "CEO Agent",
+    workspace: defaultWorkspace,
+  };
+  return {
+    ...config,
+    agents: {
+      ...agents,
+      list: [...list, mainEntry],
+    },
   };
 }
 
@@ -633,10 +668,31 @@ export function registerOnboardingCommands(program: Command): void {
       if (!opts.json) {
         printStepStart(1, totalSteps, "Checking OpenClaw");
       }
-      const preflight = runOpenclawPreflight({
+      let preflight = runOpenclawPreflight({
         openclawConfigPresent: wasOpenclawPresent,
         config: existingOpenclaw,
       });
+
+      // If OpenClaw created openclaw.json but did not add a "main" agent (e.g. some installers omit agents.list), add it.
+      if (
+        !preflight.ok &&
+        wasOpenclawPresent &&
+        preflight.issues.includes("missing_main_agent")
+      ) {
+        const patched = ensureMainAgentInConfig(existingOpenclaw);
+        await store.writeOpenclawConfig(patched);
+        if (!opts.json) {
+          console.log(cliDim("Added missing `main` agent to openclaw.json; re-running preflight."));
+        }
+        const updated = await store.readOpenclawConfig();
+        preflight = runOpenclawPreflight({
+          openclawConfigPresent: true,
+          config: updated,
+        });
+        if (preflight.ok) {
+          Object.assign(existingOpenclaw, updated);
+        }
+      }
 
       if (!preflight.ok) {
         if (opts.json) {
