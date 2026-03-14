@@ -310,6 +310,47 @@ describe("onboarding CLI", () => {
     expect(payload.uiEnv?.VITE_CONVEX_URL).toBe("https://demo.convex.cloud");
   });
 
+  it("auto-patches a missing main agent and still reports openclaw.json as updated", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await mkdir(stateDir, { recursive: true });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await writeFile(
+      path.join(stateDir, "openclaw.json"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          agents: {
+            list: [],
+          },
+          plugins: { load: { paths: [] } },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
+
+    await runCommand(["onboarding", "--yes", "--json"]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      ok: boolean;
+      sidecars?: Record<string, string>;
+      nextSteps?: string[];
+    };
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclaw = JSON.parse(openclawRaw) as {
+      agents?: { list?: Array<{ id?: string }> };
+    };
+
+    expect(payload.ok).toBe(true);
+    expect(payload.sidecars?.["openclaw.json"]).toBe("updated");
+    expect(payload.nextSteps?.some((step) => step.includes("Review the generated OpenClaw config"))).toBe(true);
+    expect(openclaw.agents?.list?.some((entry) => entry.id === "main")).toBe(true);
+  });
+
   it("skips CLI install in --yes mode unless explicitly requested", async () => {
     const { repoRoot, stateDir } = await setupRepoFixture({ withPackageJson: true });
     process.env.OPENCLAW_STATE_DIR = stateDir;
@@ -389,4 +430,5 @@ describe("onboarding CLI", () => {
     expect(payload.cliInstall?.attempted).toBe(false);
     expect(execRunner).not.toHaveBeenCalled();
   });
+
 });

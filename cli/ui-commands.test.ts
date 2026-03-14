@@ -57,4 +57,29 @@ describe("ui CLI", () => {
     );
     expect(killSpy).not.toHaveBeenCalled();
   });
+
+  it("uses a shell command on Windows so npm.cmd does not throw EINVAL", async () => {
+    const child = new MockChild();
+    const spawnMock = vi.fn(() => child);
+    vi.doMock("node:child_process", () => ({ spawn: spawnMock }));
+    vi.stubGlobal("process", {
+      ...process,
+      platform: "win32",
+    });
+    const { startUiDevServer } = await import("./ui-commands.js");
+
+    const startPromise = startUiDevServer({ cwd: "C:/shellcorp-ui", propagateSignal: false });
+    child.emit("exit", 0, null);
+    await startPromise;
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      "npm run ui",
+      [],
+      expect.objectContaining({
+        cwd: "C:/shellcorp-ui",
+        stdio: "inherit",
+        shell: true,
+      }),
+    );
+  });
 });
