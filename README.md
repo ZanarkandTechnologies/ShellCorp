@@ -1,8 +1,10 @@
 # ShellCorp
 
-Fun, founder-facing AI office orchestration for OpenClaw.
+One AI office for running an OpenClaw-powered business.
 
-ShellCorp gives you one AI office to run a business goal, spawn focused teams, and steer work without replacing the underlying agent runtime. OpenClaw stays the system of record for agents, sessions, routing, and plugins. ShellCorp adds the office, the CLI, the review loops, and the operator surfaces that make the whole thing usable.
+ShellCorp is the founder-facing orchestration layer for OpenClaw. Start with one office, define a goal, ask the CEO to form a team, approve the plan, and run the work from a control surface that is operational, customizable, and actually fun to use.
+
+OpenClaw stays the system of record for agents, sessions, routing, and plugins. ShellCorp adds the office, the CLI, the review loop, and the operator surfaces that turn raw agent runtime into something you can steer like a business.
 
 ## What Is ShellCorp?
 
@@ -132,23 +134,25 @@ Then in the product:
 
 ### How is ShellCorp different from OpenClaw?
 
-OpenClaw is the runtime and source of truth. ShellCorp is the orchestration and office layer on top of it. ShellCorp uses OpenClaw state, routing, sessions, and plugins, then adds a founder-facing office, CEO team-formation workflow, CLI controls, review surfaces, and richer operator visibility.
+OpenClaw runs the agents. ShellCorp runs the office around them.
+
+OpenClaw remains the runtime and source of truth for sessions, routing, plugins, and state. ShellCorp sits on top of that foundation and adds the founder workflow: CEO-led team formation, proposal review, operator visibility, office management, and CLI control.
 
 ### Is ShellCorp only for a research lab?
 
-No. The product can support research-oriented workflows, but the broader model is "run a business with one AI office and spawn teams around goals." The current MVP is especially focused on defining and operating a business through that office.
+No. A research-lab workflow fits, but it is not the product boundary. ShellCorp is better described as an orchestration layer for running a business through one AI office, then spawning teams around concrete goals as the business grows.
 
 ### What does the CLI do?
 
-The ShellCorp CLI handles onboarding, UI launch, team and proposal management, doctor checks, office commands, and decor workflows. It is a first-class part of the product, not just a developer utility.
+The ShellCorp CLI handles onboarding, UI launch, team and proposal management, doctor checks, office commands, and decor workflows. It is part of the core product surface, not just a developer utility bolted onto the repo.
 
 ### What is the office personalization story?
 
-ShellCorp includes office decor, style presets, and a broader personalization path for meshes and agent presence. The product direction is to keep the office useful first, then make it increasingly expressive and fun to inhabit.
+ShellCorp includes office decor, style presets, and a broader personalization path for meshes and agent presence. The goal is not decoration for its own sake. The goal is to make the office feel alive and enjoyable without compromising the core founder-control workflow.
 
 ### How do skills fit into ShellCorp?
 
-Skills are part of how ShellCorp makes agents easier to understand and operate. The repo includes a skill catalog, tests, demos, and UI/CLI surfaces that help operators inspect what skills exist and how they should be used.
+Skills are part of how ShellCorp makes agents easier to understand and operate. The repo includes a skill catalog, tests, demos, and UI/CLI surfaces that help operators see what skills exist, how they are meant to be used, and how they fit into multi-agent workflows.
 
 ## Repo Map
 
