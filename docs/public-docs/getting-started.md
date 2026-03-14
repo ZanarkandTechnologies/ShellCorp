@@ -77,5 +77,8 @@ npm run shell -- office doctor --json
 ## Next
 
 - Complete the in-app onboarding flow after the UI boots.
+- Read [feature-teams-heartbeats.md](./feature-teams-heartbeats.md) for the workspace + heartbeat model.
+- Read [feature-personalization.md](./feature-personalization.md) for custom mesh and decor conventions.
 - Read [docs/prd.md](../prd.md) for product direction.
+
 - Read [extensions/notion/README.md](../../extensions/notion/README.md) if you need webhook/plugin details.

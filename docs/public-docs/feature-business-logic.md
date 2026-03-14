@@ -106,6 +106,6 @@ Reference:
 
 ## Related Docs
 
-- Capability map: `docs/features-overview.md`
-- CLI operations: `docs/feature-cli.md`
-- Extensions and hooks: `docs/extensions.md`
+- Capability map: `docs/public-docs/features-overview.md`
+- CLI operations: `docs/public-docs/feature-cli.md`
+- Extensions and hooks: `docs/public-docs/extensions.md`

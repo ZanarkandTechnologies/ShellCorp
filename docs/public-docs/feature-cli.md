@@ -106,4 +106,6 @@ This is aligned with CLI-first invariants in `MEM-0119`, `MEM-0120`, and `MEM-01
 
 - Intent cookbook: `docs/how-to/ceo-team-cli-scl-cookbook.md`
 - Team CLI skill: `skills/shellcorp-team-cli/SKILL.md`
-- Decorations: `docs/feature-decorations.md`
+- Teams and heartbeats: `docs/public-docs/feature-teams-heartbeats.md`
+- Decorations: `docs/public-docs/feature-decorations.md`
+- Personalization and custom meshes: `docs/public-docs/feature-personalization.md`

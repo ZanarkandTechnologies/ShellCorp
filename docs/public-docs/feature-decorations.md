@@ -43,9 +43,11 @@ npm run shell -- office generate "small cactus desk plant" --style low-poly --ty
 - `office generate ...` captures a Meshy-oriented asset spec.
 - Generated specs are staged before optional custom mesh placement.
 - Current skill reference: `skills/meshy/skill.md`.
+- For concrete mesh file placement, path conventions, and preview-image rules, see [feature-personalization.md](./feature-personalization.md).
 
 ## Related Docs
 
-- CLI details: `docs/feature-cli.md`
+- CLI details: `docs/public-docs/feature-cli.md`
+- Personalization and custom assets: `docs/public-docs/feature-personalization.md`
 - Office decorator skill: `skills/office-decorator/skill.md`
 - HISTORY reference: `MEM-0120` in `docs/HISTORY.md`

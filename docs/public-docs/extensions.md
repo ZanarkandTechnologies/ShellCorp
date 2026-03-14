@@ -26,7 +26,7 @@ Related durable constraints:
 
 - Extension contracts/specs: `docs/specs/**`
 - Operational runbooks: `docs/how-to/**`
-- Product-level value framing: `docs/features-overview.md`
+- Product-level value framing: `docs/public-docs/features-overview.md`
 
 ## Adding Future Extensions
 
@@ -38,4 +38,4 @@ When adding a new extension:
    - extension name
    - operator value
    - canonical contract/runbook links
-4. Update `docs/features-overview.md` if user-facing value changes.
+4. Update `docs/public-docs/features-overview.md` if user-facing value changes.

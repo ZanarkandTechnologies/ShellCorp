@@ -227,4 +227,6 @@ Notes:
 - [docs/prd.md](./docs/prd.md)
 - [docs/progress.md](./docs/progress.md)
 - [docs/public-docs/getting-started.md](./docs/public-docs/getting-started.md)
+- [docs/public-docs/feature-teams-heartbeats.md](./docs/public-docs/feature-teams-heartbeats.md)
+- [docs/public-docs/feature-personalization.md](./docs/public-docs/feature-personalization.md)
 - [extensions/notion/README.md](./extensions/notion/README.md)
