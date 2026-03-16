@@ -21,6 +21,7 @@ import * as THREE from "three";
 import { getOfficeTheme } from "@/config/office-theme";
 import type { OfficeSettingsModel } from "@/lib/openclaw-types";
 import { getBackgroundPreset, type OfficeDecorSettings } from "@/lib/office-decor";
+import { buildConsultCameraState } from "./consult-camera";
 import { getOfficeSceneViewState, type OfficeSceneViewSettings } from "./view-profile";
 
 function useOfficeSceneIsDarkMode(): boolean {
@@ -63,6 +64,7 @@ export function useOfficeSceneTheme(): ReturnType<typeof getOfficeTheme> {
 
 export function getInitialOfficeCameraConfig(
   settings: Pick<OfficeSettingsModel, "viewProfile" | "orbitControlsEnabled" | "cameraOrientation">,
+  options?: { forcePerspective?: boolean },
 ): {
   projection: "perspective" | "orthographic";
   position: [number, number, number];
@@ -74,6 +76,7 @@ export function getInitialOfficeCameraConfig(
     isBuilderMode: false,
     isDragging: false,
     settings,
+    forcePerspective: options?.forcePerspective,
   });
   return {
     projection: viewState.cameraProjection,
@@ -93,8 +96,17 @@ export function useOfficeSceneCameraTransition(params: {
     update: () => void;
   } | null>;
   setAnimatingCamera: (value: boolean) => void;
+  consultCameraTarget?: [number, number, number] | null;
+  forcePerspective?: boolean;
 }): void {
-  const { isBuilderMode, settings, orbitControlsRef, setAnimatingCamera } = params;
+  const {
+    isBuilderMode,
+    settings,
+    orbitControlsRef,
+    setAnimatingCamera,
+    consultCameraTarget,
+    forcePerspective,
+  } = params;
 
   useEffect(() => {
     const controls = orbitControlsRef.current;
@@ -103,13 +115,23 @@ export function useOfficeSceneCameraTransition(params: {
     const camera = controls.object;
     const startPos = camera.position.clone();
     const startTarget = controls.target.clone();
-    const nextViewState = getOfficeSceneViewState({
-      isBuilderMode,
-      isDragging: false,
-      settings,
-    });
-    const endPos = new THREE.Vector3(...nextViewState.cameraPosition);
-    const endTarget = new THREE.Vector3(...nextViewState.cameraTarget);
+    const consultCameraState = consultCameraTarget
+      ? buildConsultCameraState(consultCameraTarget)
+      : null;
+    const nextViewState = consultCameraState
+      ? null
+      : getOfficeSceneViewState({
+          isBuilderMode,
+          isDragging: false,
+          settings,
+          forcePerspective,
+        });
+    const endPos = new THREE.Vector3(
+      ...(consultCameraState?.position ?? nextViewState?.cameraPosition ?? [0, 25, 30]),
+    );
+    const endTarget = new THREE.Vector3(
+      ...(consultCameraState?.target ?? nextViewState?.cameraTarget ?? [0, 0, 0]),
+    );
     if (
       startPos.distanceToSquared(endPos) < 0.0001 &&
       startTarget.distanceToSquared(endTarget) < 0.0001
@@ -125,7 +147,7 @@ export function useOfficeSceneCameraTransition(params: {
     const animateCamera = (): void => {
       const elapsed = performance.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
+      const eased = 1 - (1 - progress) ** 3;
 
       camera.position.lerpVectors(startPos, endPos, eased);
       controls.target.lerpVectors(startTarget, endTarget, eased);
@@ -141,5 +163,12 @@ export function useOfficeSceneCameraTransition(params: {
     };
 
     animateCamera();
-  }, [isBuilderMode, orbitControlsRef, setAnimatingCamera, settings]);
+  }, [
+    consultCameraTarget,
+    forcePerspective,
+    isBuilderMode,
+    orbitControlsRef,
+    setAnimatingCamera,
+    settings,
+  ]);
 }

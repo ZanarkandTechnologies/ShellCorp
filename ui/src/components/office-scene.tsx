@@ -20,6 +20,7 @@
 import { memo } from "react";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
+import { useChatStore } from "@/features/chat-system/chat-store";
 import { SceneContents } from "@/components/office-scene/scene-contents";
 import {
   getInitialOfficeCameraConfig,
@@ -29,11 +30,16 @@ import type { OfficeSceneProps } from "@/components/office-scene/types";
 
 const OfficeScene = memo((props: OfficeSceneProps) => {
   const background = useOfficeSceneBackground(props.officeDecorSettings);
-  const initialCameraConfig = getInitialOfficeCameraConfig(props.officeViewSettings);
+  const isChatOpen = useChatStore((state) => state.isChatOpen);
+  const presentationMode = useChatStore((state) => state.presentationMode);
+  const forcePerspective = isChatOpen && presentationMode === "story";
+  const initialCameraConfig = getInitialOfficeCameraConfig(props.officeViewSettings, {
+    forcePerspective,
+  });
 
   return (
     <Canvas
-      key={initialCameraConfig.projection}
+      key={`${initialCameraConfig.projection}-${forcePerspective ? "story" : "normal"}`}
       shadows
       orthographic={initialCameraConfig.projection === "orthographic"}
       camera={{

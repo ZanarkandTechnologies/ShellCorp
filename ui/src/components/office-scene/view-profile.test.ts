@@ -41,6 +41,23 @@ describe("office scene view profile", () => {
     expect(state.panEnabled).toBe(true);
   });
 
+  it("forces perspective framing when consult mode overrides fixed 2.5D", () => {
+    const state = getOfficeSceneViewState({
+      isBuilderMode: false,
+      isDragging: false,
+      settings: {
+        viewProfile: "fixed_2_5d",
+        orbitControlsEnabled: true,
+        cameraOrientation: "north_east",
+      },
+      forcePerspective: true,
+    });
+
+    expect(state.cameraProjection).toBe("perspective");
+    expect(state.cameraPosition).toEqual([0, 25, 30]);
+    expect(state.rotateEnabled).toBe(true);
+  });
+
   it("falls back to builder camera behavior while editing the office", () => {
     const state = getOfficeSceneViewState({
       isBuilderMode: true,

@@ -55,7 +55,6 @@ function getFixedViewCameraPosition(
       return [-26, 18, -26];
     case "south_west":
       return [-26, 18, 26];
-    case "south_east":
     default:
       return [26, 18, 26];
   }
@@ -72,11 +71,13 @@ export function getOfficeSceneViewState(params: {
   isBuilderMode: boolean;
   isDragging: boolean;
   settings: OfficeSceneViewSettings;
+  forcePerspective?: boolean;
 }): OfficeSceneViewState {
-  const { isBuilderMode, isDragging, settings } = params;
+  const { isBuilderMode, isDragging, settings, forcePerspective = false } = params;
   if (isBuilderMode) {
     return {
-      cameraProjection: settings.viewProfile === "fixed_2_5d" ? "orthographic" : "perspective",
+      cameraProjection:
+        settings.viewProfile === "fixed_2_5d" && !forcePerspective ? "orthographic" : "perspective",
       cameraPosition: BUILDER_CAMERA_POSITION,
       cameraTarget: BUILDER_CAMERA_TARGET,
       cameraFov: 50,
@@ -90,7 +91,7 @@ export function getOfficeSceneViewState(params: {
     };
   }
 
-  if (isFixedOfficeSceneView(settings)) {
+  if (isFixedOfficeSceneView(settings) && !forcePerspective) {
     const controlsEnabled = settings.orbitControlsEnabled && !isDragging;
     return {
       cameraProjection: "orthographic",

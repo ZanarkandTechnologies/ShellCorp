@@ -25,6 +25,8 @@ import { PlacementHandler } from "@/components/placement-handler";
 import type { StatusType } from "@/features/nav-system/components/status-indicator";
 import { Employee } from "@/features/office-system/components/employee";
 import { useAppStore } from "@/lib/app-store";
+import { useChatStore } from "@/features/chat-system/chat-store";
+import { extractAgentId } from "@/lib/entity-utils";
 import { OfficeLayoutEditor } from "./office-layout-editor";
 import { OfficeLighting } from "./office-lighting";
 import { OfficeObjectRenderer } from "./office-object-renderer";
@@ -58,16 +60,22 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
   const isDragging = useAppStore((state) => state.isDragging);
   const placementMode = useAppStore((state) => state.placementMode);
   const activeBuilderTool = useAppStore((state) => state.activeBuilderTool);
+  const isChatOpen = useChatStore((state) => state.isChatOpen);
+  const currentEmployeeId = useChatStore((state) => state.currentEmployeeId);
+  const presentationMode = useChatStore((state) => state.presentationMode);
+  const selectedAgentId = useAppStore((state) => state.selectedAgentId);
+  const isStoryMode = isChatOpen && presentationMode === "story";
 
   const officeTheme = useOfficeSceneTheme();
   const sceneBuilderMode = isAnimatingCamera ? false : isBuilderMode;
   const isLayoutEditing = sceneBuilderMode && activeBuilderTool !== null;
   // MEM-0170 decision: fixed 2.5D uses compact scene overlays so Html cards cannot occlude the office.
-  const useCompactSceneOverlays = isFixedOfficeSceneView(officeViewSettings);
+  const useCompactSceneOverlays = isStoryMode ? false : isFixedOfficeSceneView(officeViewSettings);
   const viewState = getOfficeSceneViewState({
     isBuilderMode: sceneBuilderMode,
     isDragging,
     settings: officeViewSettings,
+    forcePerspective: isStoryMode,
   });
 
   const { employeesForScene, teamById, desksByTeamId } = useOfficeSceneDerivedData({
@@ -76,6 +84,17 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
     desks,
     officeViewSettings,
   });
+  const consultCameraTarget = useMemo<[number, number, number] | null>(() => {
+    if (!isChatOpen || presentationMode !== "story") return null;
+    const fallbackEmployeeId = (() => {
+      const agentId = extractAgentId(selectedAgentId);
+      return agentId ? `employee-${agentId}` : null;
+    })();
+    const resolvedEmployeeId = currentEmployeeId ?? fallbackEmployeeId;
+    if (!resolvedEmployeeId) return null;
+    const employee = employeesForScene.find((item) => item._id === resolvedEmployeeId);
+    return employee?.position ?? employee?.initialPosition ?? null;
+  }, [currentEmployeeId, employeesForScene, isChatOpen, presentationMode, selectedAgentId]);
 
   const { orbitControlsRef, floorRef, createRegisteredObjectRef, getObjectRef } =
     useOfficeSceneBootstrap({
@@ -93,6 +112,8 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
     settings: officeViewSettings,
     orbitControlsRef,
     setAnimatingCamera,
+    consultCameraTarget,
+    forcePerspective: isStoryMode,
   });
 
   const officeObjectsRendered = useMemo(() => {
@@ -115,6 +136,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
     createRegisteredObjectRef,
     desksByTeamId,
     getObjectRef,
+    handleCeoDeskClick,
     handleTeamClick,
     officeFootprint,
     officeObjects,
@@ -132,10 +154,10 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
 
       <OrbitControls
         ref={orbitControlsRef}
-        enabled={viewState.controlsEnabled && !isLayoutEditing}
-        enableRotate={viewState.rotateEnabled && !isLayoutEditing}
-        enablePan={viewState.panEnabled && !isLayoutEditing}
-        enableZoom={viewState.zoomEnabled}
+        enabled={viewState.controlsEnabled && !isLayoutEditing && !consultCameraTarget}
+        enableRotate={viewState.rotateEnabled && !isLayoutEditing && !consultCameraTarget}
+        enablePan={viewState.panEnabled && !consultCameraTarget}
+        enableZoom={viewState.zoomEnabled && !consultCameraTarget}
         maxPolarAngle={viewState.maxPolarAngle}
         minPolarAngle={viewState.minPolarAngle}
       />
