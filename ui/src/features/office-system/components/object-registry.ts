@@ -15,17 +15,23 @@
  * This allows the `PlacementHandler` to work generically with ANY object type.
  */
 import { GameObjectDefinition } from "../definitions";
-import { DeskPrefab } from "../prefabs/desk-prefab";
-import { TeamClusterPrefab } from "../prefabs/team-cluster-prefab";
+import { BookshelfPrefab } from "../prefabs/bookshelf-prefab";
+import { CouchPrefab } from "../prefabs/couch-prefab";
 import { CustomMeshPrefab } from "../prefabs/custom-mesh-prefab";
+import { DeskPrefab } from "../prefabs/desk-prefab";
+import { PantryPrefab } from "../prefabs/pantry-prefab";
+import { PlantPrefab } from "../prefabs/plant-prefab";
+import { TeamClusterPrefab } from "../prefabs/team-cluster-prefab";
 
 // Registry mapping item types to their full Prefab Definitions
 export const OBJECT_REGISTRY: Record<string, GameObjectDefinition> = {
     "desk": DeskPrefab,
     "team-cluster": TeamClusterPrefab,
     "custom-mesh": CustomMeshPrefab,
-    // Add new items here:
-    // "plant": PlantPrefab,
+    "plant": PlantPrefab,
+    "couch": CouchPrefab,
+    "bookshelf": BookshelfPrefab,
+    "pantry": PantryPrefab,
 };
 
 export function getGameObjectDefinition(type: string | null): GameObjectDefinition | null {

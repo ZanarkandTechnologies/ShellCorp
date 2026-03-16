@@ -35,6 +35,11 @@ export async function startUiDevServer(options: StartUiDevServerOptions = {}): P
   const useShell = process.platform === "win32";
   const baseOpts = { cwd, stdio: "inherit" as const, env: process.env };
 
+  // On Windows, spawning .cmd files (e.g. npm.cmd) without a shell throws EINVAL (Node CVE-2024-27980).
+  // Use a single command string with shell: true so the shell runs npm.
+  const useShell = process.platform === "win32";
+  const baseOpts = { cwd, stdio: "inherit" as const, env: process.env };
+
   await new Promise<void>((resolve, reject) => {
     const child = useShell
       ? spawn("npm run ui", [], { ...baseOpts, shell: true })

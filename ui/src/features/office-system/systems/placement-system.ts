@@ -115,10 +115,15 @@ export function usePlacementSystem() {
         const metadataBase = input.data && typeof input.data === "object" ? { ...input.data } : {};
         const interactionConfig = parseOfficeObjectInteractionConfig(metadataBase);
         const metadata = buildOfficeObjectMetadata(metadataBase, interactionConfig);
+        const builtInMeshTypes = ["plant", "couch", "bookshelf", "pantry"] as const;
+        const meshType =
+            builtInMeshTypes.includes(input.type as (typeof builtInMeshTypes)[number])
+                ? (input.type as (typeof builtInMeshTypes)[number])
+                : "custom-mesh";
         const result = await adapter.upsertOfficeObject({
             id: objectId,
             identifier: objectId,
-            meshType: "custom-mesh",
+            meshType,
             position: input.position,
             rotation,
             ...(scale ? { scale } : {}),

@@ -22,8 +22,8 @@
  */
 
 import { execFile as execFileCallback } from "node:child_process";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
@@ -148,6 +148,7 @@ type OpenclawPreflight = {
 function resolveRepoRoot(): string {
   const override = process.env.SHELLCORP_REPO_ROOT?.trim();
   if (override) return path.resolve(override);
+  // When run via "npm run shell -- onboarding", cwd may be the cli workspace dir. Resolve repo root from this file's location.
   const thisDir = path.dirname(fileURLToPath(import.meta.url));
   const candidateRoot = path.resolve(thisDir, "..");
   const templatesMarker = path.join(candidateRoot, "templates", "sidecar", "company.template.json");
@@ -222,7 +223,6 @@ function ensureMainAgentInConfig(config: JsonObject): JsonObject {
       (entry as Record<string, unknown>).id === "main",
   );
   if (hasMain) return config;
-
   const openclawHome = resolveOpenclawHome();
   const defaults = asObject(agents.defaults);
   const defaultWorkspace =
@@ -234,7 +234,6 @@ function ensureMainAgentInConfig(config: JsonObject): JsonObject {
     name: "CEO Agent",
     workspace: defaultWorkspace,
   };
-
   return {
     ...config,
     agents: {
@@ -679,6 +678,10 @@ export function registerOnboardingCommands(program: Command): void {
         config: existingOpenclaw,
       });
 
+<<<<<<< HEAD
+=======
+      // If OpenClaw created openclaw.json but did not add a "main" agent (e.g. some installers omit agents.list), add it.
+>>>>>>> origin/main
       if (
         !preflight.ok &&
         wasOpenclawPresent &&
@@ -695,9 +698,13 @@ export function registerOnboardingCommands(program: Command): void {
           config: updated,
         });
         if (preflight.ok) {
+<<<<<<< HEAD
           for (const [key, value] of Object.entries(updated)) {
             existingOpenclaw[key] = value;
           }
+=======
+          Object.assign(existingOpenclaw, updated);
+>>>>>>> origin/main
         }
       }
 
