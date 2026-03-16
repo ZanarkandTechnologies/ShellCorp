@@ -76,14 +76,13 @@ export function getOfficeSceneViewState(params: {
   const { isBuilderMode, isDragging, settings, forcePerspective = false } = params;
   if (isBuilderMode) {
     return {
-      cameraProjection:
-        settings.viewProfile === "fixed_2_5d" && !forcePerspective ? "orthographic" : "perspective",
+      cameraProjection: "perspective",
       cameraPosition: BUILDER_CAMERA_POSITION,
       cameraTarget: BUILDER_CAMERA_TARGET,
       cameraFov: 50,
-      cameraZoom: 28,
+      cameraZoom: 1,
       controlsEnabled: !isDragging,
-      rotateEnabled: !isDragging,
+      rotateEnabled: false,
       panEnabled: !isDragging,
       zoomEnabled: true,
       minPolarAngle: 0,

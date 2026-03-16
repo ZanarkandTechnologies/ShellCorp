@@ -70,7 +70,10 @@ describe("office scene view profile", () => {
     });
 
     expect(state.cameraPosition).toEqual([0, 50, 0]);
-    expect(state.rotateEnabled).toBe(true);
+    expect(state.cameraProjection).toBe("perspective");
+    expect(state.cameraZoom).toBe(1);
+    expect(state.rotateEnabled).toBe(false);
+    expect(state.panEnabled).toBe(true);
   });
 
   it("maps presentation yaw to the active fixed-view corner", () => {

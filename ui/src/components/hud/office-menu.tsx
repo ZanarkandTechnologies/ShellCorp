@@ -53,7 +53,6 @@ export function OfficeMenu({ className }: SpeedDialProps) {
   const isBuilderMode = useAppStore((state) => state.isBuilderMode);
   const setBuilderMode = useAppStore((state) => state.setBuilderMode);
   const isAnimatingCamera = useAppStore((state) => state.isAnimatingCamera);
-  const setAnimatingCamera = useAppStore((state) => state.setAnimatingCamera);
   const setIsGlobalTeamPanelOpen = useAppStore((state) => state.setIsGlobalTeamPanelOpen);
   const setIsAgentSessionPanelOpen = useAppStore((state) => state.setIsAgentSessionPanelOpen);
   const setIsSkillsPanelOpen = useAppStore((state) => state.setIsSkillsPanelOpen);
@@ -99,9 +98,8 @@ export function OfficeMenu({ className }: SpeedDialProps) {
   const handleBuilderModeToggle = useCallback(() => {
     if (isAnimatingCamera) return; // Prevent clicks during animation
 
-    setAnimatingCamera(true); // Start animation state
     setBuilderMode(!isBuilderMode); // This will trigger the animation in OfficeScene
-  }, [isAnimatingCamera, isBuilderMode, setAnimatingCamera, setBuilderMode]);
+  }, [isAnimatingCamera, isBuilderMode, setBuilderMode]);
 
   const openGlobalTeamWorkspace = useCallback(() => {
     setActiveTeamId(null);

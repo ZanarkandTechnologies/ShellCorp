@@ -68,6 +68,9 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
 
   const officeTheme = useOfficeSceneTheme();
   const sceneBuilderMode = isAnimatingCamera ? false : isBuilderMode;
+  const shouldForceBuilderPerspective =
+    sceneBuilderMode && officeViewSettings.viewProfile === "fixed_2_5d";
+  const forcePerspective = isStoryMode || shouldForceBuilderPerspective;
   const isLayoutEditing = sceneBuilderMode && activeBuilderTool !== null;
   // MEM-0170 decision: fixed 2.5D uses compact scene overlays so Html cards cannot occlude the office.
   const useCompactSceneOverlays = isStoryMode ? false : isFixedOfficeSceneView(officeViewSettings);
@@ -75,7 +78,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
     isBuilderMode: sceneBuilderMode,
     isDragging,
     settings: officeViewSettings,
-    forcePerspective: isStoryMode,
+    forcePerspective,
   });
 
   const { employeesForScene, teamById, desksByTeamId } = useOfficeSceneDerivedData({
@@ -113,7 +116,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
     orbitControlsRef,
     setAnimatingCamera,
     consultCameraTarget,
-    forcePerspective: isStoryMode,
+    forcePerspective,
   });
 
   const officeObjectsRendered = useMemo(() => {
@@ -158,6 +161,8 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
         enableRotate={viewState.rotateEnabled && !isLayoutEditing && !consultCameraTarget}
         enablePan={viewState.panEnabled && !consultCameraTarget}
         enableZoom={viewState.zoomEnabled && !consultCameraTarget}
+        panSpeed={sceneBuilderMode ? 0.75 : 1}
+        zoomSpeed={sceneBuilderMode ? 0.75 : 1}
         maxPolarAngle={viewState.maxPolarAngle}
         minPolarAngle={viewState.minPolarAngle}
       />

@@ -68,11 +68,12 @@ export function BuilderToolbar(): JSX.Element | null {
           onClick={() => setTool("remove-floor")}
         >
           <Trash2 className="size-4" />
-          Shovel
+          Remove Tiles
         </Button>
       </div>
       <p className="text-[11px] leading-4 text-muted-foreground">
-        Drag on the floor to paint new tiles or shovel existing ones away, then use the in-scene Apply button to commit the stroke. Walls now wrap the floor plan automatically.
+        Drag on the floor to paint new tiles or remove existing ones, then use the in-scene Apply
+        button to commit the stroke. Walls now wrap the floor plan automatically.
       </p>
       <Button
         type="button"

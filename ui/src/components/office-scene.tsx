@@ -21,6 +21,7 @@ import { memo } from "react";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import { useChatStore } from "@/features/chat-system/chat-store";
+import { useAppStore } from "@/lib/app-store";
 import { SceneContents } from "@/components/office-scene/scene-contents";
 import {
   getInitialOfficeCameraConfig,
@@ -30,16 +31,21 @@ import type { OfficeSceneProps } from "@/components/office-scene/types";
 
 const OfficeScene = memo((props: OfficeSceneProps) => {
   const background = useOfficeSceneBackground(props.officeDecorSettings);
+  const isBuilderMode = useAppStore((state) => state.isBuilderMode);
   const isChatOpen = useChatStore((state) => state.isChatOpen);
   const presentationMode = useChatStore((state) => state.presentationMode);
-  const forcePerspective = isChatOpen && presentationMode === "story";
+  const shouldForceBuilderPerspective =
+    isBuilderMode && props.officeViewSettings.viewProfile === "fixed_2_5d";
+  const forcePerspective =
+    (isChatOpen && presentationMode === "story") || shouldForceBuilderPerspective;
   const initialCameraConfig = getInitialOfficeCameraConfig(props.officeViewSettings, {
     forcePerspective,
+    isBuilderMode,
   });
 
   return (
     <Canvas
-      key={`${initialCameraConfig.projection}-${forcePerspective ? "story" : "normal"}`}
+      key={`${initialCameraConfig.projection}-${forcePerspective ? "forced" : "normal"}`}
       shadows
       orthographic={initialCameraConfig.projection === "orthographic"}
       camera={{

@@ -64,7 +64,7 @@ export function useOfficeSceneTheme(): ReturnType<typeof getOfficeTheme> {
 
 export function getInitialOfficeCameraConfig(
   settings: Pick<OfficeSettingsModel, "viewProfile" | "orbitControlsEnabled" | "cameraOrientation">,
-  options?: { forcePerspective?: boolean },
+  options?: { forcePerspective?: boolean; isBuilderMode?: boolean },
 ): {
   projection: "perspective" | "orthographic";
   position: [number, number, number];
@@ -73,7 +73,7 @@ export function getInitialOfficeCameraConfig(
   zoom: number;
 } {
   const viewState = getOfficeSceneViewState({
-    isBuilderMode: false,
+    isBuilderMode: options?.isBuilderMode ?? false,
     isDragging: false,
     settings,
     forcePerspective: options?.forcePerspective,

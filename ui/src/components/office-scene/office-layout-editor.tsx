@@ -450,7 +450,7 @@ export function OfficeLayoutEditor(): JSX.Element | null {
       <Html position={[editBounds.centerX, 3.6, editBounds.centerZ]} center>
         <div className="pointer-events-auto min-w-80 rounded-2xl border border-border/70 bg-background/92 px-4 py-3 text-xs text-foreground shadow-lg backdrop-blur">
           <p className="font-medium">
-            {paintMode === "add" ? "Drag to add floor tiles" : "Drag to shovel out floor tiles"}
+            {paintMode === "add" ? "Drag to add floor tiles" : "Drag to remove floor tiles"}
           </p>
           <p className="mt-1 text-muted-foreground">
             Painted tiles stay in preview until you click <strong>Apply</strong>. Exiting builder
