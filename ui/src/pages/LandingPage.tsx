@@ -1,15 +1,29 @@
-import React, { useState } from "react";
-import { Button } from "../components/ui/button";
-import { Gamepad2, Sparkles, Zap } from "lucide-react";
+/**
+ * LANDING PAGE
+ * ============
+ * Public ShellCorp entry page that explains the founder-control workflow and
+ * routes directly into the AI office without an invite gate.
+ *
+ * KEY CONCEPTS:
+ * - The office is the primary product surface, so entry should be one click.
+ * - Landing copy should explain what founders do once they enter the office.
+ *
+ * USAGE:
+ * - Mounted at `/` from `AppRouter`.
+ *
+ * MEMORY REFERENCES:
+ * - MEM-0193
+ */
+
+import React from "react";
+import { ArrowRight, Gamepad2, Sparkles, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { InviteCodeModal } from "../components/invite/invite-code-modal";
 import { BackgroundImage } from "../components/theme/background-image";
 import { ThemeToggle } from "../components/theme/theme-toggle";
+import { Button } from "../components/ui/button";
 
 export function LandingPage(): React.JSX.Element {
-  const [showInviteModal, setShowInviteModal] = useState(false);
-
   return (
     <div className="min-h-screen relative flex flex-col">
       {/* Background Images */}
@@ -43,8 +57,8 @@ export function LandingPage(): React.JSX.Element {
             </div>
           </Link>
           <nav className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => setShowInviteModal(true)}>
-              Access
+            <Button asChild variant="default">
+              <Link to="/office">Go to office</Link>
             </Button>
             <ThemeToggle />
           </nav>
@@ -53,7 +67,7 @@ export function LandingPage(): React.JSX.Element {
 
       <main className="container mx-auto px-4 py-12 flex-1">
         {/* Hero Section */}
-        <div className="max-w-4xl mx-auto text-center space-y-8 py-20">
+        <div className="max-w-5xl mx-auto text-center space-y-10 py-20">
           <div className="space-y-6">
             <h1 className="text-6xl md:text-7xl font-bold tracking-tight">
               Your AI office
@@ -61,8 +75,44 @@ export function LandingPage(): React.JSX.Element {
               <span className="text-primary">with OpenClaw.</span>
             </h1>
             <p className="text-2xl md:text-3xl text-muted-foreground max-w-3xl mx-auto">
-              Observe your agent&apos;s work and make you money.
+              Run a small autonomous company from one control room instead of
+              stitching together logs, chats, and approvals by hand.
             </p>
+          </div>
+
+          <div className="mx-auto max-w-4xl rounded-3xl border bg-background/75 p-6 text-left shadow-sm backdrop-blur-sm md:p-8">
+            <div className="grid gap-6 md:grid-cols-3">
+              <div className="space-y-2">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">
+                  1. Form
+                </p>
+                <h2 className="text-xl font-semibold">Ask the CEO to build a team</h2>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Start from the office, open the CEO workflow, and generate a focused plan for
+                  a new business or project.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">
+                  2. Review
+                </p>
+                <h2 className="text-xl font-semibold">Approve the work that matters</h2>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Human review stays visible so you can inspect proposals, approve execution, and
+                  keep the office focused on a small number of active teams.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">
+                  3. Operate
+                </p>
+                <h2 className="text-xl font-semibold">Watch the office run in real time</h2>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Open the office to track agents, inspect sessions and memory, and steer live
+                  work without leaving the founder control surface.
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Key Features */}
@@ -84,14 +134,21 @@ export function LandingPage(): React.JSX.Element {
             <p className="text-base text-muted-foreground">Observe • Decide • Scale</p>
           </div>
 
+          <div className="mx-auto max-w-3xl space-y-4 rounded-3xl border bg-background/70 p-6 backdrop-blur-sm">
+            <h2 className="text-2xl font-semibold">What to do when you enter</h2>
+            <p className="text-base leading-7 text-muted-foreground">
+              Open the office, click into the CEO or an active team, and use the shared panels to
+              inspect sessions, review work, and move the next decision forward.
+            </p>
+          </div>
+
           {/* CTA */}
-          <div className="mt-12">
-            <Button
-              size="lg"
-              className="h-16 px-10 text-xl"
-              onClick={() => setShowInviteModal(true)}
-            >
-              Get Started
+          <div className="mt-12 flex justify-center">
+            <Button asChild size="lg" className="h-16 px-10 text-xl">
+              <Link to="/office" aria-label="Go to office from hero">
+                Go to office
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
             </Button>
           </div>
         </div>
@@ -99,13 +156,13 @@ export function LandingPage(): React.JSX.Element {
 
       {/* Footer */}
       <footer className="relative border-t mt-auto py-4 bg-background/75 backdrop-blur-sm">
-        <div className="container mx-auto px-4 text-center text-base text-foreground/70">
+        <div className="container mx-auto px-4 flex flex-col gap-4 text-center text-base text-foreground/70 md:flex-row md:items-center md:justify-between">
           <p>© 2026 ShellCorp by Zanarkand. All rights reserved.</p>
+          <Button asChild variant="outline">
+            <Link to="/office">Go to office</Link>
+          </Button>
         </div>
       </footer>
-
-      {/* Invite Code Modal */}
-      <InviteCodeModal open={showInviteModal} onOpenChange={setShowInviteModal} />
     </div>
   );
 }
