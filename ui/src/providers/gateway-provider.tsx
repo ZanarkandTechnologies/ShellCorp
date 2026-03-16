@@ -43,6 +43,12 @@ function toGatewayWsUrl(baseUrl: string): string {
 export function GatewayProvider({ children }: { children: ReactNode }): JSX.Element {
   const [connected, setConnected] = useState(false);
   const [config, setConfig] = useState<GatewayUiConfig>(() => getGatewayUiConfig());
+  // #region agent log
+  useEffect(() => {
+    const tokenLen = config.gatewayToken?.trim?.()?.length ?? 0;
+    fetch('http://127.0.0.1:7706/ingest/48051540-bc82-481a-91e8-13d7497ea0d8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4da9e5'},body:JSON.stringify({sessionId:'4da9e5',location:'gateway-provider.tsx:config',message:'Gateway config at provider',data:{gatewayBase:config.gatewayBase,tokenLength:tokenLen,hasToken:tokenLen>0},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+  }, [config.gatewayBase, config.gatewayToken]);
+  // #endregion
   const client = useMemo(
     () =>
       new GatewayWsClient({

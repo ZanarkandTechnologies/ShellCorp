@@ -426,8 +426,6 @@ function ensureNotionPluginEntry(config: JsonObject): JsonObject {
   const plugins = asObject(config.plugins);
   const entries = asObject(plugins.entries);
   const notionEntry = asObject(entries["notion-shell"]);
-  const notionConfig = asObject(notionEntry.config);
-  const webhook = asObject(notionConfig.webhook);
   return {
     ...config,
     plugins: {
@@ -437,25 +435,9 @@ function ensureNotionPluginEntry(config: JsonObject): JsonObject {
         "notion-shell": {
           ...notionEntry,
           enabled: notionEntry.enabled !== false,
-          config: {
-            ...notionConfig,
-            defaultAccountId:
-              typeof notionConfig.defaultAccountId === "string" &&
-              notionConfig.defaultAccountId.trim()
-                ? notionConfig.defaultAccountId
-                : "default",
-            webhook: {
-              ...webhook,
-              path:
-                typeof webhook.path === "string" && webhook.path.trim()
-                  ? webhook.path
-                  : "/plugins/notion-shell/webhook",
-              targetAgentId:
-                typeof webhook.targetAgentId === "string" && webhook.targetAgentId.trim()
-                  ? webhook.targetAgentId
-                  : "main",
-            },
-          },
+          // Leave config empty to satisfy strict OpenClaw plugin config schema.
+          // The plugin reads its operational settings from channels.notion.accounts instead.
+          config: {},
         },
       },
     },
@@ -463,17 +445,20 @@ function ensureNotionPluginEntry(config: JsonObject): JsonObject {
 }
 
 function ensureShellcorpDefaults(config: JsonObject): JsonObject {
-  const tools = asObject(config.tools);
-  const hooks = asObject(config.hooks);
+  // Strip deprecated or unknown top-level keys that may cause OpenClaw validation errors.
+  // Newer OpenClaw versions do not expect a top-level "version" field.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { version: _ignoredVersion, ...rest } = config;
+  const tools = asObject(rest.tools);
+  const hooks = asObject(rest.hooks);
   const internal = asObject(hooks.internal);
   const entries = asObject(internal.entries);
   const statusEntry = asObject(entries["shellcorp-status"]);
-  const agents = asObject(config.agents);
+  const agents = asObject(rest.agents);
   const defaults = asObject(agents.defaults);
   const heartbeat = asObject(defaults.heartbeat);
   return {
-    ...config,
-    version: typeof config.version === "number" ? config.version : 1,
+    ...rest,
     tools: {
       ...tools,
       profile: typeof tools.profile === "string" && tools.profile.trim() ? tools.profile : "coding",
@@ -678,10 +663,7 @@ export function registerOnboardingCommands(program: Command): void {
         config: existingOpenclaw,
       });
 
-<<<<<<< HEAD
-=======
       // If OpenClaw created openclaw.json but did not add a "main" agent (e.g. some installers omit agents.list), add it.
->>>>>>> origin/main
       if (
         !preflight.ok &&
         wasOpenclawPresent &&
@@ -698,13 +680,7 @@ export function registerOnboardingCommands(program: Command): void {
           config: updated,
         });
         if (preflight.ok) {
-<<<<<<< HEAD
-          for (const [key, value] of Object.entries(updated)) {
-            existingOpenclaw[key] = value;
-          }
-=======
           Object.assign(existingOpenclaw, updated);
->>>>>>> origin/main
         }
       }
 
@@ -1007,7 +983,9 @@ export function registerOnboardingCommands(program: Command): void {
         );
       }
 
-      if (!result.ok) {
+      // Exit non-zero only when team-data doctor fails (critical for founder workflow).
+      // Office-objects issues are reported in the summary but do not fail onboarding.
+      if (!result.doctor.teamData.ok) {
         process.exitCode = 1;
       }
     });

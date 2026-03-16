@@ -1,4 +1,5 @@
 import { Box } from "@react-three/drei";
+import { useMemo } from "react";
 import { InteractiveObject } from './interactive-object';
 import type { Id } from "@/lib/entity-types";
 
@@ -11,15 +12,24 @@ interface BookshelfProps {
     metadata?: Record<string, unknown>;
 }
 
-// Dimensions
-const SHELF_WIDTH = 2.5;
-const SHELF_HEIGHT = 1.8;
-const SHELF_DEPTH = 0.4;
 const PLANK_THICKNESS = 0.05;
 const SIDE_WIDTH = 0.05;
 
-// Colors
-const WOOD_COLOR = "#8B4513"; // SaddleBrown
+/** Variant dimensions and colors so each catalog bookshelf looks different */
+function getBookshelfVariant(furnitureId: string | undefined) {
+  switch (furnitureId) {
+    case "bookshelf-tall":
+      return { width: 2.2, height: 2.2, depth: 0.4, numShelves: 6, color: "#5D4E37" };
+    case "bookshelf-storage":
+      return { width: 1.8, height: 1.2, depth: 0.35, numShelves: 3, color: "#A0522D" };
+    case "misc-bookshelf":
+      return { width: 2.0, height: 1.5, depth: 0.38, numShelves: 4, color: "#8B4513" };
+    case "misc-bookshelf2":
+      return { width: 1.5, height: 1.0, depth: 0.3, numShelves: 3, color: "#654321" };
+    default:
+      return { width: 2.5, height: 1.8, depth: 0.4, numShelves: 4, color: "#8B4513" };
+  }
+}
 
 export default function Bookshelf({
     objectId,
@@ -29,8 +39,9 @@ export default function Bookshelf({
     companyId,
     metadata,
 }: BookshelfProps) {
-    const numShelves = 4;
-    const shelfSpacing = (SHELF_HEIGHT - PLANK_THICKNESS) / numShelves;
+    const furnitureId = typeof metadata?.furnitureId === "string" ? metadata.furnitureId : undefined;
+    const variant = useMemo(() => getBookshelfVariant(furnitureId), [furnitureId]);
+    const shelfSpacing = (variant.height - PLANK_THICKNESS) / variant.numShelves;
 
     return (
         <InteractiveObject
@@ -43,43 +54,38 @@ export default function Bookshelf({
             metadata={metadata}
         >
             <group>
-                {/* Sides */}
                 <Box
-                    args={[SIDE_WIDTH, SHELF_HEIGHT, SHELF_DEPTH]}
-                    position={[-SHELF_WIDTH / 2 + SIDE_WIDTH / 2, SHELF_HEIGHT / 2, 0]}
+                    args={[SIDE_WIDTH, variant.height, variant.depth]}
+                    position={[-variant.width / 2 + SIDE_WIDTH / 2, variant.height / 2, 0]}
                     castShadow receiveShadow
                 >
-                    <meshStandardMaterial color={WOOD_COLOR} />
+                    <meshStandardMaterial color={variant.color} />
                 </Box>
                 <Box
-                    args={[SIDE_WIDTH, SHELF_HEIGHT, SHELF_DEPTH]}
-                    position={[SHELF_WIDTH / 2 - SIDE_WIDTH / 2, SHELF_HEIGHT / 2, 0]}
+                    args={[SIDE_WIDTH, variant.height, variant.depth]}
+                    position={[variant.width / 2 - SIDE_WIDTH / 2, variant.height / 2, 0]}
                     castShadow receiveShadow
                 >
-                    <meshStandardMaterial color={WOOD_COLOR} />
+                    <meshStandardMaterial color={variant.color} />
                 </Box>
-
-                {/* Back */}
                 <Box
-                    args={[SHELF_WIDTH - SIDE_WIDTH * 2, SHELF_HEIGHT, PLANK_THICKNESS]}
-                    position={[0, SHELF_HEIGHT / 2, -SHELF_DEPTH / 2 + PLANK_THICKNESS / 2]}
+                    args={[variant.width - SIDE_WIDTH * 2, variant.height, PLANK_THICKNESS]}
+                    position={[0, variant.height / 2, -variant.depth / 2 + PLANK_THICKNESS / 2]}
                     castShadow receiveShadow
                 >
-                    <meshStandardMaterial color={WOOD_COLOR} opacity={0.8} />
+                    <meshStandardMaterial color={variant.color} opacity={0.8} />
                 </Box>
-
-                {/* Shelves */}
-                {Array.from({ length: numShelves + 1 }).map((_, i) => (
+                {Array.from({ length: variant.numShelves + 1 }).map((_, i) => (
                     <Box
                         key={`bookshelf-${objectId}-${i}`}
-                        args={[SHELF_WIDTH - SIDE_WIDTH * 2, PLANK_THICKNESS, SHELF_DEPTH - PLANK_THICKNESS]}
+                        args={[variant.width - SIDE_WIDTH * 2, PLANK_THICKNESS, variant.depth - PLANK_THICKNESS]}
                         position={[0, PLANK_THICKNESS / 2 + i * shelfSpacing, 0]}
                         castShadow receiveShadow
                     >
-                        <meshStandardMaterial color={WOOD_COLOR} />
+                        <meshStandardMaterial color={variant.color} />
                     </Box>
                 ))}
             </group>
         </InteractiveObject>
     );
-} 
+}

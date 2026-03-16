@@ -17,11 +17,21 @@
  */
 
 import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Command } from "commander";
 import { cliBlue, cliDim, cliSection } from "./cli-utils.js";
 
 function npmCommand(): string {
   return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+/** Repo root: parent of the cli package so `npm run ui` (root script) runs correctly. */
+function resolveRepoRoot(): string {
+  const override = process.env.SHELLCORP_REPO_ROOT?.trim();
+  if (override) return path.resolve(override);
+  const cliDir = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(cliDir, "..");
 }
 
 type StartUiDevServerOptions = {
@@ -30,11 +40,8 @@ type StartUiDevServerOptions = {
 };
 
 export async function startUiDevServer(options: StartUiDevServerOptions = {}): Promise<void> {
-  const cwd = options.cwd ?? process.cwd();
+  const cwd = options.cwd ?? resolveRepoRoot();
   const propagateSignal = options.propagateSignal !== false;
-  const useShell = process.platform === "win32";
-  const baseOpts = { cwd, stdio: "inherit" as const, env: process.env };
-
   // On Windows, spawning .cmd files (e.g. npm.cmd) without a shell throws EINVAL (Node CVE-2024-27980).
   // Use a single command string with shell: true so the shell runs npm.
   const useShell = process.platform === "win32";

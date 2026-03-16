@@ -25,6 +25,7 @@ import { useAppStore } from "@/lib/app-store";
 import * as THREE from "three";
 import { useCallback } from "react";
 import { OfficeId } from "@/lib/types";
+import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 
 import { getGameObjectDefinition } from "../components/object-registry";
@@ -46,6 +47,7 @@ export function usePlacementSystem() {
     const { active, type, data } = placementMode;
 
     const adapter = useOpenClawAdapter();
+    const { refresh: refreshOfficeData } = useOfficeDataContext();
 
     async function createTeamAndPlace(input: {
         name: string;
@@ -72,6 +74,7 @@ export function usePlacementSystem() {
         if (!result.ok) {
             throw new Error(result.error ?? "team_cluster_place_failed");
         }
+        await refreshOfficeData();
     }
 
     async function incrementDeskCount(input: { teamId: OfficeId<"teams"> }): Promise<void> {
@@ -132,6 +135,7 @@ export function usePlacementSystem() {
         if (!result.ok) {
             throw new Error(result.error ?? "generic_object_place_failed");
         }
+        await refreshOfficeData();
     }
 
     // Actions
@@ -187,7 +191,7 @@ export function usePlacementSystem() {
         } catch (error) {
             console.error("Placement failed:", error);
         }
-    }, [active, type, data, createTeamAndPlace, cancelPlacement]);
+    }, [active, type, data, createTeamAndPlace, cancelPlacement, refreshOfficeData]);
 
     // Logic: Place a desk onto a specific team (Hybrid placement)
     const confirmTeamAssignment = useCallback(async (teamId: string) => {

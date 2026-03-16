@@ -186,6 +186,10 @@ export class GatewayWsClient {
 
   private openSocket(): void {
     if (this.closed) return;
+    // #region agent log
+    const urlHasToken = this.opts.url.includes("token=");
+    fetch('http://127.0.0.1:7706/ingest/48051540-bc82-481a-91e8-13d7497ea0d8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4da9e5'},body:JSON.stringify({sessionId:'4da9e5',location:'gateway-ws-client.ts:openSocket',message:'WebSocket open',data:{url:this.opts.url,urlHasToken},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     const ws = new WebSocket(this.opts.url);
     this.ws = ws;
     ws.addEventListener("open", () => {
@@ -248,6 +252,12 @@ export class GatewayWsClient {
       authToken = storedToken ?? this.opts.token;
       canFallbackToShared = Boolean(storedToken && this.opts.token);
     }
+
+    // #region agent log
+    const authSource = authToken === this.opts.token ? "opts" : "stored";
+    const hasAuth = Boolean(authToken?.trim());
+    fetch('http://127.0.0.1:7706/ingest/48051540-bc82-481a-91e8-13d7497ea0d8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4da9e5'},body:JSON.stringify({sessionId:'4da9e5',location:'gateway-ws-client.ts:sendConnect',message:'Connect handshake auth',data:{authSource,hasAuth,tokenLength:authToken?.trim?.()?.length??0,optsTokenLength:this.opts.token?.trim?.()?.length??0},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
 
     const auth = authToken?.trim() ? { token: authToken.trim() } : undefined;
 
