@@ -72,7 +72,23 @@ Useful follow-up checks:
 ```bash
 npm run shell -- doctor team-data --json
 npm run shell -- office doctor --json
+npm run shell -- team monitor --team-id team-proj-shellcorp-dev-team --json
 ```
+
+Useful runtime loop for autonomous-team MVP work:
+
+```bash
+npm run shell -- team create --name "ShellCorp Dev Team" --description "Internal product team" --goal "Improve ShellCorp" --auto-roles pm,builder
+npm run shell -- team run live --team-id team-proj-shellcorp-dev-team --cadence-minutes 1 --goal "Live demo loop" --json
+npm run shell -- team monitor --team-id team-proj-shellcorp-dev-team --json
+```
+
+Canonical files to inspect during a live run:
+
+- `~/.openclaw/openclaw.json`
+- `~/.openclaw/projects/<projectId>/logs/events.jsonl`
+- `~/.openclaw/projects/<projectId>/outputs/`
+- `~/.openclaw/workspace-<agentId>/HEARTBEAT.md`
 
 ## Next
 

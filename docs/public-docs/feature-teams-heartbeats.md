@@ -80,6 +80,23 @@ The repo currently supports several team shapes, but the business-oriented model
 
 That separation gives ShellCorp a usable founder/control loop without requiring a huge org chart.
 
+For the MVP operator workflow, the main CLI surfaces should stay even simpler:
+
+- `team config`
+- `agent config`
+- `team run`
+- `team monitor`
+
+The recommended live loop is:
+
+1. `team create` or `team preset dev --apply`
+2. `agent config` to tune role skills or per-agent heartbeat details
+3. `team run live --cadence-minutes 1` to retune the actual OpenClaw heartbeat cadence
+4. `team monitor` and `agent monitor` to inspect runtime state
+5. review `~/.openclaw/projects/<projectId>/logs/events.jsonl` for the canonical event stream
+
+This keeps heartbeat-driven work inspectable and easy to test without forcing every team through a large preset or a hidden orchestration layer.
+
 ## Where ShellCorp Stops And OpenClaw Starts
 
 OpenClaw owns:
@@ -111,10 +128,16 @@ At a high level, yes:
 
 But the important detail is that ShellCorp makes this explicit and inspectable. The agents are not running as an undocumented swarm. They have named workspaces, role files, heartbeat runbooks, session history, and a visible operator surface.
 
+That operator surface now centers on one append-only per-team log:
+
+- `~/.openclaw/projects/<projectId>/logs/events.jsonl`
+
+Task lifecycle updates, explicit status reports, activity logs, and heartbeat cadence changes are all appended there so the UI can render a single timeline with richer cards layered on top later.
+
 ## Related Docs
 
 - [feature-cli.md](./feature-cli.md)
+- [feature-mvp-team-config.md](./feature-mvp-team-config.md)
 - [feature-business-logic.md](./feature-business-logic.md)
 - [architecture.md](./architecture.md)
 - [SC10-spec-heartbeat-autonomy-loop.md](../specs/SC10-spec-heartbeat-autonomy-loop.md)
-

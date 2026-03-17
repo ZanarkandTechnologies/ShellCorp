@@ -26,6 +26,11 @@ The product is intentionally different from a static "spawn a giant company" mod
 3. Review the proposal in ShellCorp and approve the work.
 4. Manage the resulting team from the office, the board surfaces, and the CLI.
 
+Inside a team:
+
+- `Overview` shows compact roster cards with embedded face/avatar renders, role, live status, latest task context, and quick actions.
+- `Activity` is the board-first worklog for handoffs, blocked reasons, and execution updates tied to tickets.
+
 The main MVP loop is founder control, not artificial office scale.
 
 ## Why ShellCorp Is Different
@@ -35,6 +40,7 @@ The main MVP loop is founder control, not artificial office scale.
 - `Founder workflow`: CEO-led team formation, founder review, and approval are the primary product path.
 - `Fun to operate`: the office is meant to feel alive, customizable, and rewarding to use, not just administratively correct.
 - `Skills-aware`: ShellCorp includes tooling to inspect, understand, and use skills more effectively across agents.
+- `Roster-led team ops`: each team surface makes it obvious who each agent is, what they are doing, and how to reach them.
 
 ## ShellCorp Is Right For You If
 
@@ -51,6 +57,7 @@ The main MVP loop is founder control, not artificial office scale.
 - `ShellCorp CLI`: onboard, manage teams, inspect office state, run doctor checks, and handle office decor from the command line
 - `Skills workbench`: inspect skills, demos, file-backed metadata, and per-agent skill configuration from one place
 - `Memory and session visibility`: inspect agent memory, session context, and current work state from OpenClaw-backed data
+- `Team presence and activity`: team overview surfaces show each member as a compact face/avatar card with role, live state, latest task, and quick actions, while the Activity tab keeps coordination tied to ticket worklogs instead of faux team chat
 - `Plugin-first integrations`: keep integrations aligned with OpenClaw's plugin model, starting with the in-repo Notion plugin
 - `Mesh and personalization path`: support agent personalization and mesh/image wrapper flows so the office can feel more alive over time
 - `Office decor and style`: customize the office once the core founder-control loop is in place
@@ -200,6 +207,12 @@ npm run typecheck
 npm run build
 ```
 
+Refresh the global CLI alias after pulling repo updates:
+
+```bash
+npm run cli:reinstall
+```
+
 Useful commands:
 
 - `npm run shell -- onboarding --json`
@@ -207,14 +220,25 @@ Useful commands:
 - `npm run shell -- onboarding --skip-install-cli`
 - `npm run shell -- onboarding --launch-ui`
 - `npm run shell -- ui`
+- `npm run shell -- team run live --team-id team-proj-shellcorp-dev-team --cadence-minutes 1 --goal "Live demo loop" --json`
+- `npm run shell -- team monitor --team-id team-proj-shellcorp-dev-team --json`
 - `npm run shell -- office decor docs`
 - `npm run shell -- office decor list`
 - `npm run shell -- office decor pack list`
 - `npm run shell -- office decor floor list`
+
+For autonomous-team MVP work, the main runtime artifacts are:
+
+- `~/.openclaw/openclaw.json`
+- `~/.openclaw/projects/<projectId>/logs/events.jsonl`
+- `~/.openclaw/projects/<projectId>/logs/`
+- `~/.openclaw/projects/<projectId>/outputs/`
+- `~/.openclaw/workspace-<agentId>/HEARTBEAT.md`
 - `npm run shell -- office decor wall list`
 - `npm run shell -- office decor background list`
 - `npm run shell -- office decor pack apply clam-cabinet`
 - `npm run shell -- office decor background set midnight_tide`
+- `npm run cli:reinstall`
 - `shellcorp ui`
 - `npm run shell -- doctor team-data --json`
 - `npm run shell -- office doctor --json`

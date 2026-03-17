@@ -7,6 +7,7 @@ ShellCorp CLI is the operational surface for team topology and office state in t
 - Create and steer teams without editing raw JSON manually.
 - Control heartbeat and role demand with explicit commands.
 - Keep operations scriptable with `--json` output where supported.
+- Expose one canonical monitoring feed for team runtime events and outputs.
 
 ## CLI Entry
 
@@ -24,10 +25,15 @@ npm run shell -- <command>
 
 ```bash
 shellcorp team list
+shellcorp team config show --team-id team-proj-alpha --json
+shellcorp team config resources init --team-id team-proj-alpha
+shellcorp team monitor --team-id team-proj-alpha --json
 shellcorp team create --name "Alpha" --description "Core team" --goal "Ship roadmap" --kpi weekly_shipped_tickets --auto-roles builder,pm,growth_marketer
 shellcorp team update --team-id team-proj-alpha --goal "Reduce backlog" --kpi-add support_reply_sla_minutes
 shellcorp team heartbeat set --team-id team-proj-alpha --cadence-minutes 15 --goal "Create or execute relevant tickets from Kanban"
 shellcorp team heartbeat render --team-id team-proj-alpha --role biz_pm
+shellcorp team run live --team-id team-proj-alpha --cadence-minutes 1 --goal "Live demo loop"
+shellcorp team run test-mode --team-id team-proj-alpha --cadence-minutes 1 --goal "Fast demo loop"
 shellcorp team role-slot set --team-id team-proj-alpha --role builder --desired-count 2
 shellcorp team archive --team-id team-proj-alpha
 shellcorp team archive --team-id team-proj-alpha --deregister-openclaw
@@ -40,6 +46,10 @@ shellcorp team archive --team-id team-proj-alpha --deregister-openclaw
 ```bash
 shellcorp team business get --team-id team-proj-affiliate --json
 shellcorp team business set --team-id team-proj-affiliate --slot measure --skill-id stripe-revenue
+shellcorp agent config show --agent-id affiliate-pm --json
+shellcorp agent config set-skills --agent-id affiliate-executor --skills shellcorp-team-cli,status-self-reporter
+shellcorp agent config set-heartbeat --agent-id affiliate-pm --cadence-minutes 1 --goal "Fast demo loop"
+shellcorp agent monitor --agent-id affiliate-pm --json
 shellcorp team resources list --team-id team-proj-affiliate --json
 shellcorp team resources events --team-id team-proj-affiliate --limit 20 --json
 shellcorp team resources reserve --team-id team-proj-affiliate --resource-id proj-affiliate:cash --amount 300
@@ -48,6 +58,24 @@ shellcorp team resources remove --team-id team-proj-affiliate --resource-id proj
 shellcorp team status report --team-id team-proj-affiliate --agent-id affiliate-pm --state planning --status-text "Reviewing board and KPIs" --step-key hb-affiliate-pm-001
 shellcorp team bot log --team-id team-proj-affiliate --agent-id affiliate-pm --activity-type status --label heartbeat_decision --detail "Prioritize high-ROI creative test"
 ```
+
+## Runtime Monitoring
+
+The current MVP monitoring flow is:
+
+1. Configure the team and agents.
+2. Run through OpenClaw with `team run live` or `team run test-mode`.
+3. Inspect the team through `team monitor`, `agent monitor`, and the per-team event log.
+
+Canonical runtime paths:
+
+- `~/.openclaw/openclaw.json`
+- `~/.openclaw/projects/<projectId>/logs/events.jsonl`
+- `~/.openclaw/projects/<projectId>/logs/`
+- `~/.openclaw/projects/<projectId>/outputs/`
+- `~/.openclaw/workspace-<agentId>/HEARTBEAT.md`
+
+`team monitor --json` now returns these paths plus the latest structured events so the UI can render one live feed instead of requiring separate bespoke debug surfaces.
 
 ## Office Commands
 
@@ -107,5 +135,6 @@ This is aligned with CLI-first invariants in `MEM-0119`, `MEM-0120`, and `MEM-01
 - Intent cookbook: `docs/how-to/ceo-team-cli-scl-cookbook.md`
 - Team CLI skill: `skills/shellcorp-team-cli/SKILL.md`
 - Teams and heartbeats: `docs/public-docs/feature-teams-heartbeats.md`
+- MVP config surface: `docs/public-docs/feature-mvp-team-config.md`
 - Decorations: `docs/public-docs/feature-decorations.md`
 - Personalization and custom meshes: `docs/public-docs/feature-personalization.md`
