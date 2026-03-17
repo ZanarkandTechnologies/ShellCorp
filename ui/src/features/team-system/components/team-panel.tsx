@@ -20,11 +20,12 @@
  * - MEM-0107
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useChatActions } from "@/features/chat-system/chat-store";
 import {
   computeBusinessReadinessIssues,
   createBusinessBuilderDraft,
@@ -55,6 +56,8 @@ import {
   type ActivityRow,
   type CommunicationRow,
   type AgentCandidate,
+  type AgentPresenceRow,
+  deriveAgentPresenceRows,
 } from "./team-panel-types";
 
 interface TeamPanelProps {
@@ -76,8 +79,11 @@ export function TeamPanel({
 }: TeamPanelProps) {
   const { teams, employees, companyModel, workload, refresh } = useOfficeDataContext();
   const adapter = useOpenClawAdapter();
+  const { openEmployeeChat } = useChatActions();
   const selectedProjectId = useAppStore((state) => state.selectedProjectId);
   const setSelectedProjectId = useAppStore((state) => state.setSelectedProjectId);
+  const setIsAgentSessionPanelOpen = useAppStore((state) => state.setIsAgentSessionPanelOpen);
+  const setSelectedAgentId = useAppStore((state) => state.setSelectedAgentId);
 
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [communicationsFilter, setCommunicationsFilter] = useState<CommunicationsFilter>("all");
@@ -108,6 +114,7 @@ export function TeamPanel({
     }>
   >([]);
   const [teamUsageError, setTeamUsageError] = useState<string | null>(null);
+  const lastBuilderProjectIdRef = useRef<string | null>(null);
 
   const team = useMemo(() => {
     if (!teamId || globalMode) return null;
@@ -124,7 +131,7 @@ export function TeamPanel({
     if (!companyModel) return null;
     if (!projectId) return companyModel.projects[0] ?? null;
     return (
-        companyModel.projects.find((e) => e.id === projectId) ?? companyModel.projects[0] ?? null
+      companyModel.projects.find((e) => e.id === projectId) ?? companyModel.projects[0] ?? null
     );
   }, [companyModel, projectId]);
   const usageEmployees = useMemo(() => {
@@ -132,7 +139,10 @@ export function TeamPanel({
       const scopedTeamId = project?.id ? `team-${project.id}`.toLowerCase() : null;
       if (!scopedTeamId) return [];
       return employees.filter(
-        (employee) => String(employee.teamId ?? "").trim().toLowerCase() === scopedTeamId,
+        (employee) =>
+          String(employee.teamId ?? "")
+            .trim()
+            .toLowerCase() === scopedTeamId,
       );
     }
     return teamEmployees;
@@ -146,18 +156,17 @@ export function TeamPanel({
     return teamId ? teamId.trim().toLowerCase() : null;
   }, [globalMode, project?.id, teamId]);
 
-  const boardCommand = convexEnabled ? useMutation(api.board.boardCommand) : null;
-  const convexBoard = convexEnabled
-    ? useQuery(api.board.getProjectBoard, activeProjectId ? { projectId: activeProjectId } : "skip")
-    : undefined;
-  const convexActivity = convexEnabled
-    ? useQuery(
-        api.board.getProjectActivity,
-        activeProjectId
-          ? { projectId: activeProjectId, teamId: teamScopeId ?? undefined, limit: 60 }
-          : "skip",
-      )
-    : undefined;
+  const boardCommand = useMutation(api.board.boardCommand);
+  const convexBoard = useQuery(
+    api.board.getProjectBoard,
+    convexEnabled && activeProjectId ? { projectId: activeProjectId } : "skip",
+  );
+  const convexActivity = useQuery(
+    api.board.getProjectActivity,
+    convexEnabled && activeProjectId
+      ? { projectId: activeProjectId, teamId: teamScopeId ?? undefined, limit: 60 }
+      : "skip",
+  );
 
   const projectTasks = useMemo((): PanelTask[] => {
     if (convexEnabled && convexBoard?.tasks) {
@@ -239,6 +248,20 @@ export function TeamPanel({
     if (communicationsFilter === "all") return communicationRows;
     return communicationRows.filter((row) => row.activityType === communicationsFilter);
   }, [communicationRows, communicationsFilter]);
+
+  const visibleRoster = useMemo(
+    () => (globalMode ? usageEmployees : teamEmployees),
+    [globalMode, teamEmployees, usageEmployees],
+  );
+  const presenceRows = useMemo(
+    (): AgentPresenceRow[] =>
+      deriveAgentPresenceRows({
+        employees: visibleRoster,
+        projectTasks,
+        communicationRows,
+      }),
+    [communicationRows, projectTasks, visibleRoster],
+  );
 
   const activityFeedCandidates = useMemo((): AgentCandidate[] => {
     const roster = globalMode ? employees : teamEmployees;
@@ -370,12 +393,15 @@ export function TeamPanel({
   }, [initialTab, isOpen]);
 
   useEffect(() => {
+    const nextProjectId = project?.id ?? null;
+    if (lastBuilderProjectIdRef.current === nextProjectId) return;
+    lastBuilderProjectIdRef.current = nextProjectId;
     setBuilderDraft(projectToBusinessBuilderDraft(project));
     setBuilderSaveState({ pending: false });
     setTrackingContext(project?.trackingContext ?? "");
     setSelectedBusinessSlot("measure");
     setLedgerActionState({ pending: false });
-  }, [project?.id]);
+  }, [project]);
 
   useEffect(() => {
     if (!isOpen || !globalMode || selectedProjectId || !companyModel?.projects?.length) return;
@@ -385,7 +411,7 @@ export function TeamPanel({
   useEffect(() => {
     if (!isOpen) return;
     setCommunicationsFilter("all");
-  }, [isOpen, project?.id]);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -420,7 +446,7 @@ export function TeamPanel({
     return () => {
       cancelled = true;
     };
-  }, [adapter, isOpen, project?.id]);
+  }, [adapter, isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -588,6 +614,15 @@ export function TeamPanel({
     });
   }
 
+  function handleOpenAgentSession(agentId: string): void {
+    setSelectedAgentId(agentId);
+    setIsAgentSessionPanelOpen(true);
+  }
+
+  function handleOpenDirectChat(agentId: string): void {
+    void openEmployeeChat(`employee-${agentId}`, true);
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent
@@ -613,7 +648,7 @@ export function TeamPanel({
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="kanban">Kanban</TabsTrigger>
             <TabsTrigger value="projects">Projects</TabsTrigger>
-            <TabsTrigger value="communications">Communications</TabsTrigger>
+            <TabsTrigger value="communications">Activity</TabsTrigger>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="business">Business</TabsTrigger>
             <TabsTrigger value="ledger">Ledger</TabsTrigger>
@@ -636,6 +671,9 @@ export function TeamPanel({
               currencyFormatter={currencyFormatter}
               aiBurn24hUsd={teamAiUsageSummary.cost24hUsd}
               aiUsageUnavailableText={teamUsageError}
+              presenceRows={presenceRows}
+              onMessageAgent={handleOpenDirectChat}
+              onOpenAgentSession={handleOpenAgentSession}
             />
           </TabsContent>
 
@@ -666,6 +704,7 @@ export function TeamPanel({
 
           <TabsContent value="communications" className="mt-4 min-h-0 flex-1 overflow-hidden">
             <CommunicationsTab
+              teamId={teamScopeId}
               communicationsFilter={communicationsFilter}
               setCommunicationsFilter={setCommunicationsFilter}
               filteredRows={filteredCommunicationRows}
