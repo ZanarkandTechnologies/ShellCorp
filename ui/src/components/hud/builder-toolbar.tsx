@@ -21,6 +21,7 @@ import { DoorOpen, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/lib/app-store";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
+import { useLayoutEditorHud } from "@/components/office-scene/layout-editor-hud-context";
 
 export function BuilderToolbar(): JSX.Element | null {
   const { officeSettings } = useOfficeDataContext();
@@ -28,6 +29,8 @@ export function BuilderToolbar(): JSX.Element | null {
   const activeBuilderTool = useAppStore((state) => state.activeBuilderTool);
   const setActiveBuilderTool = useAppStore((state) => state.setActiveBuilderTool);
   const setBuilderMode = useAppStore((state) => state.setBuilderMode);
+  const layoutHud = useLayoutEditorHud();
+  const isPainting = layoutHud.paintMode === "add" || layoutHud.paintMode === "remove";
 
   useEffect(() => {
     if (isBuilderMode) return;
@@ -71,10 +74,51 @@ export function BuilderToolbar(): JSX.Element | null {
           Remove Tiles
         </Button>
       </div>
-      <p className="text-[11px] leading-4 text-muted-foreground">
-        Drag on the floor to paint new tiles or remove existing ones, then use the in-scene Apply
-        button to commit the stroke. Walls now wrap the floor plan automatically.
-      </p>
+      {isPainting ? (
+        <>
+          <p className="text-xs font-medium text-foreground">
+            {layoutHud.paintMode === "add"
+              ? "Drag to add floor tiles"
+              : "Drag to remove floor tiles"}
+          </p>
+          <p className="text-[11px] leading-4 text-muted-foreground">
+            Painted tiles stay in preview until you click Apply. Exiting builder mode does not
+            auto-save the current stroke.
+          </p>
+          {layoutHud.error ? (
+            <p className="text-[11px] text-destructive">{layoutHud.error}</p>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] text-muted-foreground">
+              {layoutHud.previewCount} tile{layoutHud.previewCount === 1 ? "" : "s"} selected
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => layoutHud.onCancel()}
+                disabled={layoutHud.isSaving || layoutHud.previewCount === 0}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => layoutHud.onApply()}
+                disabled={layoutHud.isSaving || layoutHud.previewCount === 0}
+              >
+                {layoutHud.isSaving ? "Saving..." : "Apply"}
+              </Button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <p className="text-[11px] leading-4 text-muted-foreground">
+          Drag on the floor to paint new tiles or remove existing ones, then use Apply to commit.
+          Walls wrap the floor plan automatically.
+        </p>
+      )}
       <Button
         type="button"
         variant="secondary"

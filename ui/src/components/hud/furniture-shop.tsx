@@ -33,6 +33,7 @@ import {
   Package,
   Palette,
   Sofa,
+  Sparkles,
   Store,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -64,6 +65,12 @@ import {
   type OfficeWallColorId,
   type WallArtSlotId,
 } from "@/lib/office-decor";
+import {
+  createTextTo3dPreview,
+  createTextTo3dRefine,
+  isMeshyConfigured,
+  pollTextTo3dTask,
+} from "@/lib/meshy-api";
 import type { MeshAssetModel } from "@/lib/openclaw-types";
 import { cn } from "@/lib/utils";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
@@ -141,6 +148,12 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
   const [meshUrlInput, setMeshUrlInput] = useState("");
   const [meshLabelInput, setMeshLabelInput] = useState("");
   const [isDownloadingMesh, setIsDownloadingMesh] = useState(false);
+  const [meshyPrompt, setMeshyPrompt] = useState("");
+  const [meshyStyle, setMeshyStyle] = useState("");
+  const [meshyLabel, setMeshyLabel] = useState("");
+  const [isGeneratingMesh, setIsGeneratingMesh] = useState(false);
+  const [meshyStatus, setMeshyStatus] = useState<string | null>(null);
+  const [meshyProgress, setMeshyProgress] = useState<number | null>(null);
   const [isSavingDir, setIsSavingDir] = useState(false);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [meshError, setMeshError] = useState<string | null>(null);
@@ -274,6 +287,79 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     setMeshUrlInput("");
     setMeshLabelInput("");
     await loadMeshAssets();
+  };
+
+  const handleGenerateWithMeshy = async () => {
+    const prompt = meshyPrompt.trim();
+    if (!prompt) {
+      setMeshError("Describe the furniture you want (e.g. 'modern office chair').");
+      return;
+    }
+    if (!isMeshyConfigured()) {
+      setMeshError("Meshy API key not set. Add VITE_MESHY_API_KEY to your .env file.");
+      return;
+    }
+    setIsGeneratingMesh(true);
+    setMeshError(null);
+    setMeshyStatus("Creating preview...");
+    setMeshyProgress(null);
+    try {
+      const { result: previewTaskId } = await createTextTo3dPreview({
+        prompt,
+        model_type: "standard",
+        ai_model: "latest",
+      });
+      setMeshyStatus("Generating 3D model…");
+      const previewTask = await pollTextTo3dTask(previewTaskId, { intervalMs: 2500 });
+      if (previewTask.status !== "SUCCEEDED") {
+        const errMsg = previewTask.task_error?.message ?? "Preview generation failed.";
+        setMeshError(errMsg);
+        return;
+      }
+      let glbUrl: string | undefined = previewTask.model_urls?.glb;
+      let finalTaskId = previewTaskId;
+      const stylePrompt = meshyStyle.trim();
+      if (stylePrompt && glbUrl) {
+        setMeshyStatus("Adding style and texture...");
+        const { result: refineTaskId } = await createTextTo3dRefine({
+          preview_task_id: previewTaskId,
+          texture_prompt: stylePrompt,
+          enable_pbr: false,
+        });
+        const refineTask = await pollTextTo3dTask(refineTaskId, { intervalMs: 2500 });
+        if (refineTask.status === "SUCCEEDED" && refineTask.model_urls?.glb) {
+          glbUrl = refineTask.model_urls.glb;
+          finalTaskId = refineTaskId;
+        }
+      }
+      if (!glbUrl) {
+        setMeshError("No GLB output from Meshy.");
+        return;
+      }
+      setMeshyStatus("Saving to Custom Library...");
+      const label =
+        meshyLabel.trim() ||
+        prompt.slice(0, 40).replace(/[^a-zA-Z0-9\s-]/g, "").trim() ||
+        "meshy-model";
+      const result = await adapter.downloadMeshAsset({ url: glbUrl, label });
+      if (!result.ok) {
+        setMeshError(result.error ?? "Failed to save mesh to library.");
+        return;
+      }
+      setMeshyPrompt("");
+      setMeshyStyle("");
+      setMeshyLabel("");
+      setMeshyStatus(null);
+      setMeshyProgress(null);
+      await loadMeshAssets();
+      setActiveTab("custom");
+    } catch (error) {
+      setMeshError(error instanceof Error ? error.message : "Generation failed.");
+    } finally {
+      setIsGeneratingMesh(false);
+      setMeshyStatus(null);
+      setMeshyProgress(null);
+    }
   };
 
   const handleApplyDecor = async () => {
@@ -530,10 +616,85 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
       <div>
         <h3 className="text-lg font-semibold">Import Custom Assets</h3>
         <p className="text-sm text-muted-foreground">
-          Download new .glb/.gltf files and optionally add lightweight preview metadata for catalog
-          cards.
+          Generate furniture with AI, or download .glb/.gltf files. Saved items appear in Custom
+          Library.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="w-4 h-4" />
+            Generate with AI (Meshy)
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Describe the furniture and style; a 3D model will be generated and added to your Custom
+            Library.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!isMeshyConfigured() ? (
+            <p className="text-sm text-amber-600 dark:text-amber-500">
+              Set <code className="rounded bg-muted px-1">VITE_MESHY_API_KEY</code> in your .env
+              file to enable. Get an API key at meshy.ai.
+            </p>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="meshy-prompt">What furniture? (required)</Label>
+                <Input
+                  id="meshy-prompt"
+                  value={meshyPrompt}
+                  onChange={(e) => setMeshyPrompt(e.target.value)}
+                  placeholder="e.g. modern office chair, minimalist desk lamp"
+                  maxLength={600}
+                  disabled={isGeneratingMesh}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="meshy-style">Style (optional)</Label>
+                <Input
+                  id="meshy-style"
+                  value={meshyStyle}
+                  onChange={(e) => setMeshyStyle(e.target.value)}
+                  placeholder="e.g. matte white, Scandinavian wood"
+                  maxLength={600}
+                  disabled={isGeneratingMesh}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="meshy-label">Label in library (optional)</Label>
+                <Input
+                  id="meshy-label"
+                  value={meshyLabel}
+                  onChange={(e) => setMeshyLabel(e.target.value)}
+                  placeholder="e.g. my-chair"
+                  disabled={isGeneratingMesh}
+                />
+              </div>
+              {(meshyStatus ?? meshyProgress != null) && (
+                <p className="text-sm text-muted-foreground">
+                  {meshyStatus}
+                  {meshyProgress != null ? ` ${meshyProgress}%` : ""}
+                </p>
+              )}
+              {meshError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {meshError}
+                </p>
+              )}
+            </>
+          )}
+        </CardContent>
+        <CardFooter>
+          <Button
+            onClick={() => void handleGenerateWithMeshy()}
+            disabled={isGeneratingMesh || !isMeshyConfigured()}
+          >
+            {isGeneratingMesh ? "Generating…" : "Generate & add to Custom Library"}
+          </Button>
+        </CardFooter>
+      </Card>
 
       <Card>
         <CardHeader>

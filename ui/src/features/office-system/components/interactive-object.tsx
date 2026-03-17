@@ -1,5 +1,5 @@
 import { type ThreeEvent, useThree } from "@react-three/fiber";
-import { Move, Settings, SlidersVertical } from "lucide-react";
+import { Move, Settings, SlidersVertical, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OFFICE_INTERACTION_COLORS } from "@/config/office-theme";
@@ -11,6 +11,7 @@ import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { DraggableController } from "../controllers/draggable-controller";
 import { parseOfficeObjectInteractionConfig } from "../office-object-ui";
 import { beginObjectInteractionTrace } from "../utils/object-interaction-perf";
+import { useDeleteOfficeObject } from "../hooks/use-delete-office-object";
 import { ContextMenu, type MenuAction } from "./context-menu";
 import { getBuilderClickAction } from "./interactive-object.builder";
 import {
@@ -81,6 +82,7 @@ export function InteractiveObject({
   metadata,
   allowSettings = true,
   allowTransform = true,
+  allowDelete = true,
   externalGroupRef,
   interactionBounds,
 }: InteractiveObjectProps) {
@@ -372,6 +374,8 @@ export function InteractiveObject({
     setActiveObjectTransformId(objectId);
   }, [objectId, setActiveObjectConfigId, setActiveObjectTransformId]);
 
+  const { deleteObject } = useDeleteOfficeObject(objectId);
+
   const actions: MenuAction[] = useMemo(
     () =>
       customActions || [
@@ -408,14 +412,28 @@ export function InteractiveObject({
               },
             ] satisfies MenuAction[])
           : []),
+        ...(allowDelete
+          ? ([
+              {
+                id: "delete",
+                label: "Delete",
+                icon: Trash2,
+                color: "red",
+                position: "bottom",
+                onClick: () => void deleteObject(),
+              },
+            ] satisfies MenuAction[])
+          : []),
       ],
     [
       customActions,
       handleMoveMouseDown,
       handleSettings,
       handleTransform,
+      deleteObject,
       allowSettings,
       allowTransform,
+      allowDelete,
     ],
   );
 

@@ -21,7 +21,7 @@
 
 "use client";
 
-import { RotateCcw, RotateCw, Settings, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { RotateCcw, RotateCw, Settings, X, ZoomIn, ZoomOut } from "lucide-react";
 import {
   type ReactElement,
   type PointerEvent as ReactPointerEvent,
@@ -30,7 +30,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -301,34 +300,6 @@ export function ObjectTransformPanel(): ReactElement | null {
     }
   };
 
-  const deleteObject = async (): Promise<void> => {
-    if (activeObject.meshType === "team-cluster") {
-      toast.error(
-        `Cannot delete ${objectLabel}. Archive or remove the team/project instead of deleting its scene anchor.`,
-      );
-      return;
-    }
-    setIsSaving(true);
-    setErrorMessage(null);
-    try {
-      const current = await adapter.getOfficeObjects();
-      const knownIds = new Set(current.map((item) => item.id));
-      const persistedId = resolvePersistedOfficeObjectId(activeObject._id, knownIds);
-      const result = await adapter.deleteOfficeObject(persistedId, { currentObjects: current });
-      if (!result.ok) {
-        setErrorMessage(result.error ?? "Failed to delete object.");
-        return;
-      }
-      await refreshOfficeDataSafely(refresh);
-      setActiveObjectTransformId(null);
-      toast.success(`Deleted ${objectLabel}.`);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to delete object.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleHeaderPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return;
     dragOffsetRef.current = {
@@ -442,15 +413,6 @@ export function ObjectTransformPanel(): ReactElement | null {
               disabled={!scaleEnabled || isSaving}
             >
               <ZoomOut className="size-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={() => void deleteObject()}
-              disabled={isSaving}
-            >
-              <Trash2 className="size-4" />
             </Button>
           </div>
 

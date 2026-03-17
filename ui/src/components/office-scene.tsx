@@ -17,11 +17,12 @@
  * - MEM-0150
  */
 
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import { useChatStore } from "@/features/chat-system/chat-store";
 import { useAppStore } from "@/lib/app-store";
+import { getOfficeLayoutBounds } from "@/lib/office-layout";
 import { SceneContents } from "@/components/office-scene/scene-contents";
 import {
   getInitialOfficeCameraConfig,
@@ -38,9 +39,14 @@ const OfficeScene = memo((props: OfficeSceneProps) => {
     isBuilderMode && props.officeViewSettings.viewProfile === "fixed_2_5d";
   const forcePerspective =
     (isChatOpen && presentationMode === "story") || shouldForceBuilderPerspective;
+  const layoutCenter = useMemo(() => {
+    const bounds = getOfficeLayoutBounds(props.officeLayout);
+    return { x: bounds.centerX, z: bounds.centerZ };
+  }, [props.officeLayout]);
   const initialCameraConfig = getInitialOfficeCameraConfig(props.officeViewSettings, {
     forcePerspective,
     isBuilderMode,
+    layoutCenter,
   });
 
   return (

@@ -18,7 +18,9 @@
 "use client";
 
 import { OrbitControls } from "@react-three/drei";
-import { useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
+import { useMemo, useState, useRef, useEffect } from "react";
+import * as THREE from "three";
 import { DestinationDebugger } from "@/components/debug/destination-debugger";
 import { SmartGrid } from "@/components/debug/unified-grid-helper";
 import { PlacementHandler } from "@/components/placement-handler";
@@ -37,6 +39,40 @@ import { useOfficeSceneCameraTransition, useOfficeSceneTheme } from "./use-offic
 import { useOfficeSceneDerivedData } from "./use-office-scene-derived-data";
 import { useOfficeSceneInteractions } from "./use-office-scene-interactions";
 import { getOfficeSceneViewState, isFixedOfficeSceneView } from "./view-profile";
+import { getOfficeLayoutBounds } from "@/lib/office-layout";
+
+/** Clamps orthographic camera zoom to [minZoom, maxZoom] each frame when in fixed 2.5D. */
+function ZoomClamp({ minZoom, maxZoom }: { minZoom: number; maxZoom: number }) {
+  useFrame((state) => {
+    const camera = state.camera as THREE.OrthographicCamera;
+    if (!camera.isOrthographicCamera) return;
+    const z = camera.zoom;
+    if (z < minZoom) camera.zoom = minZoom;
+    else if (z > maxZoom) camera.zoom = maxZoom;
+    if (camera.zoom !== z) camera.updateProjectionMatrix();
+  });
+  return null;
+}
+
+/** Returns current orthographic zoom, updating only when zoom changes beyond threshold. */
+function useCameraZoomWhenFixed(minZoom: number, maxZoom: number, enabled: boolean) {
+  const [zoom, setZoom] = useState(() => minZoom + (maxZoom - minZoom) * 0.5);
+  const last = useRef(zoom);
+  useFrame((state) => {
+    if (!enabled) return;
+    const camera = state.camera as THREE.OrthographicCamera;
+    if (!camera.isOrthographicCamera) return;
+    const z = camera.zoom;
+    if (Math.abs(z - last.current) > 0.08) {
+      last.current = z;
+      setZoom(z);
+    }
+  });
+  useEffect(() => {
+    if (!enabled) last.current = zoom;
+  }, [enabled, zoom]);
+  return zoom;
+}
 
 export function SceneContents(props: OfficeSceneProps): JSX.Element {
   const {
@@ -74,12 +110,21 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
   const isLayoutEditing = sceneBuilderMode && activeBuilderTool !== null;
   // MEM-0170 decision: fixed 2.5D uses compact scene overlays so Html cards cannot occlude the office.
   const useCompactSceneOverlays = isStoryMode ? false : isFixedOfficeSceneView(officeViewSettings);
+  const layoutCenter = useMemo(() => {
+    const bounds = getOfficeLayoutBounds(officeLayout);
+    return { x: bounds.centerX, z: bounds.centerZ };
+  }, [officeLayout]);
   const viewState = getOfficeSceneViewState({
     isBuilderMode: sceneBuilderMode,
     isDragging,
     settings: officeViewSettings,
     forcePerspective,
+    layoutCenter,
   });
+  const isFixed25 = isFixedOfficeSceneView(officeViewSettings) && !forcePerspective;
+  const minZoom = viewState.minZoom ?? 12;
+  const maxZoom = viewState.maxZoom ?? 55;
+  const cameraZoom = useCameraZoomWhenFixed(minZoom, maxZoom, isFixed25);
 
   const { employeesForScene, teamById, desksByTeamId } = useOfficeSceneDerivedData({
     teams,
@@ -117,6 +162,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
     setAnimatingCamera,
     consultCameraTarget,
     forcePerspective,
+    layoutCenter,
   });
 
   const officeObjectsRendered = useMemo(() => {
@@ -155,6 +201,10 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
         sceneBuilderMode={sceneBuilderMode}
       />
 
+      {isFixed25 && viewState.minZoom != null && viewState.maxZoom != null ? (
+        <ZoomClamp minZoom={viewState.minZoom} maxZoom={viewState.maxZoom} />
+      ) : null}
+
       <OrbitControls
         ref={orbitControlsRef}
         enabled={viewState.controlsEnabled && !isLayoutEditing && !consultCameraTarget}
@@ -176,6 +226,8 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
         officeTheme={officeTheme}
         sceneBuilderMode={sceneBuilderMode}
         onBackgroundClick={handleBackgroundClick}
+        cameraZoom={isFixed25 ? cameraZoom : undefined}
+        zoomRange={isFixed25 ? { minZoom, maxZoom } : undefined}
       />
       <OfficeLayoutEditor />
       {!sceneBuilderMode &&

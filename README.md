@@ -231,6 +231,7 @@ Notes:
 - `npm run build` currently preserves the narrower root-owned build gate; use `npm run ui:build` for the Vite bundle.
 - The CLI and UI both read ShellCorp sidecars from `~/.openclaw`.
 - The UI reads `VITE_*` values from `ui/.env.local`; backend/private env stays in the repo-root `.env.local`.
+- Optional: set `VITE_MESHY_API_KEY` (get one at meshy.ai) to enable **Generate with AI** in Decoration → Import; generated GLB furniture is saved to Custom Library.
 - The global `shellcorp` alias comes from the package `bin` entry plus `npm link`.
 - `templates/` is only for bootstrap and scaffolding. It is not the live source of truth after onboarding runs.
 
