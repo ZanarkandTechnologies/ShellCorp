@@ -355,6 +355,7 @@ export async function syncTeamHeartbeatFiles(opts: {
 export async function ensureOpenclawHeartbeatScaffold(opts: {
   store: SidecarStore;
   agentIds: string[];
+  cadenceMinutes?: number;
 }): Promise<number> {
   const config = await opts.store.readOpenclawConfig();
   const agentsNode = asRecord(config.agents);
@@ -362,6 +363,7 @@ export async function ensureOpenclawHeartbeatScaffold(opts: {
   const defaultsHeartbeatNode = asRecord(defaultsNode.heartbeat);
   const list = Array.isArray(agentsNode.list) ? [...agentsNode.list] : [];
   const targetAgentIds = new Set(opts.agentIds);
+  const cadence = `${Math.max(1, opts.cadenceMinutes ?? 3)}m`;
   let touched = 0;
   const nextList = list.map((entry) => {
     const row = asRecord(entry);
@@ -369,7 +371,7 @@ export async function ensureOpenclawHeartbeatScaffold(opts: {
     if (!id || !targetAgentIds.has(id)) return row;
     const heartbeat = asRecord(row.heartbeat);
     touched += 1;
-    return { ...row, heartbeat: { ...heartbeat, every: "3m" } };
+    return { ...row, heartbeat: { ...heartbeat, every: cadence } };
   });
 
   const hooksNode = asRecord(config.hooks);
@@ -396,7 +398,7 @@ export async function ensureOpenclawHeartbeatScaffold(opts: {
         ...defaultsNode,
         heartbeat: {
           ...defaultsHeartbeatNode,
-          every: "3m",
+          every: cadence,
           includeReasoning: true,
           target: "last",
           prompt: "Read HEARTBEAT.md and follow it exactly. End your response with HEARTBEAT_OK.",

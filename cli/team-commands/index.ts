@@ -15,6 +15,7 @@
 import { Command } from "commander";
 import { createSidecarStore } from "../sidecar-store.js";
 import {
+  appendTeamEventLog,
   ensureCommandPermission,
   resolveProjectOrFail,
   resolveTeamIdForAgent,
@@ -32,6 +33,9 @@ import { registerTeamFunds } from "./team-funds.js";
 import { registerTeamBoard } from "./team-board.js";
 import { registerTeamHeartbeat } from "./team-heartbeat.js";
 import { registerTeamProposal } from "./team-proposal.js";
+import { registerTeamPreset } from "./team-preset.js";
+import { registerTeamConfig } from "./team-config.js";
+import { registerTeamRun } from "./team-run.js";
 
 export function registerTeamCommands(program: Command): void {
   const store = createSidecarStore();
@@ -107,6 +111,20 @@ export function registerTeamCommands(program: Command): void {
           stepKey,
           beatId: optionalBeatId(opts.beatId),
         });
+        await appendTeamEventLog({
+          teamId,
+          projectId,
+          kind: "status_reported",
+          agentId,
+          label,
+          detail,
+          data: {
+            activityType,
+            stepKey,
+            taskId: opts.taskId?.trim() || undefined,
+            skillId: opts.skillId?.trim() || undefined,
+          },
+        });
         formatOutput(
           opts.json ? "json" : "text",
           {
@@ -136,6 +154,9 @@ export function registerTeamCommands(program: Command): void {
   registerTeamBoard(team, store);
   registerTeamHeartbeat(team, store);
   registerTeamProposal(team, store);
+  registerTeamPreset(team, store);
+  registerTeamConfig(team, store);
+  registerTeamRun(team, store);
 }
 
 export function registerDoctorCommands(program: Command): void {
