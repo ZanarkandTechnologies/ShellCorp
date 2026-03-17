@@ -21,7 +21,6 @@
  * - MEM-0178
  */
 
-import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -29,8 +28,8 @@ import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import type { Command } from "commander";
+import { installShellcorpCli } from "./cli-install.js";
 import {
   cliBlue,
   cliBold,
@@ -130,13 +129,6 @@ const SHELLCORP_BANNER = `
 const UI_START_COMMAND = "`npm run shell -- ui`";
 const UI_ALIAS_COMMAND = "`shellcorp ui`";
 const CLI_INSTALL_COMMAND = "`npm link`";
-const defaultExecFile = promisify(execFileCallback);
-type OnboardingExecFileRunner = (file: string, args: string[], options: {
-  cwd: string;
-  env: NodeJS.ProcessEnv;
-}) => Promise<{ stdout: string | Buffer; stderr: string | Buffer }>;
-let execFileRunner: OnboardingExecFileRunner = async (file, args, options) =>
-  defaultExecFile(file, args, options);
 
 type OpenclawPreflight = {
   ok: boolean;
@@ -582,68 +574,13 @@ function buildNextSteps(inputValues: {
   return steps;
 }
 
-async function installShellcorpCli(params: {
-  repoRoot: string;
-  requested: boolean;
-}): Promise<OnboardingResult["cliInstall"]> {
-  const command = "npm link";
-  if (!params.requested) {
-    return {
-      attempted: false,
-      ok: false,
-      status: "skipped",
-      command,
-      note: "CLI install skipped. Run `npm link` later if you want the global `shellcorp` alias.",
-    };
-  }
-  const packageJsonPath = path.join(params.repoRoot, "package.json");
-  if (!(await fileExists(packageJsonPath))) {
-    return {
-      attempted: false,
-      ok: false,
-      status: "skipped",
-      command,
-      note: "CLI install skipped because the repo root does not contain a package.json for `npm link`.",
-    };
-  }
-  try {
-    await execFileRunner("npm", ["link"], {
-      cwd: params.repoRoot,
-      env: process.env,
-    });
-    return {
-      attempted: true,
-      ok: true,
-      status: "installed",
-      command,
-      note: "Global `shellcorp` alias is installed for this repo.",
-    };
-  } catch (error) {
-    const detail =
-      error instanceof Error && error.message.trim() ? error.message.trim() : "unknown_error";
-    return {
-      attempted: true,
-      ok: false,
-      status: "failed",
-      command,
-      note: `CLI install failed (${detail}). Run \`npm link\` manually from the repo root if you want the global alias.`,
-    };
-  }
-}
-
-export function setOnboardingExecFileRunnerForTests(
-  runner: OnboardingExecFileRunner | null,
-): void {
-  execFileRunner =
-    runner ??
-    (async (file, args, options) => defaultExecFile(file, args, options));
-}
-
 export function registerOnboardingCommands(program: Command): void {
   const store = createSidecarStore();
   program
     .command("onboarding")
-    .description("Bootstrap first-run sidecars, plugin config, CLI alias, UI env, and doctor checks")
+    .description(
+      "Bootstrap first-run sidecars, plugin config, CLI alias, UI env, and doctor checks",
+    )
     .option("--style <preset>", "Office style preset: default|pixel|brutalist|cozy")
     .option("--gateway-url <url>", "Gateway URL for the UI")
     .option("--gateway-token <token>", "Gateway bearer token for the UI")
@@ -678,15 +615,8 @@ export function registerOnboardingCommands(program: Command): void {
         config: existingOpenclaw,
       });
 
-<<<<<<< HEAD
-=======
       // If OpenClaw created openclaw.json but did not add a "main" agent (e.g. some installers omit agents.list), add it.
->>>>>>> origin/main
-      if (
-        !preflight.ok &&
-        wasOpenclawPresent &&
-        preflight.issues.includes("missing_main_agent")
-      ) {
+      if (!preflight.ok && wasOpenclawPresent && preflight.issues.includes("missing_main_agent")) {
         const patched = ensureMainAgentInConfig(existingOpenclaw);
         await store.writeOpenclawConfig(patched);
         if (!opts.json) {
@@ -698,13 +628,7 @@ export function registerOnboardingCommands(program: Command): void {
           config: updated,
         });
         if (preflight.ok) {
-<<<<<<< HEAD
-          for (const [key, value] of Object.entries(updated)) {
-            existingOpenclaw[key] = value;
-          }
-=======
           Object.assign(existingOpenclaw, updated);
->>>>>>> origin/main
         }
       }
 
