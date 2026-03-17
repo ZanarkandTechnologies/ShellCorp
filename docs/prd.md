@@ -2,7 +2,7 @@
 
 **Status**: Draft  
 **Created**: 2026-02-21  
-**Updated**: 2026-03-13  
+**Updated**: 2026-03-17  
 **Author**: gpt-5.3-codex
 
 ## Documentation Indexes
@@ -35,6 +35,7 @@ Build Shell Company as a UI-first control center on top of OpenClaw:
 5. **Operational surfaces**: improve memory and skill visibility for the active CEO/team workflow.
 6. **Federated work orchestration**: unify external board work (Notion/Vibe/internal) into one operator surface.
 7. **Personalized presence and decor**: let operators style the office after the core founder-control loop is working.
+8. **Roster-first team oversight**: each team surface should show who each agent is, what they are doing now, and keep team coordination anchored to ticket activity and task memory instead of chat-style team conversation.
 
 ## Core Platform Behaviors
 
@@ -52,6 +53,8 @@ Single VPS, one shared OpenClaw instance, a small number of active teams:
 - Support basic chat send/steer actions to OpenClaw
 - Ship the CEO-led team proposal and approval loop as the main office workflow
 - Show per-team board/activity context for newly created teams
+- Make team oversight legible at a glance with compact member presence cards that show face/avatar, live state, latest task context, and quick actions
+- Make team oversight legible through a roster-first Overview plus a board-first Activity worklog tied to ticket execution
 - Ship Notion plugin in-repo and wired for MVP workflows
 - Ship practical Memory and Skills panels for active operators, not broad office clutter
 
@@ -70,6 +73,7 @@ After MVP baseline stabilizes, Shell Company extends from "minimal founder-contr
 - Make CEO-led team formation the primary product value
 - Keep the office small, readable, and useful by default
 - Provide reliable session and agent observability from real OpenClaw state
+- Make it easy to identify each agent on a team by face/avatar, role, and current work without opening separate panels first
 - Package Notion integration as an OpenClaw extension with schema-driven config
 - Keep architecture simple: local VPS state first, no mandatory external DB
 - Make per-agent sandbox and tool policy visible in UI
@@ -106,6 +110,8 @@ After MVP baseline stabilizes, Shell Company extends from "minimal founder-contr
 - Founders can create a team through the CEO proposal loop and execute it through ShellCorp CLI
 - Operators can view the CEO and active teams from OpenClaw-backed data
 - Session timeline and chat bridge work for at least one real founder-to-team flow
+- Team overview surfaces show current agent presence with face/avatar, live state, and latest owned task context
+- Founders can inspect team work through a board-first Activity tab while using direct agent chat only for explicit operator intervention
 - Notion plugin loads and runs under OpenClaw plugin system
 - Memory and Skills panels show actionable state for the CEO and active demo teams
 - Docs/README/specs fully reflect this OpenClaw-first architecture

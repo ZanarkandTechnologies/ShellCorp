@@ -5,9 +5,13 @@
  * - Board task lifecycle: add, move, update, delete, assign, block, done, reopen, reprioritize, list.
  * - Team status reporting (explicit status writes to Convex).
  * - Bot activity log / timeline / next-task queries.
+ *
+ * MEMORY REFERENCES:
+ * - MEM-0202
  */
 import { Command } from "commander";
 import {
+  appendTeamEventLog,
   type SidecarStore,
   ensureCommandPermission,
   resolveProjectOrFail,
@@ -20,6 +24,30 @@ import {
   fail,
 } from "./_shared.js";
 import { postBoardCommand, postBoardQuery, postStatusReport } from "./_convex.js";
+
+async function writeBoardEvent(input: {
+  teamId: string;
+  projectId: string;
+  kind:
+    | "task_added"
+    | "task_moved"
+    | "task_updated"
+    | "task_deleted"
+    | "task_assigned"
+    | "task_blocked"
+    | "task_done"
+    | "task_reopened"
+    | "task_reprioritized"
+    | "status_reported"
+    | "activity_logged";
+  agentId?: string;
+  taskId?: string;
+  label?: string;
+  detail?: string;
+  data?: Record<string, unknown>;
+}): Promise<void> {
+  await appendTeamEventLog(input);
+}
 
 export function registerTeamBoard(team: Command, store: SidecarStore): void {
   const board = team.command("board").description("Manage Convex-backed team board tasks");
@@ -81,6 +109,20 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           beatId: optionalBeatId(opts.beatId),
           detail: opts.detail?.trim() || undefined,
         });
+        await writeBoardEvent({
+          teamId: opts.teamId,
+          projectId,
+          kind: "task_added",
+          agentId: opts.actorAgentId.trim(),
+          taskId: (result.taskId as string | undefined) ?? opts.taskId?.trim(),
+          label: opts.title.trim(),
+          detail: opts.detail?.trim() || undefined,
+          data: {
+            ownerAgentId: opts.ownerAgentId?.trim() || undefined,
+            priority: parseBoardTaskPriority(opts.priority),
+            status: parseBoardTaskStatus(opts.status),
+          },
+        });
         formatOutput(
           opts.json ? "json" : "text",
           { ok: true, teamId: opts.teamId, projectId, result },
@@ -120,6 +162,15 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           actorAgentId: opts.actorAgentId.trim(),
           beatId: optionalBeatId(opts.beatId),
           detail: opts.detail?.trim() || undefined,
+        });
+        await writeBoardEvent({
+          teamId: opts.teamId,
+          projectId,
+          kind: "task_moved",
+          agentId: opts.actorAgentId.trim(),
+          taskId: opts.taskId.trim(),
+          detail: opts.detail?.trim() || undefined,
+          data: { status: parseBoardTaskStatus(opts.status) },
         });
         formatOutput(
           opts.json ? "json" : "text",
@@ -197,6 +248,23 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           actorAgentId: opts.actorAgentId.trim(),
           beatId: optionalBeatId(opts.beatId),
         });
+        await writeBoardEvent({
+          teamId: opts.teamId,
+          projectId,
+          kind: "task_updated",
+          agentId: opts.actorAgentId.trim(),
+          taskId: opts.taskId.trim(),
+          detail: opts.detail?.trim() || undefined,
+          data: {
+            title: opts.title?.trim() || undefined,
+            taskType: opts.taskType?.trim() || undefined,
+            approvalState: opts.approvalState?.trim() || undefined,
+            linkedSessionKey: opts.linkedSessionKey?.trim() || undefined,
+            createdTeamId: opts.createdTeamId?.trim() || undefined,
+            createdProjectId: opts.createdProjectId?.trim() || undefined,
+            dueAt: opts.dueAt,
+          },
+        });
         formatOutput(
           opts.json ? "json" : "text",
           { ok: true, teamId: opts.teamId, projectId, result },
@@ -230,6 +298,13 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           actorType: "operator",
           actorAgentId: opts.actorAgentId.trim(),
           beatId: optionalBeatId(opts.beatId),
+        });
+        await writeBoardEvent({
+          teamId: opts.teamId,
+          projectId,
+          kind: "task_deleted",
+          agentId: opts.actorAgentId.trim(),
+          taskId: opts.taskId.trim(),
         });
         formatOutput(
           opts.json ? "json" : "text",
@@ -268,6 +343,14 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           actorAgentId: opts.actorAgentId.trim(),
           beatId: optionalBeatId(opts.beatId),
         });
+        await writeBoardEvent({
+          teamId: opts.teamId,
+          projectId,
+          kind: "task_assigned",
+          agentId: opts.actorAgentId.trim(),
+          taskId: opts.taskId.trim(),
+          data: { ownerAgentId: opts.ownerAgentId.trim() },
+        });
         formatOutput(
           opts.json ? "json" : "text",
           { ok: true, teamId: opts.teamId, projectId, result },
@@ -303,6 +386,14 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           actorType: "operator",
           actorAgentId: opts.actorAgentId.trim(),
           beatId: optionalBeatId(opts.beatId),
+          detail: opts.reason?.trim() || undefined,
+        });
+        await writeBoardEvent({
+          teamId: opts.teamId,
+          projectId,
+          kind: "task_blocked",
+          agentId: opts.actorAgentId.trim(),
+          taskId: opts.taskId.trim(),
           detail: opts.reason?.trim() || undefined,
         });
         formatOutput(
@@ -342,6 +433,14 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           beatId: optionalBeatId(opts.beatId),
           detail: opts.note?.trim() || undefined,
         });
+        await writeBoardEvent({
+          teamId: opts.teamId,
+          projectId,
+          kind: "task_done",
+          agentId: opts.actorAgentId.trim(),
+          taskId: opts.taskId.trim(),
+          detail: opts.note?.trim() || undefined,
+        });
         formatOutput(
           opts.json ? "json" : "text",
           { ok: true, teamId: opts.teamId, projectId, result },
@@ -377,6 +476,14 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           actorType: "operator",
           actorAgentId: opts.actorAgentId.trim(),
           beatId: optionalBeatId(opts.beatId),
+          detail: opts.note?.trim() || undefined,
+        });
+        await writeBoardEvent({
+          teamId: opts.teamId,
+          projectId,
+          kind: "task_reopened",
+          agentId: opts.actorAgentId.trim(),
+          taskId: opts.taskId.trim(),
           detail: opts.note?.trim() || undefined,
         });
         formatOutput(
@@ -415,6 +522,14 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           actorType: "operator",
           actorAgentId: opts.actorAgentId.trim(),
           beatId: optionalBeatId(opts.beatId),
+        });
+        await writeBoardEvent({
+          teamId: opts.teamId,
+          projectId,
+          kind: "task_reprioritized",
+          agentId: opts.actorAgentId.trim(),
+          taskId: opts.taskId.trim(),
+          data: { priority: parseBoardTaskPriority(opts.priority) },
         });
         formatOutput(
           opts.json ? "json" : "text",
@@ -524,6 +639,20 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           source: opts.source?.trim() || "shellcorp_cli",
           occurredAt: opts.occurredAt,
         });
+        await writeBoardEvent({
+          teamId: opts.teamId.trim(),
+          projectId: resolveProjectOrFail(company, opts.teamId).projectId,
+          kind: "status_reported",
+          agentId,
+          label: state,
+          detail: statusText,
+          data: {
+            stepKey,
+            skillId: opts.skillId?.trim() || undefined,
+            sessionKey: opts.sessionKey?.trim() || undefined,
+            source: opts.source?.trim() || "shellcorp_cli",
+          },
+        });
         formatOutput(
           opts.json ? "json" : "text",
           { ok: true, teamId: opts.teamId, agentId, state, statusText, stepKey, result },
@@ -581,6 +710,21 @@ export function registerTeamBoard(team: Command, store: SidecarStore): void {
           status: opts.state?.trim() || undefined,
           stepKey: opts.stepKey?.trim() || undefined,
           beatId: optionalBeatId(opts.beatId),
+        });
+        await writeBoardEvent({
+          teamId: opts.teamId,
+          projectId,
+          kind: "activity_logged",
+          agentId: opts.agentId.trim(),
+          taskId: opts.taskId?.trim() || undefined,
+          label: opts.label.trim(),
+          detail: opts.detail?.trim() || undefined,
+          data: {
+            activityType: parseBoardActivityType(opts.activityType),
+            skillId: opts.skillId?.trim() || undefined,
+            state: opts.state?.trim() || undefined,
+            stepKey: opts.stepKey?.trim() || undefined,
+          },
         });
         formatOutput(
           opts.json ? "json" : "text",

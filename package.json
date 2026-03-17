@@ -27,6 +27,7 @@
     "format:check": "biome check --files-ignore-unknown=true --linter-enabled=false --assist-enabled=false biome.json package.json cli/team-commands convex extensions/notion skills ui/src/components/hud ui/src/features/team-system ui/src/lib",
     "shell": "npm run --workspace @shellcorp/cli shell --",
     "cli:bundle": "npm run --workspace @shellcorp/cli bundle",
+    "cli:reinstall": "tsx cli/cli-reinstall.ts",
     "prepare": "npm run cli:bundle",
     "ui": "npm run --workspace @shellcorp/ui dev --",
     "ui:build": "npm run --workspace @shellcorp/ui build --",

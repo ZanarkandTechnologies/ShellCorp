@@ -3,14 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  registerOnboardingCommands,
-  setOnboardingExecFileRunnerForTests,
-} from "./onboarding-commands.js";
+import { setCliInstallExecFileRunnerForTests } from "./cli-install.js";
+import { registerOnboardingCommands } from "./onboarding-commands.js";
 
-async function setupRepoFixture(input: {
-  withPackageJson?: boolean;
-} = {}): Promise<{ repoRoot: string; stateDir: string }> {
+async function setupRepoFixture(
+  input: { withPackageJson?: boolean } = {},
+): Promise<{ repoRoot: string; stateDir: string }> {
   const repoRoot = await mkdtemp(path.join(os.tmpdir(), "shellcorp-onboarding-repo-"));
   const stateDir = path.join(repoRoot, "state");
   await mkdir(path.join(repoRoot, "templates", "openclaw"), { recursive: true });
@@ -159,7 +157,7 @@ async function runCommand(args: string[]): Promise<void> {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  setOnboardingExecFileRunnerForTests(null);
+  setCliInstallExecFileRunnerForTests(null);
   delete process.env.OPENCLAW_STATE_DIR;
   delete process.env.SHELLCORP_REPO_ROOT;
   process.exitCode = undefined;
@@ -347,7 +345,9 @@ describe("onboarding CLI", () => {
 
     expect(payload.ok).toBe(true);
     expect(payload.sidecars?.["openclaw.json"]).toBe("updated");
-    expect(payload.nextSteps?.some((step) => step.includes("Review the generated OpenClaw config"))).toBe(true);
+    expect(
+      payload.nextSteps?.some((step) => step.includes("Review the generated OpenClaw config")),
+    ).toBe(true);
     expect(openclaw.agents?.list?.some((entry) => entry.id === "main")).toBe(true);
   });
 
@@ -358,7 +358,7 @@ describe("onboarding CLI", () => {
     await seedOpenclawMainAgent(stateDir);
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const execRunner = vi.fn(async () => ({ stdout: "", stderr: "" }));
-    setOnboardingExecFileRunnerForTests(execRunner);
+    setCliInstallExecFileRunnerForTests(execRunner);
 
     await runCommand(["onboarding", "--yes", "--json"]);
 
@@ -377,14 +377,18 @@ describe("onboarding CLI", () => {
     await seedOpenclawMainAgent(stateDir);
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const execRunner = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
-    setOnboardingExecFileRunnerForTests(execRunner);
+    setCliInstallExecFileRunnerForTests(execRunner);
 
     await runCommand(["onboarding", "--yes", "--install-cli", "--json"]);
 
     const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
       cliInstall?: { status?: string; attempted?: boolean; ok?: boolean };
     };
-    expect(execRunner).toHaveBeenCalledWith("npm", ["link"], expect.objectContaining({ cwd: repoRoot }));
+    expect(execRunner).toHaveBeenCalledWith(
+      "npm",
+      ["link"],
+      expect.objectContaining({ cwd: repoRoot }),
+    );
     expect(payload.cliInstall?.status).toBe("installed");
     expect(payload.cliInstall?.attempted).toBe(true);
     expect(payload.cliInstall?.ok).toBe(true);
@@ -397,7 +401,7 @@ describe("onboarding CLI", () => {
     await seedOpenclawMainAgent(stateDir);
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const execRunner = vi.fn().mockRejectedValue(new Error("boom"));
-    setOnboardingExecFileRunnerForTests(execRunner);
+    setCliInstallExecFileRunnerForTests(execRunner);
 
     await runCommand(["onboarding", "--yes", "--install-cli", "--json"]);
 
@@ -419,7 +423,7 @@ describe("onboarding CLI", () => {
     await seedOpenclawMainAgent(stateDir);
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const execRunner = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
-    setOnboardingExecFileRunnerForTests(execRunner);
+    setCliInstallExecFileRunnerForTests(execRunner);
 
     await runCommand(["onboarding", "--yes", "--install-cli", "--skip-install-cli", "--json"]);
 
@@ -430,5 +434,4 @@ describe("onboarding CLI", () => {
     expect(payload.cliInstall?.attempted).toBe(false);
     expect(execRunner).not.toHaveBeenCalled();
   });
-
 });

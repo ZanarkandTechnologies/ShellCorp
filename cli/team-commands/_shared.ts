@@ -12,10 +12,11 @@
  * MEMORY REFERENCES:
  * - MEM-0104
  * - MEM-0183
+ * - MEM-0199
  */
 
 import { execFile } from "node:child_process";
-import { access, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, appendFile, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
@@ -75,6 +76,32 @@ export type StatusReportState =
 export type ConfigEntry = [string, string];
 
 export type OpenclawAgentEntry = Record<string, unknown> & { id: string };
+export type TeamEventKind =
+  | "heartbeat_config_updated"
+  | "task_added"
+  | "task_moved"
+  | "task_updated"
+  | "task_deleted"
+  | "task_assigned"
+  | "task_blocked"
+  | "task_done"
+  | "task_reopened"
+  | "task_reprioritized"
+  | "status_reported"
+  | "activity_logged";
+
+export type TeamEventRecord = {
+  id: string;
+  ts: string;
+  kind: TeamEventKind;
+  teamId: string;
+  projectId: string;
+  agentId?: string;
+  taskId?: string;
+  label?: string;
+  detail?: string;
+  data?: Record<string, unknown>;
+};
 
 export interface TeamSummary {
   teamId: string;
@@ -719,6 +746,18 @@ export async function resolveSkillSourceDirectory(
   return null;
 }
 
+export async function resolveWorkspaceSkillsRoot(): Promise<string> {
+  const candidates = [
+    path.resolve(process.cwd(), "skills"),
+    path.resolve(process.cwd(), "..", "skills"),
+    path.resolve(process.cwd(), "..", "..", "skills"),
+  ];
+  for (const candidate of new Set(candidates)) {
+    if (await isDirectory(candidate)) return candidate;
+  }
+  return candidates[0];
+}
+
 export function tryResolveWorkspaceFromOpenclawConfig(
   openclawConfig: Record<string, unknown>,
   stateRoot: string,
@@ -1231,6 +1270,72 @@ export function resolveOpenclawStateRoot(): string {
   return process.env.OPENCLAW_STATE_DIR?.trim()
     ? path.resolve(process.env.OPENCLAW_STATE_DIR.trim())
     : path.join(process.env.HOME || "", ".openclaw");
+}
+
+export function resolveOpenclawConfigPath(): string {
+  return path.join(resolveOpenclawStateRoot(), "openclaw.json");
+}
+
+export function resolveProjectRuntimeRoot(projectId: string): string {
+  return path.join(resolveOpenclawStateRoot(), "projects", projectId);
+}
+
+export function resolveProjectLogsDir(projectId: string): string {
+  return path.join(resolveProjectRuntimeRoot(projectId), "logs");
+}
+
+export function resolveProjectOutputsDir(projectId: string): string {
+  return path.join(resolveProjectRuntimeRoot(projectId), "outputs");
+}
+
+export function resolveProjectEventsLogPath(projectId: string): string {
+  return path.join(resolveProjectLogsDir(projectId), "events.jsonl");
+}
+
+export async function appendTeamEventLog(input: {
+  teamId: string;
+  projectId: string;
+  kind: TeamEventKind;
+  agentId?: string;
+  taskId?: string;
+  label?: string;
+  detail?: string;
+  data?: Record<string, unknown>;
+}): Promise<TeamEventRecord> {
+  const record: TeamEventRecord = {
+    id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    ts: new Date().toISOString(),
+    kind: input.kind,
+    teamId: input.teamId,
+    projectId: input.projectId,
+    agentId: input.agentId?.trim() || undefined,
+    taskId: input.taskId?.trim() || undefined,
+    label: input.label?.trim() || undefined,
+    detail: input.detail?.trim() || undefined,
+    data: input.data,
+  };
+  const logPath = resolveProjectEventsLogPath(input.projectId);
+  await mkdir(path.dirname(logPath), { recursive: true });
+  await appendFile(logPath, `${JSON.stringify(record)}\n`, "utf-8");
+  return record;
+}
+
+export async function readRecentTeamEvents(
+  projectId: string,
+  limit = 20,
+): Promise<TeamEventRecord[]> {
+  const logPath = resolveProjectEventsLogPath(projectId);
+  try {
+    const raw = await readFile(logPath, "utf-8");
+    const rows = raw
+      .split("\n")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => JSON.parse(entry) as TeamEventRecord);
+    return rows.slice(-limit);
+  } catch {
+    return [];
+  }
 }
 
 // Re-export node helpers used by domain modules so they can import from one place.

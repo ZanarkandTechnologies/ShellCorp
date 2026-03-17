@@ -27,6 +27,7 @@ import {
   defaultProjectResources,
   buildTeamBusinessSkillTargets,
   applyAgentSkillsByMode,
+  resolveWorkspaceSkillsRoot,
   resolveSkillSourceDirectory,
   tryResolveWorkspaceFromOpenclawConfig,
   resolveOpenclawStateRoot,
@@ -400,7 +401,7 @@ export function registerTeamBusiness(team: Command, store: SidecarStore): void {
       ]);
       const stateRoot = resolveOpenclawStateRoot();
       const openclawConfig = await store.readOpenclawConfig();
-      const skillsRoot = path.resolve(process.cwd(), "skills");
+      const skillsRoot = await resolveWorkspaceSkillsRoot();
       const rows: Array<{
         agentId: string;
         role: BusinessTeamRole;

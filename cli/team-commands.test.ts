@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { registerAgentCommands } from "./agent-commands.js";
 import { registerDoctorCommands, registerTeamCommands } from "./team-commands/index.js";
 
 const baseCompany = {
@@ -65,6 +66,8 @@ const baseCompany = {
 type CompanySnapshot = {
   projects: Array<{
     id: string;
+    name?: string;
+    goal?: string;
     status: string;
     kpis: string[];
     businessConfig?: {
@@ -116,7 +119,12 @@ type CompanySnapshot = {
     }>;
   }>;
   roleSlots: Array<{ projectId: string; desiredCount: number; role?: string }>;
-  heartbeatProfiles: Array<{ id: string; goal: string }>;
+  heartbeatProfiles: Array<{
+    id: string;
+    goal: string;
+    cadenceMinutes?: number;
+    teamDescription?: string;
+  }>;
   agents: Array<{
     agentId?: string;
     projectId?: string;
@@ -167,6 +175,7 @@ async function setupStateDir(): Promise<string> {
 async function runCommand(args: string[]): Promise<void> {
   const program = new Command();
   registerTeamCommands(program);
+  registerAgentCommands(program);
   registerDoctorCommands(program);
   await program.parseAsync(args, { from: "user" });
 }
@@ -264,6 +273,560 @@ describe("team CLI", () => {
         .filter((entry) => entry.projectId === "proj-alpha")
         .every((entry) => entry.desiredCount === 0),
     ).toBe(true);
+  });
+
+  it("previews the ShellCorp dev preset without mutating state", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(["team", "preset", "dev", "--json"]);
+
+    expect(logSpy).toHaveBeenCalled();
+    const previewPayload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      mode?: string;
+      presetId?: string;
+      teamId?: string;
+      marketerMode?: string;
+      rolePlan?: { persistent?: string[]; elastic?: string[] };
+      skillPlan?: Array<{ role?: string; targetSkills?: string[] }>;
+    };
+    expect(previewPayload.mode).toBe("preview");
+    expect(previewPayload.presetId).toBe("shellcorp_dev_team");
+    expect(previewPayload.teamId).toBe("team-proj-shellcorp-dev-team");
+    expect(previewPayload.marketerMode).toBe("elastic");
+    expect(previewPayload.rolePlan?.persistent).toEqual(["pm", "builder"]);
+    expect(previewPayload.rolePlan?.elastic).toEqual(["growth_marketer"]);
+    expect(
+      previewPayload.skillPlan?.find((entry) => entry.role === "pm")?.targetSkills ?? [],
+    ).toContain("shellcorp-competitor-feature-scout");
+
+    const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const company = JSON.parse(companyRaw) as CompanySnapshot;
+    expect(company.projects).toHaveLength(0);
+    expect(company.roleSlots).toHaveLength(0);
+    const openclawAgentIds = await readOpenclawAgentIds(stateDir);
+    expect(openclawAgentIds).toEqual(["main"]);
+    logSpy.mockRestore();
+  });
+
+  it("applies the ShellCorp dev preset with PM/Dev core and previewable skills", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+
+    await runCommand(["team", "preset", "dev", "--apply", "--with-cluster", "--json"]);
+
+    const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const company = JSON.parse(companyRaw) as CompanySnapshot & {
+      heartbeatProfiles: Array<{
+        id: string;
+        goal: string;
+        cadenceMinutes?: number;
+        teamDescription?: string;
+      }>;
+    };
+    const project = company.projects.find((entry) => entry.id === "proj-shellcorp-dev-team");
+    expect(project?.name).toBe("ShellCorp Dev Team");
+    expect(project?.goal).toContain("Continuously improve ShellCorp");
+    expect(project?.kpis).toEqual([
+      "feature-throughput",
+      "proposal-acceptance",
+      "demo-readiness",
+    ]);
+
+    const roleSlots = company.roleSlots.filter((entry) => entry.projectId === "proj-shellcorp-dev-team");
+    expect(roleSlots.find((entry) => entry.role === "pm")?.desiredCount).toBe(1);
+    expect(roleSlots.find((entry) => entry.role === "builder")?.desiredCount).toBe(1);
+    expect(roleSlots.find((entry) => entry.role === "growth_marketer")?.desiredCount).toBe(0);
+
+    const teamAgents = company.agents.filter((entry) => entry.projectId === "proj-shellcorp-dev-team");
+    expect(teamAgents.map((entry) => entry.role)).toEqual(["pm", "builder"]);
+    expect(teamAgents.every((entry) => entry.heartbeatProfileId === "hb-team-proj-shellcorp-dev-team")).toBe(
+      true,
+    );
+    const heartbeatProfile = company.heartbeatProfiles.find(
+      (entry) => entry.id === "hb-team-proj-shellcorp-dev-team",
+    );
+    expect(heartbeatProfile?.cadenceMinutes).toBe(3);
+    expect(heartbeatProfile?.teamDescription).toContain("Internal product team");
+
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclawConfig = JSON.parse(openclawRaw) as {
+      agents?: {
+        list?: Array<{ id?: string; skills?: string[]; heartbeat?: { every?: string } }>;
+      };
+    };
+    const pmEntry = (openclawConfig.agents?.list ?? []).find(
+      (entry) => entry.id === "shellcorp-dev-team-pm",
+    );
+    const builderEntry = (openclawConfig.agents?.list ?? []).find(
+      (entry) => entry.id === "shellcorp-dev-team-builder",
+    );
+    expect(pmEntry?.skills).toContain("shellcorp-competitor-feature-scout");
+    expect(pmEntry?.skills).toContain("create-team");
+    expect(builderEntry?.skills).toEqual([
+      "shellcorp-team-cli",
+      "shellcorp-kanban-ops",
+      "status-self-reporter",
+    ]);
+    expect(pmEntry?.heartbeat?.every).toBe("3m");
+    expect(builderEntry?.heartbeat?.every).toBe("3m");
+
+    await access(
+      path.join(
+        stateDir,
+        "workspace-shellcorp-dev-team-pm",
+        "skills",
+        "shellcorp-competitor-feature-scout",
+        "SKILL.md",
+      ),
+    );
+    await access(
+      path.join(
+        stateDir,
+        "workspace-shellcorp-dev-team-builder",
+        "skills",
+        "shellcorp-team-cli",
+        "SKILL.md",
+      ),
+    );
+    await access(path.join(stateDir, "workspace-shellcorp-dev-team-pm", "PRESET.md"));
+    await access(path.join(stateDir, "workspace-shellcorp-dev-team-builder", "PRESET.md"));
+
+    const officeObjects = await readOfficeObjects(stateDir);
+    expect(
+      officeObjects.some(
+        (entry) =>
+          entry.meshType === "team-cluster" && entry.metadata?.teamId === "team-proj-shellcorp-dev-team",
+      ),
+    ).toBe(true);
+  });
+
+  it("reapplies the ShellCorp dev preset additively without deleting extra agents", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await runCommand(["team", "preset", "dev", "--apply", "--json"]);
+
+    const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const company = JSON.parse(companyRaw) as CompanySnapshot;
+    company.agents.push({
+      agentId: "shellcorp-dev-team-extra",
+      projectId: "proj-shellcorp-dev-team",
+      heartbeatProfileId: "hb-pm",
+      role: "builder",
+    });
+    await writeFile(path.join(stateDir, "company.json"), `${JSON.stringify(company, null, 2)}\n`, "utf-8");
+
+    await runCommand([
+      "team",
+      "preset",
+      "dev",
+      "--team-id",
+      "team-proj-shellcorp-dev-team",
+      "--apply",
+      "--json",
+    ]);
+
+    const refreshedRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const refreshed = JSON.parse(refreshedRaw) as CompanySnapshot;
+    expect(
+      refreshed.agents.some((entry) => entry.agentId === "shellcorp-dev-team-extra"),
+    ).toBe(true);
+  });
+
+  it("shows team config and manages file-backed resources markdown", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Config Team",
+      "--description",
+      "Config demo",
+      "--goal",
+      "Keep config simple",
+      "--auto-roles",
+      "pm,builder",
+    ]);
+    await runCommand([
+      "team",
+      "config",
+      "resources",
+      "init",
+      "--team-id",
+      "team-proj-config-team",
+      "--json",
+    ]);
+    await runCommand([
+      "team",
+      "config",
+      "resources",
+      "set",
+      "--team-id",
+      "team-proj-config-team",
+      "--text",
+      "# Resources\n\ncash_budget_usd: 250\nnotes: operator editable\n",
+      "--json",
+    ]);
+    await runCommand([
+      "team",
+      "config",
+      "show",
+      "--team-id",
+      "team-proj-config-team",
+      "--json",
+    ]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      team?: { name?: string };
+      agents?: Array<{ agentId?: string }>;
+      resourcesMarkdown?: { exists?: boolean; text?: string; path?: string };
+      cronJobs?: unknown[];
+    };
+    expect(payload.team?.name).toBe("Config Team");
+    expect(payload.agents?.map((entry) => entry.agentId)).toEqual([
+      "config-team-pm",
+      "config-team-builder",
+    ]);
+    expect(payload.resourcesMarkdown?.exists).toBe(true);
+    expect(payload.resourcesMarkdown?.text).toContain("cash_budget_usd: 250");
+    await access(payload.resourcesMarkdown?.path ?? "");
+    expect(Array.isArray(payload.cronJobs)).toBe(true);
+    logSpy.mockRestore();
+  });
+
+  it("updates agent config for skills and dedicated heartbeat profile", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Agent Team",
+      "--description",
+      "Agent config demo",
+      "--goal",
+      "Tune one agent",
+      "--auto-roles",
+      "pm,builder",
+    ]);
+
+    await runCommand([
+      "agent",
+      "config",
+      "set-skills",
+      "--agent-id",
+      "agent-team-builder",
+      "--skills",
+      "shellcorp-team-cli,status-self-reporter",
+      "--sync-workspace",
+      "--json",
+    ]);
+    await runCommand([
+      "agent",
+      "config",
+      "set-heartbeat",
+      "--agent-id",
+      "agent-team-builder",
+      "--cadence-minutes",
+      "2",
+      "--goal",
+      "Test builder loop",
+      "--json",
+    ]);
+
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclawConfig = JSON.parse(openclawRaw) as {
+      agents?: { list?: Array<{ id?: string; skills?: string[] }> };
+    };
+    const builderEntry = (openclawConfig.agents?.list ?? []).find(
+      (entry) => entry.id === "agent-team-builder",
+    );
+    expect(builderEntry?.skills).toEqual(["shellcorp-team-cli", "status-self-reporter"]);
+    await access(
+      path.join(
+        stateDir,
+        "workspace-agent-team-builder",
+        "skills",
+        "shellcorp-team-cli",
+        "SKILL.md",
+      ),
+    );
+
+    const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const company = JSON.parse(companyRaw) as CompanySnapshot;
+    const builderAgent = company.agents.find((entry) => entry.agentId === "agent-team-builder");
+    expect(builderAgent?.heartbeatProfileId).toBe("hb-agent-agent-team-builder");
+    const profile = company.heartbeatProfiles.find(
+      (entry) => entry.id === "hb-agent-agent-team-builder",
+    );
+    expect(profile?.goal).toBe("Test builder loop");
+    expect(profile?.cadenceMinutes).toBe(2);
+  });
+
+  it("enables test mode through the simplified team run surface", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Run Team",
+      "--description",
+      "Run config demo",
+      "--goal",
+      "Observe heartbeat quickly",
+      "--auto-roles",
+      "pm,builder",
+    ]);
+    await runCommand([
+      "team",
+      "run",
+      "test-mode",
+      "--team-id",
+      "team-proj-run-team",
+      "--cadence-minutes",
+      "1",
+      "--goal",
+      "Fast demo loop",
+      "--json",
+    ]);
+
+    const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const company = JSON.parse(companyRaw) as CompanySnapshot;
+    const heartbeat = company.heartbeatProfiles.find((entry) => entry.id === "hb-team-proj-run-team");
+    expect(heartbeat?.cadenceMinutes).toBe(1);
+    expect(heartbeat?.goal).toBe("Fast demo loop");
+    expect(
+      company.agents
+        .filter((entry) => entry.projectId === "proj-run-team")
+        .every((entry) => entry.heartbeatProfileId === "hb-team-proj-run-team"),
+    ).toBe(true);
+  });
+
+  it("enables live mode through the simplified team run surface and syncs openclaw heartbeat cadence", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Live Team",
+      "--description",
+      "Live config demo",
+      "--goal",
+      "Exercise the real heartbeat loop",
+      "--auto-roles",
+      "pm,builder",
+    ]);
+    await runCommand([
+      "team",
+      "run",
+      "live",
+      "--team-id",
+      "team-proj-live-team",
+      "--cadence-minutes",
+      "1",
+      "--goal",
+      "Live demo loop",
+      "--json",
+    ]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      heartbeatProfileId?: string;
+      updatedOpenclawAgents?: number;
+      runtime?: {
+        openclawConfigPath?: string;
+        eventsLogPath?: string;
+        agentWorkspaces?: Array<{ agentId?: string; openclawHeartbeatEvery?: string; heartbeatFilePath?: string }>;
+      };
+    };
+    expect(payload.heartbeatProfileId).toBe("hb-team-proj-live-team");
+    expect(payload.updatedOpenclawAgents).toBe(2);
+    expect(payload.runtime?.openclawConfigPath).toBe(path.join(stateDir, "openclaw.json"));
+    expect(payload.runtime?.eventsLogPath).toBe(
+      path.join(stateDir, "projects", "proj-live-team", "logs", "events.jsonl"),
+    );
+    expect(
+      payload.runtime?.agentWorkspaces?.every((entry) => entry.openclawHeartbeatEvery === "1m"),
+    ).toBe(true);
+    await access(payload.runtime?.agentWorkspaces?.[0]?.heartbeatFilePath ?? "");
+    await access(payload.runtime?.eventsLogPath ?? "");
+
+    const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
+    const company = JSON.parse(companyRaw) as CompanySnapshot;
+    const heartbeat = company.heartbeatProfiles.find((entry) => entry.id === "hb-team-proj-live-team");
+    expect(heartbeat?.cadenceMinutes).toBe(1);
+    expect(heartbeat?.goal).toBe("Live demo loop");
+
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclawConfig = JSON.parse(openclawRaw) as {
+      agents?: { list?: Array<{ id?: string; heartbeat?: { every?: string } }> };
+    };
+    const liveEntries = (openclawConfig.agents?.list ?? []).filter((entry) =>
+      entry.id === "live-team-pm" || entry.id === "live-team-builder",
+    );
+    expect(liveEntries).toHaveLength(2);
+    expect(liveEntries.every((entry) => entry.heartbeat?.every === "1m")).toBe(true);
+    const eventsRaw = await readFile(
+      path.join(stateDir, "projects", "proj-live-team", "logs", "events.jsonl"),
+      "utf-8",
+    );
+    expect(eventsRaw).toContain('"kind":"heartbeat_config_updated"');
+    logSpy.mockRestore();
+  });
+
+  it("includes runtime inspection paths in team monitor output", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Monitor Team",
+      "--description",
+      "Monitor config demo",
+      "--goal",
+      "Inspect runtime files",
+      "--auto-roles",
+      "pm,builder",
+    ]);
+    await runCommand([
+      "team",
+      "monitor",
+      "--team-id",
+      "team-proj-monitor-team",
+      "--json",
+    ]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      runtime?: {
+        stateRoot?: string;
+        openclawConfigPath?: string;
+        logsDir?: string;
+        outputsDir?: string;
+        eventsLogPath?: string;
+        agentWorkspaces?: Array<{
+          agentId?: string;
+          workspacePath?: string;
+          heartbeatFilePath?: string;
+          openclawAgentFound?: boolean;
+        }>;
+      };
+    };
+    expect(payload.runtime?.stateRoot).toBe(stateDir);
+    expect(payload.runtime?.openclawConfigPath).toBe(path.join(stateDir, "openclaw.json"));
+    expect(payload.runtime?.logsDir).toBe(path.join(stateDir, "projects", "proj-monitor-team", "logs"));
+    expect(payload.runtime?.outputsDir).toBe(
+      path.join(stateDir, "projects", "proj-monitor-team", "outputs"),
+    );
+    expect(payload.runtime?.eventsLogPath).toBe(
+      path.join(stateDir, "projects", "proj-monitor-team", "logs", "events.jsonl"),
+    );
+    expect(payload.runtime?.agentWorkspaces).toHaveLength(2);
+    expect(payload.runtime?.agentWorkspaces?.every((entry) => entry.openclawAgentFound)).toBe(true);
+    await access(payload.runtime?.agentWorkspaces?.[0]?.heartbeatFilePath ?? "");
+    logSpy.mockRestore();
+  });
+
+  it("appends task and status activity into the team events log exposed by monitor", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    process.env.SHELLCORP_CONVEX_SITE_URL = "https://shellcorp.example";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        if (String(_input).endsWith("/board/command")) {
+          if (body.command === "task_add") {
+            return new Response(JSON.stringify({ ok: true, taskId: "task-1" }), { status: 200 });
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }
+        if (String(_input).endsWith("/status/report")) {
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }
+        throw new Error(`unexpected_fetch:${String(_input)}`);
+      }),
+    );
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Event Team",
+      "--description",
+      "Event logging demo",
+      "--goal",
+      "Track tasks and status",
+      "--auto-roles",
+      "builder",
+    ]);
+    await runCommand([
+      "team",
+      "board",
+      "task",
+      "add",
+      "--team-id",
+      "team-proj-event-team",
+      "--title",
+      "Draft log UI",
+      "--actor-agent-id",
+      "main",
+    ]);
+    await runCommand([
+      "team",
+      "status",
+      "report",
+      "--team-id",
+      "team-proj-event-team",
+      "--agent-id",
+      "event-team-builder",
+      "--state",
+      "planning",
+      "--status-text",
+      "Reviewing task stream",
+    ]);
+    await runCommand([
+      "team",
+      "monitor",
+      "--team-id",
+      "team-proj-event-team",
+      "--json",
+    ]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      runtime?: { recentEvents?: Array<{ kind?: string; label?: string; detail?: string }> };
+    };
+    expect(payload.runtime?.recentEvents?.some((entry) => entry.kind === "task_added")).toBe(true);
+    expect(payload.runtime?.recentEvents?.some((entry) => entry.kind === "status_reported")).toBe(true);
+    logSpy.mockRestore();
+  });
+
+  it("resolves preset skill sources when the CLI runs from the cli workspace", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const originalCwd = process.cwd();
+    process.chdir(path.join(originalCwd, "cli"));
+    try {
+      await runCommand(["team", "preset", "dev", "--apply", "--json"]);
+    } finally {
+      process.chdir(originalCwd);
+    }
+
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclaw = JSON.parse(openclawRaw) as {
+      agents?: { list?: Array<{ id?: string; workspace?: string }> };
+    };
+    const pmWorkspace =
+      openclaw.agents?.list?.find((entry) => entry.id === "shellcorp-dev-team-pm")?.workspace ?? "";
+    await access(path.join(pmWorkspace, "skills", "shellcorp-team-cli", "SKILL.md"));
+    await access(path.join(pmWorkspace, "skills", "status-self-reporter", "SKILL.md"));
   });
 
   it("removes archived team clusters from office sidecar state", async () => {

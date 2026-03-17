@@ -19,6 +19,7 @@
  */
 import { Command } from "commander";
 import { registerOfficeCommands } from "./office-commands.js";
+import { registerAgentCommands } from "./agent-commands.js";
 import { registerOnboardingCommands } from "./onboarding-commands.js";
 import { registerDoctorCommands, registerTeamCommands } from "./team-commands/index.js";
 import { registerUiCommands } from "./ui-commands.js";
@@ -38,6 +39,7 @@ async function main(): Promise<void> {
   registerOnboardingCommands(program);
   registerUiCommands(program);
   registerTeamCommands(program);
+  registerAgentCommands(program);
   registerDoctorCommands(program);
   registerOfficeCommands(program);
 
