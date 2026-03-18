@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
@@ -842,6 +842,37 @@ describe("team CLI", () => {
           }
           return new Response(JSON.stringify({ ok: true }), { status: 200 });
         }
+        if (String(_input).endsWith("/board/query")) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              data: [
+                {
+                  sourceType: "board_event",
+                  eventType: "task_created",
+                  label: "Draft log UI",
+                  detail: undefined,
+                  taskId: "task-1",
+                  actorAgentId: "main",
+                  occurredAt: Date.now() - 1000,
+                  projectId: "proj-event-team",
+                  teamId: "team-proj-event-team",
+                },
+                {
+                  sourceType: "agent_event",
+                  eventType: "status_report",
+                  label: "planning",
+                  detail: "Reviewing task stream",
+                  agentId: "event-team-builder",
+                  occurredAt: Date.now(),
+                  projectId: "proj-event-team",
+                  teamId: "team-proj-event-team",
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
         if (String(_input).endsWith("/status/report")) {
           return new Response(JSON.stringify({ ok: true }), { status: 200 });
         }
@@ -898,6 +929,85 @@ describe("team CLI", () => {
     };
     expect(payload.runtime?.recentEvents?.some((entry) => entry.kind === "task_added")).toBe(true);
     expect(payload.runtime?.recentEvents?.some((entry) => entry.kind === "status_reported")).toBe(true);
+    logSpy.mockRestore();
+  });
+
+  it("prefers Convex timeline rows over the sidecar events log for team monitor", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "https://shellcorp.example";
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Timeline Team",
+      "--description",
+      "Convex timeline demo",
+      "--goal",
+      "Prefer Convex recent events",
+      "--auto-roles",
+      "builder",
+    ]);
+
+    await mkdir(path.join(stateDir, "projects", "proj-timeline-team", "logs"), { recursive: true });
+    await writeFile(
+      path.join(stateDir, "projects", "proj-timeline-team", "logs", "events.jsonl"),
+      `${JSON.stringify({
+        id: "evt-local-1",
+        ts: new Date(Date.now() - 5000).toISOString(),
+        kind: "heartbeat_config_updated",
+        teamId: "team-proj-timeline-team",
+        projectId: "proj-timeline-team",
+        label: "local-fallback-only",
+      })}\n`,
+      "utf-8",
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        if (String(_input).endsWith("/board/query") && body.query === "timeline") {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              data: [
+                {
+                  sourceType: "agent_event",
+                  eventType: "status_report",
+                  label: "planning",
+                  detail: "convex-recent-event",
+                  agentId: "timeline-team-builder",
+                  occurredAt: Date.now(),
+                  projectId: "proj-timeline-team",
+                  teamId: "team-proj-timeline-team",
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        throw new Error(`unexpected_fetch:${String(_input)}`);
+      }),
+    );
+
+    await runCommand([
+      "team",
+      "monitor",
+      "--team-id",
+      "team-proj-timeline-team",
+      "--json",
+    ]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      runtime?: { recentEvents?: Array<{ kind?: string; detail?: string; label?: string }> };
+    };
+    expect(payload.runtime?.recentEvents?.[0]?.detail).toBe("convex-recent-event");
+    expect(payload.runtime?.recentEvents?.some((entry) => entry.label === "local-fallback-only")).toBe(
+      false,
+    );
     logSpy.mockRestore();
   });
 
@@ -2151,6 +2261,63 @@ describe("team CLI", () => {
     expect(queryPayloads.some((payload) => payload.teamId === "team-proj-delta")).toBe(true);
   });
 
+  it("resolves Convex site URL from persisted openclaw shellcorp config", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    delete process.env.SHELLCORP_CONVEX_SITE_URL;
+    delete process.env.CONVEX_SITE_URL;
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "PersistedUrl",
+      "--description",
+      "Persisted URL team",
+      "--goal",
+      "Use saved convex url",
+      "--auto-roles",
+      "builder",
+    ]);
+
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclawConfig = JSON.parse(openclawRaw) as Record<string, unknown>;
+    await writeFile(
+      path.join(stateDir, "openclaw.json"),
+      `${JSON.stringify(
+        {
+          ...openclawConfig,
+          shellcorp: {
+            ...(typeof openclawConfig.shellcorp === "object" && openclawConfig.shellcorp
+              ? (openclawConfig.shellcorp as Record<string, unknown>)
+              : {}),
+            convex: { siteUrl: "https://persisted.convex.site" },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
+
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      const payload = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      if (url === "https://persisted.convex.site/board/query" && payload.query === "tasks") {
+        return new Response(JSON.stringify({ ok: true, data: { tasks: [] } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runCommand(["team", "board", "task", "list", "--team-id", "team-proj-persistedurl", "--json"]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://persisted.convex.site/board/query",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("validates Convex site URL before board calls", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
@@ -2319,6 +2486,249 @@ describe("team CLI", () => {
       label: "planning",
       detail: "Planning shortcut turn",
     });
+  });
+
+  it("lists and searches agents across team/runtime context", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Alpha",
+      "--description",
+      "Alpha team",
+      "--goal",
+      "Ship fast",
+      "--auto-roles",
+      "builder,pm",
+    ]);
+
+    await runCommand(["agent", "list", "--team-id", "team-proj-alpha", "--json"]);
+    const listPayload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      agents?: Array<{ agentId?: string; teamId?: string; openclawFound?: boolean }>;
+    };
+    expect(listPayload.agents?.map((entry) => entry.agentId)).toEqual(["alpha-builder", "alpha-pm"]);
+    expect(listPayload.agents?.every((entry) => entry.teamId === "team-proj-alpha")).toBe(true);
+    expect(listPayload.agents?.every((entry) => entry.openclawFound)).toBe(true);
+
+    await runCommand(["agent", "search", "--query", "builder", "--json"]);
+    const searchPayload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      agents?: Array<{ agentId?: string }>;
+    };
+    expect(searchPayload.agents?.map((entry) => entry.agentId)).toContain("alpha-builder");
+
+    logSpy.mockRestore();
+  });
+
+  it("prints shell exports for agent login and resolves whoami from session env", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Alpha",
+      "--description",
+      "Alpha team",
+      "--goal",
+      "Ship fast",
+      "--auto-roles",
+      "builder,pm",
+    ]);
+
+    await runCommand(["agent", "login", "--agent-id", "alpha-pm"]);
+    const loginOutput = String(logSpy.mock.calls.at(-1)?.[0] ?? "");
+    expect(loginOutput).toContain('export SHELLCORP_AGENT_ID="alpha-pm"');
+    expect(loginOutput).toContain('export SHELLCORP_TEAM_ID="team-proj-alpha"');
+    expect(loginOutput).toContain('export SHELLCORP_PROJECT_ID="proj-alpha"');
+    expect(loginOutput).toContain('export SHELLCORP_ACTOR_ROLE="pm"');
+
+    process.env.SHELLCORP_AGENT_ID = "alpha-pm";
+    process.env.SHELLCORP_TEAM_ID = "team-proj-alpha";
+    process.env.SHELLCORP_PROJECT_ID = "proj-alpha";
+    process.env.SHELLCORP_ACTOR_ROLE = "pm";
+
+    await runCommand(["whoami", "--json"]);
+    const whoamiPayload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      actor?: { agentId?: string; teamId?: string; projectId?: string; actorRole?: string };
+    };
+    expect(whoamiPayload.actor).toMatchObject({
+      agentId: "alpha-pm",
+      teamId: "team-proj-alpha",
+      projectId: "proj-alpha",
+      actorRole: "pm",
+    });
+
+    logSpy.mockRestore();
+  });
+
+  it("uses logged-in agent env to attribute top-level status without explicit flags", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "https://example.convex.site";
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Alpha",
+      "--description",
+      "Alpha team",
+      "--goal",
+      "Ship fast",
+      "--auto-roles",
+      "builder,pm",
+    ]);
+
+    process.env.SHELLCORP_AGENT_ID = "alpha-pm";
+    process.env.SHELLCORP_TEAM_ID = "team-proj-alpha";
+    process.env.SHELLCORP_PROJECT_ID = "proj-alpha";
+    process.env.SHELLCORP_ACTOR_ROLE = "pm";
+
+    const commandPayloads: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      const payload = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      if (url.endsWith("/board/command")) {
+        commandPayloads.push(payload);
+        return new Response(JSON.stringify({ ok: true, duplicate: false }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runCommand(["status", "--state", "planning", "Triaging backlog"]);
+
+    expect(commandPayloads).toHaveLength(1);
+    expect(commandPayloads[0]).toMatchObject({
+      teamId: "team-proj-alpha",
+      projectId: "proj-alpha",
+      actorAgentId: "alpha-pm",
+      activityType: "planning",
+      detail: "Triaging backlog",
+    });
+  });
+
+  it("fails fast when logged-in team env conflicts with the agent record", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Alpha",
+      "--description",
+      "Alpha team",
+      "--goal",
+      "Ship fast",
+      "--auto-roles",
+      "builder,pm",
+    ]);
+
+    process.env.SHELLCORP_AGENT_ID = "alpha-pm";
+    process.env.SHELLCORP_TEAM_ID = "team-proj-wrong";
+    process.env.SHELLCORP_PROJECT_ID = "proj-alpha";
+    process.env.SHELLCORP_ACTOR_ROLE = "pm";
+
+    await expect(runCommand(["whoami", "--json"])).rejects.toThrow(
+      "actor_team_conflict:alpha-pm:team-proj-alpha:team-proj-wrong",
+    );
+  });
+
+  it("sends coordination through openclaw agent and logs a handoff activity", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "https://example.convex.site";
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Alpha",
+      "--description",
+      "Alpha team",
+      "--goal",
+      "Ship fast",
+      "--auto-roles",
+      "builder,pm",
+    ]);
+
+    const binDir = await mkdtemp(path.join(os.tmpdir(), "shellcorp-openclaw-bin-"));
+    const argsFile = path.join(binDir, "openclaw-args.txt");
+    const openclawPath = path.join(binDir, "openclaw");
+    await writeFile(
+      openclawPath,
+      `#!/bin/sh\nprintf '%s\n' "$@" > "${argsFile}"\nprintf 'coordination reply\\n'\n`,
+      "utf-8",
+    );
+    await chmod(openclawPath, 0o755);
+    const originalPath = process.env.PATH ?? "";
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath}`;
+
+    const commandPayloads: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      const payload = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      if (url.endsWith("/board/command")) {
+        commandPayloads.push(payload);
+        return new Response(JSON.stringify({ ok: true, duplicate: false }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runCommand([
+      "agent",
+      "send",
+      "--from",
+      "alpha-pm",
+      "--to",
+      "alpha-builder",
+      "--task-id",
+      "task-42",
+      "--message",
+      "Need blocker update",
+      "--json",
+    ]);
+
+    const execArgs = (await readFile(argsFile, "utf-8"))
+      .split("\n")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    expect(execArgs).toEqual(["agent", "--agent", "alpha-builder", "--message", "Need blocker update", "--json"]);
+    expect(
+      commandPayloads.some(
+        (payload) =>
+          payload.command === "activity_log" &&
+          payload.teamId === "team-proj-alpha" &&
+          payload.actorAgentId === "alpha-pm" &&
+          payload.activityType === "handoff" &&
+          payload.label === "Coordination to alpha-builder" &&
+          payload.skillId === "agent_coordination" &&
+          payload.detail === "Need blocker update (task task-42)",
+      ),
+    ).toBe(true);
+
+    const sendPayload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      fromAgentId?: string;
+      toAgentId?: string;
+      teamId?: string;
+      openclaw?: { parsed?: unknown };
+    };
+    expect(sendPayload.fromAgentId).toBe("alpha-pm");
+    expect(sendPayload.toAgentId).toBe("alpha-builder");
+    expect(sendPayload.teamId).toBe("team-proj-alpha");
+    expect(sendPayload.openclaw?.parsed).toBe("coordination reply");
+
+    process.env.PATH = originalPath;
+    logSpy.mockRestore();
   });
 
   it("enforces permission denials for restricted actor roles", async () => {

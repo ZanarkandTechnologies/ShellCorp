@@ -11,14 +11,15 @@
  *
  * MEMORY REFERENCES:
  * - MEM-0104
+ * - MEM-0212
  */
 import { Command } from "commander";
 import { createSidecarStore } from "../sidecar-store.js";
 import {
   appendTeamEventLog,
   ensureCommandPermission,
+  resolveCliActorContext,
   resolveProjectOrFail,
-  resolveTeamIdForAgent,
   resolveStatusActivityType,
   runDoctor,
   optionalBeatId,
@@ -77,31 +78,28 @@ export function registerTeamCommands(program: Command): void {
         const detail = statusText.trim();
         if (!detail) fail("invalid_status_text");
 
-        const agentId =
-          opts.agentId?.trim() ||
-          process.env.SHELLCORP_AGENT_ID?.trim() ||
-          process.env.SHELLCORP_ACTOR_AGENT_ID?.trim();
-        if (!agentId) fail("missing_agent_id:use_--agent-id_or_SHELLCORP_AGENT_ID");
-
-        const teamId =
-          opts.teamId?.trim() ||
-          process.env.SHELLCORP_TEAM_ID?.trim() ||
-          resolveTeamIdForAgent(company, agentId);
-        const { projectId } = resolveProjectOrFail(company, teamId);
+        const actor = resolveCliActorContext({
+          company,
+          explicitAgentId: opts.agentId,
+          explicitTeamId: opts.teamId,
+        });
+        if (!actor.agentId || !actor.teamId || !actor.projectId) {
+          fail("missing_agent_identity:use_shellcorp_agent_login_or_--agent-id");
+        }
         const activityType = resolveStatusActivityType(opts.state.trim());
         const label =
           opts.label?.trim() ||
           (activityType === "planning" || activityType === "executing" || activityType === "blocked"
             ? activityType
             : "status");
-        const stepKey = opts.stepKey?.trim() || `status-${agentId}-${Date.now()}`;
+        const stepKey = opts.stepKey?.trim() || `status-${actor.agentId}-${Date.now()}`;
 
         const result = await postBoardCommand({
-          teamId,
-          projectId,
+          teamId: actor.teamId,
+          projectId: actor.projectId,
           command: "activity_log",
           actorType: "agent",
-          actorAgentId: agentId,
+          actorAgentId: actor.agentId,
           activityType,
           label,
           detail,
@@ -111,10 +109,10 @@ export function registerTeamCommands(program: Command): void {
           beatId: optionalBeatId(opts.beatId),
         });
         await appendTeamEventLog({
-          teamId,
-          projectId,
+          teamId: actor.teamId,
+          projectId: actor.projectId,
           kind: "status_reported",
-          agentId,
+          agentId: actor.agentId,
           label,
           detail,
           data: {
@@ -128,16 +126,16 @@ export function registerTeamCommands(program: Command): void {
           opts.json ? "json" : "text",
           {
             ok: true,
-            teamId,
-            projectId,
-            agentId,
+            teamId: actor.teamId,
+            projectId: actor.projectId,
+            agentId: actor.agentId,
             activityType,
             label,
             statusText: detail,
             stepKey,
             result,
           },
-          `Reported status for ${agentId} (${activityType})`,
+          `Reported status for ${actor.agentId} (${activityType})`,
         );
       },
     );

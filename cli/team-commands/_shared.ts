@@ -74,6 +74,7 @@ export type StatusReportState =
   | "blocked"
   | "done";
 export type ConfigEntry = [string, string];
+export type ShellName = "bash" | "zsh" | "fish";
 
 export type OpenclawAgentEntry = Record<string, unknown> & { id: string };
 export type TeamEventKind =
@@ -115,6 +116,15 @@ export interface TeamSummary {
   kpis: string[];
   businessType?: string;
 }
+
+export type ResolvedCliActorContext = {
+  actorKind: "agent" | "operator";
+  actorRole: string;
+  agentId?: string;
+  teamId?: string;
+  projectId?: string;
+  companyAgent?: CompanyAgentModel;
+};
 
 export type TeamPermission =
   | "team.read"
@@ -189,6 +199,40 @@ export function readActorRole(): string {
     /\s+/g,
     "_",
   );
+}
+
+export function readActorAgentId(): string | undefined {
+  const direct = process.env.SHELLCORP_AGENT_ID?.trim();
+  if (direct) return direct;
+  const legacy = process.env.SHELLCORP_ACTOR_AGENT_ID?.trim();
+  return legacy || undefined;
+}
+
+export function readActorTeamId(): string | undefined {
+  const teamId = process.env.SHELLCORP_TEAM_ID?.trim();
+  return teamId || undefined;
+}
+
+export function readActorProjectId(): string | undefined {
+  const projectId = process.env.SHELLCORP_PROJECT_ID?.trim();
+  return projectId || undefined;
+}
+
+export function renderShellExports(
+  entries: Array<[string, string]>,
+  shell: ShellName = "bash",
+): string {
+  if (shell === "fish") {
+    return entries.map(([key, value]) => `set -gx ${key} ${JSON.stringify(value)};`).join("\n");
+  }
+  return entries.map(([key, value]) => `export ${key}=${JSON.stringify(value)}`).join("\n");
+}
+
+export function renderShellUnsets(keys: string[], shell: ShellName = "bash"): string {
+  if (shell === "fish") {
+    return keys.map((key) => `set -e ${key};`).join("\n");
+  }
+  return keys.map((key) => `unset ${key}`).join("\n");
 }
 
 export function resolveAllowedPermissions(): Set<TeamPermission> | "all" {
@@ -511,6 +555,61 @@ export function resolveTeamIdForAgent(company: CompanyModel, agentId: string): s
   const project = company.projects.find((entry) => entry.id === projectId);
   if (!project) throw new Error(`agent_project_not_found:${agentId}:${projectId}`);
   return teamIdFromProjectId(projectId);
+}
+
+export function resolveCliActorContext(opts: {
+  company: CompanyModel;
+  explicitAgentId?: string;
+  explicitTeamId?: string;
+  allowOperator?: boolean;
+}): ResolvedCliActorContext {
+  const explicitAgentId = opts.explicitAgentId?.trim() || undefined;
+  const explicitTeamId = opts.explicitTeamId?.trim() || undefined;
+  const envAgentId = readActorAgentId();
+  const envTeamId = readActorTeamId();
+  const envProjectId = readActorProjectId();
+  const agentId = explicitAgentId || envAgentId;
+  const requestedTeamId = explicitTeamId || envTeamId;
+
+  if (agentId) {
+    const companyAgent = opts.company.agents.find((entry) => entry.agentId === agentId);
+    if (!companyAgent) throw new Error(`agent_not_found:${agentId}`);
+    const projectId = companyAgent.projectId?.trim();
+    if (!projectId) throw new Error(`agent_missing_project:${agentId}`);
+    const teamId = resolveTeamIdForAgent(opts.company, agentId);
+    if (requestedTeamId && requestedTeamId !== teamId) {
+      throw new Error(`actor_team_conflict:${agentId}:${teamId}:${requestedTeamId}`);
+    }
+    if (envProjectId && envProjectId !== projectId) {
+      throw new Error(`actor_project_conflict:${agentId}:${projectId}:${envProjectId}`);
+    }
+    return {
+      actorKind: "agent",
+      actorRole: companyAgent.role,
+      agentId,
+      teamId,
+      projectId,
+      companyAgent,
+    };
+  }
+
+  if (!opts.allowOperator) {
+    throw new Error("missing_agent_identity:use_shellcorp_agent_login_or_--agent-id");
+  }
+
+  if (!requestedTeamId) {
+    throw new Error("missing_team_id:use_--team-id_or_SHELLCORP_TEAM_ID");
+  }
+  const { projectId } = resolveProjectOrFail(opts.company, requestedTeamId);
+  if (envProjectId && envProjectId !== projectId) {
+    throw new Error(`actor_project_conflict:operator:${projectId}:${envProjectId}`);
+  }
+  return {
+    actorKind: "operator",
+    actorRole: readActorRole(),
+    teamId: requestedTeamId,
+    projectId,
+  };
 }
 
 export function resolveStatusActivityType(rawState: string): BoardActivityType {
