@@ -196,11 +196,13 @@ describe("onboarding CLI", () => {
 
     const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
     const openclaw = JSON.parse(openclawRaw) as {
+      shellcorp?: { convex?: { siteUrl?: string } };
       plugins?: {
         load?: { paths?: string[] };
         entries?: { "notion-shell"?: { config?: { webhook?: { path?: string } } } };
       };
     };
+    expect(openclaw.shellcorp?.convex?.siteUrl).toBe("https://demo.convex.cloud");
     expect(openclaw.plugins?.load?.paths).toContain(path.join(repoRoot, "extensions", "notion"));
     expect(openclaw.plugins?.entries?.["notion-shell"]?.config?.webhook?.path).toBe(
       "/plugins/notion-shell/webhook",
@@ -280,7 +282,68 @@ describe("onboarding CLI", () => {
     await runCommand(["onboarding", "--yes"]);
 
     const uiEnvRaw = await readFile(path.join(repoRoot, "ui", ".env.local"), "utf-8");
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclaw = JSON.parse(openclawRaw) as { shellcorp?: { convex?: { siteUrl?: string } } };
     expect(uiEnvRaw).toContain("VITE_CONVEX_URL=https://fresh-root.convex.site");
+    expect(openclaw.shellcorp?.convex?.siteUrl).toBe("https://fresh-root.convex.site");
+  });
+
+  it("prefers CONVEX_SITE_URL for persisted shellcorp CLI config when both Convex URLs exist", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+
+    await writeFile(
+      path.join(repoRoot, ".env.local"),
+      ["CONVEX_URL=http://127.0.0.1:3210", "CONVEX_SITE_URL=http://127.0.0.1:3211"].join("\n"),
+      "utf-8",
+    );
+
+    await runCommand(["onboarding", "--yes"]);
+
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclaw = JSON.parse(openclawRaw) as { shellcorp?: { convex?: { siteUrl?: string } } };
+    expect(openclaw.shellcorp?.convex?.siteUrl).toBe("http://127.0.0.1:3211");
+  });
+
+  it("preserves persisted shellcorp convex site url when repo env is absent", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+
+    await writeFile(path.join(repoRoot, ".env.local"), "NOTION_API_KEY=secret_test\n", "utf-8");
+    await writeFile(
+      path.join(stateDir, "openclaw.json"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          shellcorp: { convex: { siteUrl: "https://persisted.convex.site" } },
+          agents: {
+            list: [
+              {
+                id: "main",
+                name: "CEO Agent",
+                workspace: path.join(stateDir, "workspace-main"),
+              },
+            ],
+          },
+          plugins: { load: { paths: [] } },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
+
+    await runCommand(["onboarding", "--yes"]);
+
+    const uiEnvRaw = await readFile(path.join(repoRoot, "ui", ".env.local"), "utf-8");
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclaw = JSON.parse(openclawRaw) as { shellcorp?: { convex?: { siteUrl?: string } } };
+    expect(uiEnvRaw).toContain("VITE_CONVEX_URL=https://persisted.convex.site");
+    expect(openclaw.shellcorp?.convex?.siteUrl).toBe("https://persisted.convex.site");
   });
 
   it("reports structured json output with doctor status", async () => {

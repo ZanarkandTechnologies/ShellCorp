@@ -19,6 +19,7 @@
  * - MEM-0161
  * - MEM-0164
  * - MEM-0178
+ * - MEM-0213
  */
 
 import { existsSync } from "node:fs";
@@ -466,6 +467,10 @@ function ensureShellcorpDefaults(config: JsonObject): JsonObject {
   return {
     ...config,
     version: typeof config.version === "number" ? config.version : 1,
+    shellcorp: {
+      ...asObject(config.shellcorp),
+      convex: asObject(asObject(config.shellcorp).convex),
+    },
     tools: {
       ...tools,
       profile: typeof tools.profile === "string" && tools.profile.trim() ? tools.profile : "coding",
@@ -508,14 +513,51 @@ function ensureShellcorpDefaults(config: JsonObject): JsonObject {
   };
 }
 
+function chooseShellcorpConvexSiteUrl(inputValues: {
+  rootEnv: Record<string, string>;
+  currentOpenclawConfig: JsonObject;
+  opts: OnboardingOptions;
+}): string {
+  const shellcorp = asObject(inputValues.currentOpenclawConfig.shellcorp);
+  const convex = asObject(shellcorp.convex);
+  return (
+    inputValues.opts.convexUrl?.trim() ||
+    inputValues.rootEnv.CONVEX_SITE_URL?.trim() ||
+    inputValues.rootEnv.CONVEX_URL?.trim() ||
+    (typeof convex.siteUrl === "string" ? convex.siteUrl.trim() : "")
+  );
+}
+
+function applyShellcorpConvexSiteUrl(config: JsonObject, siteUrl: string): JsonObject {
+  const shellcorp = asObject(config.shellcorp);
+  const convex = asObject(shellcorp.convex);
+  const trimmedSiteUrl = siteUrl.trim();
+  if (!trimmedSiteUrl) return config;
+  return {
+    ...config,
+    shellcorp: {
+      ...shellcorp,
+      convex: {
+        ...convex,
+        siteUrl: trimmedSiteUrl,
+      },
+    },
+  };
+}
+
 function chooseUiEnvValues(inputValues: {
   currentUiEnv: Record<string, string>;
   rootEnv: Record<string, string>;
   exampleUiEnv: Record<string, string>;
+  currentOpenclawConfig: JsonObject;
   opts: OnboardingOptions;
 }): Record<string, string> {
   const fromRootConvex =
     inputValues.rootEnv.CONVEX_URL?.trim() || inputValues.rootEnv.CONVEX_SITE_URL?.trim() || "";
+  const shellcorp = asObject(inputValues.currentOpenclawConfig.shellcorp);
+  const convex = asObject(shellcorp.convex);
+  const persistedConvex =
+    typeof convex.siteUrl === "string" ? convex.siteUrl.trim() : "";
   return {
     VITE_GATEWAY_URL:
       inputValues.opts.gatewayUrl?.trim() ||
@@ -535,7 +577,9 @@ function chooseUiEnvValues(inputValues: {
     VITE_CONVEX_URL:
       inputValues.opts.convexUrl?.trim() ||
       fromRootConvex ||
-      inputValues.currentUiEnv.VITE_CONVEX_URL?.trim(),
+      persistedConvex ||
+      inputValues.currentUiEnv.VITE_CONVEX_URL?.trim() ||
+      DEFAULT_UI_ENV.VITE_CONVEX_URL,
   };
 }
 
@@ -553,7 +597,7 @@ function buildNextSteps(inputValues: {
     "Use the in-app onboarding flow to finish connector setup and learn the office controls.",
     "Ask the CEO agent to create planning tickets on the board, move one into review, and approve it as your first office workflow.",
   ];
-  if (!inputValues.uiEnv.VITE_CONVEX_URL.trim()) {
+  if (!inputValues.uiEnv.VITE_CONVEX_URL?.trim()) {
     steps.splice(
       1,
       0,
@@ -565,7 +609,7 @@ function buildNextSteps(inputValues: {
       "Review the generated OpenClaw config at `~/.openclaw/openclaw.json` if you need to customize agents or plugin auth.",
     );
   }
-  if (!inputValues.uiEnv.VITE_GATEWAY_TOKEN.trim()) {
+  if (!inputValues.uiEnv.VITE_GATEWAY_TOKEN?.trim()) {
     steps.push("Set `VITE_GATEWAY_TOKEN` in `ui/.env.local` if your gateway requires bearer auth.");
   }
   steps.push(
@@ -604,6 +648,7 @@ export function registerOnboardingCommands(program: Command): void {
       const exampleEnvPath = path.join(uiRoot, ".env.example");
       const rootEnvPath = path.join(repoRoot, ".env.local");
       const pendingApprovalsPath = path.join(store.companyPath, "..", "pending-approvals.json");
+      const rootEnv = await readDotEnvFile(rootEnvPath);
       const existingOpenclaw = await store.readOpenclawConfig();
       const wasOpenclawPresent = await fileExists(store.openclawConfigPath);
       const openclawBeforeRaw = JSON.stringify(existingOpenclaw);
@@ -710,6 +755,14 @@ export function registerOnboardingCommands(program: Command): void {
       let nextOpenclaw =
         Object.keys(existingOpenclaw).length === 0 ? openclawTemplate : existingOpenclaw;
       nextOpenclaw = ensureShellcorpDefaults(nextOpenclaw);
+      nextOpenclaw = applyShellcorpConvexSiteUrl(
+        nextOpenclaw,
+        chooseShellcorpConvexSiteUrl({
+          rootEnv,
+          currentOpenclawConfig: nextOpenclaw,
+          opts,
+        }),
+      );
       nextOpenclaw = ensurePluginsLoadPath(
         nextOpenclaw,
         path.join(repoRoot, "extensions", "notion"),
@@ -767,12 +820,12 @@ export function registerOnboardingCommands(program: Command): void {
         printStepStart(6, totalSteps, "Generating UI environment");
       }
       const currentUiEnv = await readDotEnvFile(uiEnvPath);
-      const rootEnv = await readDotEnvFile(rootEnvPath);
       const exampleUiEnv = await readDotEnvFile(exampleEnvPath);
       const nextUiEnvValues = chooseUiEnvValues({
         currentUiEnv,
         rootEnv,
         exampleUiEnv,
+        currentOpenclawConfig: nextOpenclaw,
         opts,
       });
       await mkdir(uiRoot, { recursive: true });
