@@ -114,7 +114,7 @@ export function useTeamPanelBoardState({
         syncState: (task.syncState as PanelTask["syncState"]) ?? "healthy",
         syncError: task.syncError,
         notes: task.notes,
-        taskType: task.taskType as PanelTask["taskType"],
+        taskType: typeof task.taskType === "string" ? task.taskType : undefined,
         approvalState: task.approvalState as PanelTask["approvalState"],
         linkedSessionKey: task.linkedSessionKey,
         createdTeamId: task.createdTeamId,

@@ -1,10 +1,10 @@
 /**
- * SC12 BOARD HELPERS
- * ==================
+ * REVIEW BOARD HELPERS
+ * ====================
  * Shared helpers for CEO board task normalization and UI demo fallback state.
  *
  * KEY CONCEPTS:
- * - SC12 uses shared board tasks as compact working memory for CEO proposal work.
+ * - Review surfaces use shared board tasks as compact working memory for planning and human review.
  * - UI surfaces can fall back to curated mock tasks so the workflow stays inspectable before live data exists.
  *
  * USAGE:
@@ -16,7 +16,7 @@
 
 import type { PanelTask } from "@/features/team-system/components/team-panel-types";
 
-export type Sc12BoardTask = PanelTask & {
+export type ReviewBoardTask = PanelTask & {
   projectId: string;
   isMock?: boolean;
 };
@@ -25,16 +25,15 @@ type CompanyBoardTaskRow = {
   taskId: string;
   projectId: string;
   title: string;
-  status?: PanelTask["status"];
+  status?: string;
   ownerAgentId?: string;
-  priority?: PanelTask["priority"];
-  provider?: PanelTask["provider"];
+  priority?: string;
+  provider?: string;
   providerUrl?: string;
-  syncState?: PanelTask["syncState"];
+  syncState?: string;
   syncError?: string;
   notes?: string;
-  taskType?: PanelTask["taskType"];
-  approvalState?: PanelTask["approvalState"];
+  approvalState?: string;
   linkedSessionKey?: string;
   createdTeamId?: string;
   createdProjectId?: string;
@@ -43,19 +42,18 @@ type CompanyBoardTaskRow = {
   dueAt?: number;
 };
 
-const MOCK_SC12_BOARD_TASKS: Sc12BoardTask[] = [
+const MOCK_REVIEW_BOARD_TASKS: ReviewBoardTask[] = [
   {
     id: "mock-ceo-task-affiliate-lab",
     projectId: "ceo-board",
-    title: "Affiliate Lab team proposal",
-    status: "in_progress",
+    title: "Plan affiliate lab launch",
+    status: "review",
     ownerAgentId: "main",
     priority: "high",
     provider: "internal",
     syncState: "healthy",
-    taskType: "team_proposal",
     approvalState: "pending_review",
-    linkedSessionKey: "agent:main:affiliate-lab-proposal",
+    linkedSessionKey: "agent:main:affiliate-lab-planning",
     createdAt: Date.parse("2026-03-12T13:15:00Z"),
     updatedAt: Date.parse("2026-03-12T15:45:00Z"),
     notes: [
@@ -71,7 +69,7 @@ const MOCK_SC12_BOARD_TASKS: Sc12BoardTask[] = [
       "- Need founder decision on whether to start with TikTok-only or TikTok + YouTube Shorts.",
       "",
       "# Next Step",
-      "- Founder approve the proposal packet or request channel-scope changes.",
+      "- Human review the planning notes and either approve the lane move or request changes.",
       "",
       "# Links",
       "- Brief doc: https://example.com/affiliate-lab-brief",
@@ -82,19 +80,18 @@ const MOCK_SC12_BOARD_TASKS: Sc12BoardTask[] = [
   {
     id: "mock-ceo-task-support-copilot",
     projectId: "ceo-board",
-    title: "Support Copilot follow-up revision",
-    status: "blocked",
+    title: "Revise support copilot plan",
+    status: "review",
     ownerAgentId: "main",
     priority: "medium",
     provider: "internal",
     syncState: "healthy",
-    taskType: "team_proposal",
     approvalState: "changes_requested",
     linkedSessionKey: "agent:main:support-copilot-revision",
     createdAt: Date.parse("2026-03-11T10:00:00Z"),
     updatedAt: Date.parse("2026-03-12T11:20:00Z"),
     notes: [
-      "Goal: Rework the support-ops team proposal around human-in-the-loop escalation.",
+      "Goal: Rework the support-ops plan around human-in-the-loop escalation.",
       "",
       "Current State:",
       "- Founder asked for lower risk and fewer autonomous replies.",
@@ -104,20 +101,19 @@ const MOCK_SC12_BOARD_TASKS: Sc12BoardTask[] = [
       "- Need approval on which channels are allowed for auto-drafts.",
       "",
       "Next Step:",
-      "- Rewrite the proposal summary and seed safer starting tasks.",
+      "- Rewrite the task plan and seed safer starting tasks.",
     ].join("\n"),
     isMock: true,
   },
   {
     id: "mock-ceo-task-saas-studio",
     projectId: "ceo-board",
-    title: "SaaS Studio bootstrap executed",
+    title: "SaaS Studio bootstrap finished",
     status: "done",
     ownerAgentId: "main",
     priority: "low",
     provider: "internal",
     syncState: "healthy",
-    taskType: "team_proposal",
     approvalState: "executed",
     linkedSessionKey: "agent:main:saas-studio",
     createdTeamId: "team-saas-studio",
@@ -125,7 +121,7 @@ const MOCK_SC12_BOARD_TASKS: Sc12BoardTask[] = [
     createdAt: Date.parse("2026-03-10T09:00:00Z"),
     updatedAt: Date.parse("2026-03-12T09:40:00Z"),
     notes: [
-      "Goal: Launch a SaaS experimentation team around agency proposal automation.",
+      "Goal: Launch a SaaS experimentation team around agency workflow automation.",
       "",
       "Current State:",
       "- Founder approved.",
@@ -143,23 +139,41 @@ const MOCK_SC12_BOARD_TASKS: Sc12BoardTask[] = [
   },
 ];
 
-export function normalizeSc12BoardTasks(
+export function normalizeReviewBoardTasks(
   rows: ReadonlyArray<CompanyBoardTaskRow> | undefined,
-): Sc12BoardTask[] {
+): ReviewBoardTask[] {
   return (rows ?? []).map((task) => ({
     id: task.taskId,
     projectId: task.projectId,
     title: task.title,
-    status: task.status ?? "todo",
+    status:
+      task.status === "in_progress" ||
+      task.status === "review" ||
+      task.status === "blocked" ||
+      task.status === "done"
+        ? task.status
+        : "todo",
     ownerAgentId: task.ownerAgentId,
-    priority: task.priority ?? "medium",
-    provider: task.provider ?? "internal",
+    priority: task.priority === "low" || task.priority === "high" ? task.priority : "medium",
+    provider:
+      task.provider === "notion" || task.provider === "vibe" || task.provider === "linear"
+        ? task.provider
+        : "internal",
     providerUrl: task.providerUrl,
-    syncState: task.syncState ?? "healthy",
+    syncState:
+      task.syncState === "pending" || task.syncState === "conflict" || task.syncState === "error"
+        ? task.syncState
+        : "healthy",
     syncError: task.syncError,
     notes: task.notes,
-    taskType: task.taskType,
-    approvalState: task.approvalState,
+    approvalState:
+      task.approvalState === "pending_review" ||
+      task.approvalState === "approved" ||
+      task.approvalState === "rejected" ||
+      task.approvalState === "changes_requested" ||
+      task.approvalState === "executed"
+        ? task.approvalState
+        : "draft",
     linkedSessionKey: task.linkedSessionKey,
     createdTeamId: task.createdTeamId,
     createdProjectId: task.createdProjectId,
@@ -169,21 +183,19 @@ export function normalizeSc12BoardTasks(
   }));
 }
 
-export function resolveSc12BoardTasks(params: {
+export function resolveReviewBoardTasks(params: {
   convexEnabled: boolean;
   hasLoaded: boolean;
   rows: ReadonlyArray<CompanyBoardTaskRow> | undefined;
-}): { tasks: Sc12BoardTask[]; isMock: boolean } {
-  const liveTasks = normalizeSc12BoardTasks(params.rows);
+}): { tasks: ReviewBoardTask[]; isMock: boolean } {
+  const liveTasks = normalizeReviewBoardTasks(params.rows);
   if (liveTasks.length > 0) return { tasks: liveTasks, isMock: false };
   if (!params.convexEnabled || params.hasLoaded) {
-    return { tasks: MOCK_SC12_BOARD_TASKS, isMock: true };
+    return { tasks: MOCK_REVIEW_BOARD_TASKS, isMock: true };
   }
   return { tasks: [], isMock: false };
 }
 
-export function countSc12PendingReviewTasks(tasks: ReadonlyArray<Sc12BoardTask>): number {
-  return tasks.filter(
-    (task) => task.approvalState === "pending_review" || task.approvalState === "changes_requested",
-  ).length;
+export function countReviewLaneTasks(tasks: ReadonlyArray<ReviewBoardTask>): number {
+  return tasks.filter((task) => task.status === "review").length;
 }

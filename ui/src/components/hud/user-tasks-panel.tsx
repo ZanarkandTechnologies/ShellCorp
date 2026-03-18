@@ -7,7 +7,7 @@
  *
  * KEY CONCEPTS:
  * - User Tasks is a filtered view over shared board tasks, not a separate workflow store.
- * - CEO proposal work is represented as `taskType=team_proposal` with lightweight task-local approval metadata.
+ * - Review happens on shared board tasks already moved into the `review` lane.
  * - Founder actions only update task state/notes; CEO execution still happens through skills plus CLI.
  *
  * USAGE:
@@ -40,10 +40,10 @@ import { Textarea } from "@/components/ui/textarea";
 import type { TaskApprovalState } from "@/features/team-system/components/team-panel-types";
 import { TaskMemoryView } from "@/features/team-system/components/task-memory-view";
 import {
-  countSc12PendingReviewTasks,
-  resolveSc12BoardTasks,
-  type Sc12BoardTask,
-} from "@/lib/sc12-board";
+  countReviewLaneTasks,
+  resolveReviewBoardTasks,
+  type ReviewBoardTask,
+} from "@/lib/review-board";
 
 interface UserTasksPanelProps {
   isOpen: boolean;
@@ -56,7 +56,7 @@ function statusTone(task: ReviewTask): "secondary" | "destructive" | "outline" {
   return "outline";
 }
 
-type ReviewTask = Sc12BoardTask;
+type ReviewTask = ReviewBoardTask;
 
 function parseAgentIdFromSessionKey(sessionKey: string | undefined): string | null {
   const value = sessionKey?.trim() ?? "";
@@ -82,7 +82,7 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
   const boardCommand = useMutation(api.board.boardCommand);
   const companyBoard = useQuery(
     api.board.getCompanyBoardTasks,
-    convexEnabled ? { taskType: "team_proposal" } : "skip",
+    convexEnabled ? {} : "skip",
   );
   const setActiveTeamId = useAppStore((state) => state.setActiveTeamId);
   const setIsTeamPanelOpen = useAppStore((state) => state.setIsTeamPanelOpen);
@@ -95,14 +95,19 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusText, setStatusText] = useState("");
 
-  const { tasks: reviewTasks, isMock } = useMemo(
+  const { tasks: allTasks, isMock } = useMemo(
     () =>
-      resolveSc12BoardTasks({
+      resolveReviewBoardTasks({
         convexEnabled,
         hasLoaded: companyBoard !== undefined,
         rows: companyBoard?.tasks,
       }),
     [companyBoard, convexEnabled],
+  );
+
+  const reviewTasks = useMemo(
+    () => allTasks.filter((task) => task.status === "review"),
+    [allTasks],
   );
 
   useEffect(() => {
@@ -113,11 +118,6 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
         : (reviewTasks[0]?.id ?? null),
     );
   }, [isOpen, reviewTasks]);
-
-  const pendingReviewTasks = useMemo(
-    () => reviewTasks.filter((task) => countSc12PendingReviewTasks([task]) > 0),
-    [reviewTasks],
-  );
 
   const selectedTask = useMemo(
     () => reviewTasks.find((task) => task.id === selectedTaskId) ?? null,
@@ -133,6 +133,12 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
         projectId: selectedTask.projectId,
         command: "task_update",
         taskId: selectedTask.id,
+        status:
+          nextState === "approved"
+            ? "todo"
+            : nextState === "changes_requested"
+              ? "in_progress"
+              : "done",
         approvalState: nextState,
         notes: appendFounderDecision(selectedTask.notes, nextState, decisionNote),
         actorType: "operator",
@@ -142,10 +148,10 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
       setDecisionNote("");
       setStatusText(
         nextState === "approved"
-          ? "Founder approval saved. CEO should now execute the task through the ShellCorp CLI skill."
+          ? "Approval saved. The task has moved out of review and is ready for the next lane."
           : nextState === "rejected"
-            ? "Proposal rejected."
-            : "Changes requested from the CEO task.",
+            ? "Task closed from review."
+            : "Changes requested and the task moved back to active work.",
       );
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "task_update_failed");
@@ -182,8 +188,8 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm text-muted-foreground">
                   <p>
-                    The CEO should research, draft, and update one board task, then wait for founder
-                    approval on that same task.
+                    The CEO should plan directly on one board task, store the working notes there,
+                    then move that task into the review lane when human sign-off is needed.
                   </p>
                   <div className="rounded-md border bg-muted/30 p-3">
                     <div className="mb-2 flex items-center gap-2 font-medium text-foreground">
@@ -192,9 +198,11 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
                     </div>
                     <code className="block whitespace-pre-wrap break-all text-xs">
                       npm run shell -- team board task add --team-id &lt;team-id&gt; --title
-                      "&lt;proposal-title&gt;" --task-type team_proposal --approval-state
-                      pending_review --linked-session-key agent:main:main --detail
-                      "&lt;proposal-summary&gt;"
+                      "&lt;task-title&gt;"{"\n"}
+                      npm run shell -- team board task memory append --team-id &lt;team-id&gt;
+                      --task-id &lt;task-id&gt; --text "&lt;plan-notes&gt;"{"\n"}
+                      npm run shell -- team board task move --team-id &lt;team-id&gt; --task-id
+                      &lt;task-id&gt; --status review
                     </code>
                   </div>
                 </CardContent>
@@ -255,7 +263,7 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
 
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Proposal / Task Memory</CardTitle>
+                        <CardTitle className="text-sm">Task Memory</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <TaskMemoryView notes={selectedTask.notes} />
@@ -366,8 +374,8 @@ export function UserTasksPanel({ isOpen, onOpenChange }: UserTasksPanelProps): J
               )}
 
               <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                {pendingReviewTasks.length} task{pendingReviewTasks.length === 1 ? "" : "s"} waiting
-                for founder review.
+                {countReviewLaneTasks(reviewTasks)} task
+                {countReviewLaneTasks(reviewTasks) === 1 ? "" : "s"} in the review lane.
               </div>
 
               {statusText ? (

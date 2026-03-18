@@ -98,7 +98,7 @@ export function LandingPage(): React.JSX.Element {
                 </p>
                 <h2 className="text-xl font-semibold">Approve the work that matters</h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  Human review stays visible so you can inspect proposals, approve execution, and
+                  Human review stays visible so you can inspect task plans, approve execution, and
                   keep the office focused on a small number of active teams.
                 </p>
               </div>

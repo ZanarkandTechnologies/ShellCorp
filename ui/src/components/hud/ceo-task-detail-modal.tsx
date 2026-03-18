@@ -31,7 +31,7 @@ import {
 
 import { api } from "../../../../convex/_generated/api";
 import { TaskMemoryView } from "@/features/team-system/components/task-memory-view";
-import type { Sc12BoardTask } from "@/lib/sc12-board";
+import type { ReviewBoardTask } from "@/lib/review-board";
 import { UI_Z } from "@/lib/z-index";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 
 type CeoTaskDetailModalProps = {
-  task: Sc12BoardTask | null;
+  task: ReviewBoardTask | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
@@ -116,6 +116,12 @@ export function CeoTaskDetailModal({
         projectId: task.projectId,
         command: "task_update",
         taskId: task.id,
+        status:
+          nextState === "approved"
+            ? "todo"
+            : nextState === "changes_requested"
+              ? "in_progress"
+              : "done",
         approvalState: nextState,
         notes: appendHumanDecision(task.notes, nextState, decisionNote),
         actorType: "operator",
@@ -125,7 +131,7 @@ export function CeoTaskDetailModal({
       setDecisionNote("");
       setStatusText(
         nextState === "approved"
-          ? "Human approval saved on the board task."
+          ? "Approval saved. The task has moved out of review."
           : nextState === "rejected"
             ? "Task marked rejected."
             : "Task sent back with requested changes.",

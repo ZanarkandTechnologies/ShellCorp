@@ -46,10 +46,10 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  countSc12PendingReviewTasks,
-  resolveSc12BoardTasks,
-  type Sc12BoardTask,
-} from "@/lib/sc12-board";
+  countReviewLaneTasks,
+  resolveReviewBoardTasks,
+  type ReviewBoardTask,
+} from "@/lib/review-board";
 
 type TaskLaneKey = "drafting" | "awaiting_review" | "approved" | "executed" | "rejected";
 
@@ -57,16 +57,20 @@ type TaskLane = {
   key: TaskLaneKey;
   label: string;
   description: string;
-  tasks: Sc12BoardTask[];
+  tasks: ReviewBoardTask[];
 };
 
-function groupTaskLane(task: Sc12BoardTask): TaskLaneKey {
-  if (task.createdTeamId || task.createdProjectId || task.approvalState === "executed")
+function groupTaskLane(task: ReviewBoardTask): TaskLaneKey {
+  if (
+    task.status === "done" ||
+    task.createdTeamId ||
+    task.createdProjectId ||
+    task.approvalState === "executed"
+  )
     return "executed";
+  if (task.status === "review") return "awaiting_review";
   if (task.approvalState === "rejected") return "rejected";
   if (task.approvalState === "approved") return "approved";
-  if (task.approvalState === "pending_review" || task.approvalState === "changes_requested")
-    return "awaiting_review";
   return "drafting";
 }
 
@@ -96,7 +100,7 @@ function laneAccent(key: TaskLaneKey): string {
   return "text-muted-foreground";
 }
 
-function chipTone(task: Sc12BoardTask, type: "approval" | "status"): string {
+function chipTone(task: ReviewBoardTask, type: "approval" | "status"): string {
   const value = type === "approval" ? task.approvalState : task.status;
   if (value === "approved" || value === "executed" || value === "done")
     return "border-secondary/40 bg-secondary/10 text-foreground";
@@ -124,12 +128,12 @@ export function CeoWorkbenchPanel(): JSX.Element {
   const convexEnabled = isConvexEnabled();
   const companyBoard = useQuery(
     api.board.getCompanyBoardTasks,
-    convexEnabled ? { taskType: "team_proposal" } : "skip",
+    convexEnabled ? {} : "skip",
   );
 
   const { tasks, isMock } = useMemo(
     () =>
-      resolveSc12BoardTasks({
+      resolveReviewBoardTasks({
         convexEnabled,
         hasLoaded: companyBoard !== undefined,
         rows: companyBoard?.tasks,
@@ -157,15 +161,11 @@ export function CeoWorkbenchPanel(): JSX.Element {
   }, [tasks]);
 
   const reviewTasks = useMemo(
-    () =>
-      tasks.filter(
-        (task) =>
-          task.approvalState === "pending_review" || task.approvalState === "changes_requested",
-      ),
+    () => tasks.filter((task) => task.status === "review"),
     [tasks],
   );
 
-  const pendingReviewCount = countSc12PendingReviewTasks(tasks);
+  const pendingReviewCount = countReviewLaneTasks(tasks);
   const visibleLanes =
     view === "review" ? lanes.filter((lane) => lane.key === "awaiting_review") : lanes;
 

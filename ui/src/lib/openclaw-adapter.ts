@@ -70,9 +70,6 @@ import type {
   CapabilitySlotModel,
   BusinessConfigModel,
   TeamBusinessSkillSyncResult,
-  TeamProposalModel,
-  TeamProposalIdeaBrief,
-  TeamProposalApprovalStatus,
   AgentSkillsInventory,
   GlobalSkillsInventory,
 } from "./openclaw-types";
@@ -80,10 +77,6 @@ import { buildGatewayHeaders } from "./gateway-config";
 import type { GatewayWsClient } from "./gateway-ws-client";
 import type { BusinessBuilderResourceDraft } from "./business-builder";
 import { createBusinessBuilderDraft, toProjectResources } from "./business-builder";
-import {
-  canExecuteProposalRoles,
-  createTeamProposal as createTeamProposalModel,
-} from "./team-proposal";
 
 import {
   normalizeArray,
@@ -257,6 +250,26 @@ export class OpenClawAdapter {
       }
     }
     return null;
+  }
+
+  private async postBoardJson(path: string, body: Json): Promise<Json> {
+    let response: Response;
+    try {
+      response = await fetch(`${this.stateUrl}${path}`, {
+        method: "POST",
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw new Error(`request_unreachable:${path}`);
+    }
+    const payload = (await response.json()) as Json;
+    if (!response.ok || payload.ok === false) {
+      throw new Error(
+        typeof payload.error === "string" ? payload.error : `request_failed:${path}:${response.status}`,
+      );
+    }
+    return payload;
   }
 
   private async invokeGatewayMethod(
@@ -1104,178 +1117,6 @@ export class OpenClawAdapter {
     } catch {
       return { ok: false, error: "team_create_unavailable" };
     }
-  }
-
-  async listTeamProposals(): Promise<TeamProposalModel[]> {
-    const company = await this.getCompanyModel();
-    return [...(company.teamProposals ?? [])].sort(
-      (left, right) => right.updatedAt - left.updatedAt,
-    );
-  }
-
-  async createTeamProposal(input: {
-    businessType: "affiliate_marketing" | "content_creator" | "saas" | "custom";
-    ideaBrief: TeamProposalIdeaBrief;
-    requestedBy?: string;
-    sourceAgentId?: string;
-  }): Promise<{ ok: boolean; proposal?: TeamProposalModel; error?: string }> {
-    const proposal = createTeamProposalModel(input);
-    const company = await this.getCompanyModel();
-    const nextCompany: CompanyModel = {
-      ...company,
-      teamProposals: [proposal, ...(company.teamProposals ?? [])],
-    };
-    const saved = await this.saveCompanyModel(nextCompany);
-    return saved.ok ? { ok: true, proposal } : { ok: false, error: saved.error };
-  }
-
-  async setTeamProposalApproval(
-    proposalId: string,
-    approvalStatus: TeamProposalApprovalStatus,
-    approvalNote?: string,
-  ): Promise<{ ok: boolean; proposal?: TeamProposalModel; error?: string }> {
-    const company = await this.getCompanyModel();
-    const existing = (company.teamProposals ?? []).find((entry) => entry.id === proposalId);
-    if (!existing) return { ok: false, error: "proposal_not_found" };
-    const updated: TeamProposalModel = {
-      ...existing,
-      approvalStatus,
-      approvalNote: approvalNote?.trim() || undefined,
-      updatedAt: Date.now(),
-    };
-    const nextCompany: CompanyModel = {
-      ...company,
-      teamProposals: (company.teamProposals ?? []).map((entry) =>
-        entry.id === proposalId ? updated : entry,
-      ),
-    };
-    const saved = await this.saveCompanyModel(nextCompany);
-    return saved.ok ? { ok: true, proposal: updated } : { ok: false, error: saved.error };
-  }
-
-  async executeTeamProposal(proposalId: string): Promise<{
-    ok: boolean;
-    proposal?: TeamProposalModel;
-    teamId?: string;
-    projectId?: string;
-    error?: string;
-  }> {
-    const company = await this.getCompanyModel();
-    const existing = (company.teamProposals ?? []).find((entry) => entry.id === proposalId);
-    if (!existing) return { ok: false, error: "proposal_not_found" };
-    if (existing.ideaGateStatus !== "passed") return { ok: false, error: "proposal_not_ready" };
-    if (
-      !canExecuteProposalRoles(existing.proposedRoles, existing.proposedBusinessConfig.businessType)
-    ) {
-      return { ok: false, error: "proposal_contains_unsupported_roles" };
-    }
-
-    const creatingProposal: TeamProposalModel = {
-      ...existing,
-      approvalStatus: existing.approvalStatus === "pending" ? "approved" : existing.approvalStatus,
-      executionStatus: "creating",
-      executionError: undefined,
-      updatedAt: Date.now(),
-    };
-    const markedCreating = await this.saveCompanyModel({
-      ...company,
-      teamProposals: (company.teamProposals ?? []).map((entry) =>
-        entry.id === proposalId ? creatingProposal : entry,
-      ),
-    });
-    if (!markedCreating.ok) return { ok: false, error: markedCreating.error };
-
-    const businessType = existing.proposedBusinessConfig.businessType;
-    const genericRoles = existing.proposedRoles
-      .map((role) => role.mappedRuntimeRole)
-      .filter(
-        (role): role is "builder" | "growth_marketer" | "pm" =>
-          role === "builder" || role === "growth_marketer" || role === "pm",
-      );
-
-    const teamResult = await this.createTeam({
-      name: existing.proposedTeamName,
-      description: existing.proposedDescription,
-      goal: existing.ideaBrief.primaryGoal,
-      kpis: ["proposal_approved", "heartbeat_progress"],
-      autoRoles: genericRoles,
-      registerOpenclawAgents: true,
-      withCluster: true,
-      ...(businessType !== "custom"
-        ? {
-            businessType,
-            capabilitySkills: existing.proposedBusinessConfig.capabilitySkills,
-          }
-        : {}),
-    });
-    if (!teamResult.ok || !teamResult.projectId || !teamResult.teamId) {
-      const failedProposal: TeamProposalModel = {
-        ...creatingProposal,
-        executionStatus: "failed",
-        executionError: teamResult.error ?? "team_create_failed",
-        updatedAt: Date.now(),
-      };
-      const failedSave = await this.saveCompanyModel({
-        ...(await this.getCompanyModel()),
-        teamProposals: ((await this.getCompanyModel()).teamProposals ?? []).map((entry) =>
-          entry.id === proposalId ? failedProposal : entry,
-        ),
-      });
-      return {
-        ok: false,
-        error: failedSave.error ?? failedProposal.executionError,
-        proposal: failedProposal,
-      };
-    }
-
-    const saveBusiness =
-      businessType !== "custom"
-        ? await this.saveBusinessBuilderConfig({
-            projectId: teamResult.projectId,
-            businessType,
-            capabilitySkills: existing.proposedBusinessConfig.capabilitySkills,
-            resources: createBusinessBuilderDraft(businessType).resources,
-          })
-        : { ok: true as const };
-    let businessSaveError: string | undefined;
-    if (!saveBusiness.ok) {
-      businessSaveError = saveBusiness.error ?? "business_builder_save_failed";
-    }
-    if (businessType !== "custom") {
-      const sync = await this.syncTeamBusinessSkillsToAgents({
-        teamId: teamResult.teamId,
-        mode: "replace_minimum",
-      });
-      if (!sync.ok && !businessSaveError) {
-        businessSaveError = sync.error ?? "team_business_skill_sync_failed";
-      }
-    }
-
-    const latestCompany = await this.getCompanyModel();
-    const finalProposal: TeamProposalModel = {
-      ...creatingProposal,
-      approvalStatus: "approved",
-      executionStatus: businessSaveError ? "failed" : "created",
-      executionError: businessSaveError,
-      createdTeamId: teamResult.teamId,
-      createdProjectId: teamResult.projectId,
-      updatedAt: Date.now(),
-    };
-    const saved = await this.saveCompanyModel({
-      ...latestCompany,
-      teamProposals: (latestCompany.teamProposals ?? []).map((entry) =>
-        entry.id === proposalId ? finalProposal : entry,
-      ),
-    });
-    return saved.ok
-      ? {
-          ok: !businessSaveError,
-          proposal: finalProposal,
-          teamId: teamResult.teamId,
-          projectId: teamResult.projectId,
-          error: businessSaveError,
-        }
-      : { ok: false, error: saved.error };
   }
 
   async saveBusinessBuilderConfig(input: {

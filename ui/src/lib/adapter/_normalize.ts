@@ -78,7 +78,6 @@ import type {
   CapabilitySlotModel,
   BusinessConfigModel,
   TeamBusinessSkillSyncResult,
-  TeamProposalModel,
 } from "../openclaw-types";
 import { normalizeOfficeDecorSettings } from "../office-decor";
 import { getOfficeFootprintFromLayout, normalizeOfficeLayout } from "../office-layout";
@@ -1209,136 +1208,6 @@ export function toPendingApproval(entry: unknown): PendingApprovalModel | null {
   };
 }
 
-export function toTeamProposal(entry: unknown): TeamProposalModel | null {
-  const row = asRecord(entry);
-  const id = String(row.id ?? "").trim();
-  const requestedBy = String(row.requestedBy ?? "").trim();
-  const sourceAgentId = String(row.sourceAgentId ?? "").trim();
-  const title = String(row.title ?? "").trim();
-  const proposedTeamName = String(row.proposedTeamName ?? "").trim();
-  if (!id || !requestedBy || !sourceAgentId || !title || !proposedTeamName) return null;
-  const ideaBriefNode = asRecord(row.ideaBrief);
-  const focus = String(ideaBriefNode.focus ?? "").trim();
-  const targetCustomer = String(ideaBriefNode.targetCustomer ?? "").trim();
-  const primaryGoal = String(ideaBriefNode.primaryGoal ?? "").trim();
-  const constraints = String(ideaBriefNode.constraints ?? "").trim();
-  if (!focus || !targetCustomer || !primaryGoal || !constraints) return null;
-  const proposedRoles = normalizeArray(row.proposedRoles, (item) => {
-    const value = asRecord(item);
-    const roleId = String(value.roleId ?? "").trim();
-    const roleTitle = String(value.title ?? "").trim();
-    const rationale = String(value.rationale ?? "").trim();
-    if (!roleId || !roleTitle || !rationale) return null;
-    const mappedRuntimeRole = String(value.mappedRuntimeRole ?? "").trim();
-    return {
-      roleId,
-      title: roleTitle,
-      rationale,
-      supported: value.supported !== false,
-      mappedRuntimeRole:
-        mappedRuntimeRole === "ceo" ||
-        mappedRuntimeRole === "builder" ||
-        mappedRuntimeRole === "growth_marketer" ||
-        mappedRuntimeRole === "pm" ||
-        mappedRuntimeRole === "biz_pm" ||
-        mappedRuntimeRole === "biz_executor"
-          ? mappedRuntimeRole
-          : undefined,
-    };
-  });
-  const proposedInitialBoardItems = normalizeArray(row.proposedInitialBoardItems, (item) => {
-    const value = asRecord(item);
-    const itemId = String(value.id ?? "").trim();
-    const itemTitle = String(value.title ?? "").trim();
-    if (!itemId || !itemTitle) return null;
-    return {
-      id: itemId,
-      title: itemTitle,
-      detail:
-        typeof value.detail === "string" && value.detail.trim() ? value.detail.trim() : undefined,
-      ownerRoleId:
-        typeof value.ownerRoleId === "string" && value.ownerRoleId.trim()
-          ? value.ownerRoleId.trim()
-          : undefined,
-    };
-  });
-  const businessNode = asRecord(row.proposedBusinessConfig);
-  const capabilityNode = asRecord(businessNode.capabilitySkills);
-  const businessType = String(businessNode.businessType ?? "custom");
-  return {
-    id,
-    requestedBy,
-    sourceAgentId,
-    title,
-    ideaBrief: {
-      focus,
-      targetCustomer,
-      primaryGoal,
-      constraints,
-      notes:
-        typeof ideaBriefNode.notes === "string" && ideaBriefNode.notes.trim()
-          ? ideaBriefNode.notes.trim()
-          : undefined,
-    },
-    ideaGateStatus:
-      row.ideaGateStatus === "passed" || row.ideaGateStatus === "blocked"
-        ? row.ideaGateStatus
-        : "draft",
-    researchSummary: String(row.researchSummary ?? ""),
-    proposalSummary: String(row.proposalSummary ?? ""),
-    proposedTeamName,
-    proposedDescription: String(row.proposedDescription ?? ""),
-    proposedRoles,
-    proposedBusinessConfig: {
-      businessType:
-        businessType === "affiliate_marketing" ||
-        businessType === "content_creator" ||
-        businessType === "saas" ||
-        businessType === "custom"
-          ? businessType
-          : "custom",
-      capabilitySkills: {
-        measure: String(capabilityNode.measure ?? ""),
-        execute: String(capabilityNode.execute ?? ""),
-        distribute: String(capabilityNode.distribute ?? ""),
-      },
-    },
-    proposedInitialBoardItems,
-    approvalStatus:
-      row.approvalStatus === "approved" ||
-      row.approvalStatus === "rejected" ||
-      row.approvalStatus === "changes_requested"
-        ? row.approvalStatus
-        : "pending",
-    executionStatus:
-      row.executionStatus === "ready_to_create" ||
-      row.executionStatus === "creating" ||
-      row.executionStatus === "created" ||
-      row.executionStatus === "failed"
-        ? row.executionStatus
-        : "draft",
-    reviewTaskTitle: String(row.reviewTaskTitle ?? `Review CEO proposal: ${proposedTeamName}`),
-    createdAt: typeof row.createdAt === "number" ? row.createdAt : Date.now(),
-    updatedAt: typeof row.updatedAt === "number" ? row.updatedAt : Date.now(),
-    approvalNote:
-      typeof row.approvalNote === "string" && row.approvalNote.trim()
-        ? row.approvalNote.trim()
-        : undefined,
-    executionError:
-      typeof row.executionError === "string" && row.executionError.trim()
-        ? row.executionError.trim()
-        : undefined,
-    createdTeamId:
-      typeof row.createdTeamId === "string" && row.createdTeamId.trim()
-        ? row.createdTeamId.trim()
-        : undefined,
-    createdProjectId:
-      typeof row.createdProjectId === "string" && row.createdProjectId.trim()
-        ? row.createdProjectId.trim()
-        : undefined,
-  };
-}
-
 export const COMPANY_STORAGE_KEY = "shellcorp.company-model.v1";
 export const OFFICE_OBJECTS_STORAGE_KEY = "shellcorp.office-objects.v1";
 export const CLUSTER_BOUNDARY_LIMIT = 17.5;
@@ -1399,7 +1268,6 @@ export const DEFAULT_COMPANY_MODEL: CompanyModel = {
     },
   ],
   channelBindings: [],
-  teamProposals: [],
   heartbeatRuntime: {
     enabled: true,
     pluginId: "shellcorp-heartbeat",
@@ -1785,7 +1653,10 @@ export function toTask(entry: unknown): FederatedTaskModel | null {
     id,
     projectId,
     title,
-    status: status === "in_progress" || status === "blocked" || status === "done" ? status : "todo",
+    status:
+      status === "in_progress" || status === "review" || status === "blocked" || status === "done"
+        ? status
+        : "todo",
     ownerAgentId: typeof row.ownerAgentId === "string" ? row.ownerAgentId : undefined,
     priority: priority === "low" || priority === "high" ? priority : "medium",
     provider:
@@ -2070,7 +1941,6 @@ export function normalizeCompanyModel(value: unknown): CompanyModel {
   const providerIndexProfiles = normalizeArray(row.providerIndexProfiles, toProviderIndexProfile);
   const heartbeatProfiles = normalizeArray(row.heartbeatProfiles, toHeartbeatProfile);
   const channelBindings = normalizeArray(row.channelBindings, toChannelBinding);
-  const teamProposals = normalizeArray(row.teamProposals, toTeamProposal);
   const officeObjects = normalizeArray(row.officeObjects, toOfficeObject);
   const runtime = asRecord(row.heartbeatRuntime);
   return {
@@ -2085,7 +1955,6 @@ export function normalizeCompanyModel(value: unknown): CompanyModel {
     heartbeatProfiles:
       heartbeatProfiles.length > 0 ? heartbeatProfiles : DEFAULT_COMPANY_MODEL.heartbeatProfiles,
     channelBindings,
-    teamProposals,
     heartbeatRuntime: {
       enabled: runtime.enabled !== false,
       pluginId: String(runtime.pluginId ?? DEFAULT_COMPANY_MODEL.heartbeatRuntime.pluginId),

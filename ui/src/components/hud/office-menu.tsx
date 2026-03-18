@@ -7,7 +7,7 @@
  *
  * KEY CONCEPTS:
  * - Keeps the operator menu focused on current ShellCorp workflows.
- * - Routes CEO proposal review through the shared CEO Workbench Human Review view.
+ * - Routes board-native human review through the shared CEO Workbench review view.
  *
  * USAGE:
  * - Mounted from `office-simulation.tsx`.
@@ -40,7 +40,7 @@ import { useChatActions } from "@/features/chat-system/chat-store";
 import { OrganizationPanel } from "./organization-panel";
 import { api } from "../../../../convex/_generated/api";
 import { isConvexEnabled } from "@/providers/convex-provider";
-import { countSc12PendingReviewTasks, resolveSc12BoardTasks } from "@/lib/sc12-board";
+import { countReviewLaneTasks, resolveReviewBoardTasks } from "@/lib/review-board";
 
 interface SpeedDialProps {
   className?: string;
@@ -73,15 +73,15 @@ export function OfficeMenu({ className }: SpeedDialProps) {
   const [isOrganizationOpen, setIsOrganizationOpen] = useState(false);
   const companyBoard = useQuery(
     api.board.getCompanyBoardTasks,
-    convexEnabled ? { taskType: "team_proposal" } : "skip",
+    convexEnabled ? {} : "skip",
   );
   const userTaskCount = useMemo(() => {
-    const { tasks } = resolveSc12BoardTasks({
+    const { tasks } = resolveReviewBoardTasks({
       convexEnabled,
       hasLoaded: companyBoard !== undefined,
       rows: companyBoard?.tasks,
     });
-    return countSc12PendingReviewTasks(tasks);
+    return countReviewLaneTasks(tasks);
   }, [companyBoard, convexEnabled]);
   // Legacy team/agent manager dialogs were intentionally stripped from this UI flow.
   const canOpenAgentManager = false;
