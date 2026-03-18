@@ -23,14 +23,14 @@ export type TabKey =
   | "business"
   | "ledger";
 
-export type TaskStatus = "todo" | "in_progress" | "blocked" | "done";
+export type TaskStatus = "todo" | "in_progress" | "review" | "blocked" | "done";
+export type KanbanLaneKey = TaskStatus;
 
 export type TaskProvider = "internal" | "notion" | "vibe" | "linear";
 
 export type TaskSyncState = "healthy" | "pending" | "conflict" | "error";
 
 export type TaskPriority = "low" | "medium" | "high";
-export type TaskWorkflowType = "team_proposal";
 export type TaskApprovalState =
   | "draft"
   | "pending_review"
@@ -55,7 +55,7 @@ export type PanelTask = {
   syncState: TaskSyncState;
   syncError?: string;
   notes?: string;
-  taskType?: TaskWorkflowType;
+  taskType?: string;
   approvalState?: TaskApprovalState;
   linkedSessionKey?: string;
   createdTeamId?: string;
@@ -189,43 +189,42 @@ export function deriveAgentPresenceRows(input: {
   communicationRows: CommunicationRow[];
 }): AgentPresenceRow[] {
   const { employees, projectTasks, communicationRows } = input;
-  const rows = employees
-    .map((employee): AgentPresenceRow | null => {
-      const agentId = normalizeAgentId(employee._id);
-      if (!agentId) return null;
-      const tasks = projectTasks.filter((task) => task.ownerAgentId?.trim() === agentId);
-      const openTasks = tasks.filter((task) => task.status !== "done");
-      const blockedTasks = tasks.filter((task) => task.status === "blocked");
-      const completedTasks = tasks.filter((task) => task.status === "done");
-      const latestTask = pickLatestTask(tasks);
-      const latestActivity = latestCommunicationForAgent(communicationRows, agentId);
-      return {
-        employeeId: employee._id,
-        agentId,
-        name: employee.name,
-        roleLabel: employee.jobTitle?.trim() || "Operator",
-        avatarUrl: employee.profileImageUrl?.trim() || undefined,
-        liveState: employee.status?.trim() || undefined,
-        statusText:
-          employee.statusMessage?.trim() ||
-          latestTask?.title ||
-          latestActivity?.detail?.trim() ||
-          latestActivity?.label?.trim() ||
-          "Standing by",
-        latestTaskId: latestTask?.id,
-        latestTaskTitle: latestTask?.title,
-        latestTaskStatus: latestTask?.status,
-        latestTaskPriority: latestTask?.priority,
-        latestTaskUpdatedAt: latestTouchedAt(latestTask) || undefined,
-        latestTaskDetail: buildTaskDetail(latestTask),
-        latestActivityType: latestActivity?.activityType,
-        latestOccurredAt: Math.max(latestActivity?.occurredAt ?? 0, latestTouchedAt(latestTask)),
-        openTaskCount: openTasks.length,
-        blockedTaskCount: blockedTasks.length,
-        completedTaskCount: completedTasks.length,
-        isAssigned: tasks.length > 0,
-      };
-    });
+  const rows = employees.map((employee): AgentPresenceRow | null => {
+    const agentId = normalizeAgentId(employee._id);
+    if (!agentId) return null;
+    const tasks = projectTasks.filter((task) => task.ownerAgentId?.trim() === agentId);
+    const openTasks = tasks.filter((task) => task.status !== "done");
+    const blockedTasks = tasks.filter((task) => task.status === "blocked");
+    const completedTasks = tasks.filter((task) => task.status === "done");
+    const latestTask = pickLatestTask(tasks);
+    const latestActivity = latestCommunicationForAgent(communicationRows, agentId);
+    return {
+      employeeId: employee._id,
+      agentId,
+      name: employee.name,
+      roleLabel: employee.jobTitle?.trim() || "Operator",
+      avatarUrl: employee.profileImageUrl?.trim() || undefined,
+      liveState: employee.status?.trim() || undefined,
+      statusText:
+        employee.statusMessage?.trim() ||
+        latestTask?.title ||
+        latestActivity?.detail?.trim() ||
+        latestActivity?.label?.trim() ||
+        "Standing by",
+      latestTaskId: latestTask?.id,
+      latestTaskTitle: latestTask?.title,
+      latestTaskStatus: latestTask?.status,
+      latestTaskPriority: latestTask?.priority,
+      latestTaskUpdatedAt: latestTouchedAt(latestTask) || undefined,
+      latestTaskDetail: buildTaskDetail(latestTask),
+      latestActivityType: latestActivity?.activityType,
+      latestOccurredAt: Math.max(latestActivity?.occurredAt ?? 0, latestTouchedAt(latestTask)),
+      openTaskCount: openTasks.length,
+      blockedTaskCount: blockedTasks.length,
+      completedTaskCount: completedTasks.length,
+      isAssigned: tasks.length > 0,
+    };
+  });
 
   const presentRows = rows.filter((row): row is AgentPresenceRow => row !== null);
 
@@ -244,6 +243,7 @@ export function statusColumns(tasks: PanelTask[]): Record<TaskStatus, PanelTask[
   return {
     todo: tasks.filter((t) => t.status === "todo"),
     in_progress: tasks.filter((t) => t.status === "in_progress"),
+    review: tasks.filter((t) => t.status === "review"),
     blocked: tasks.filter((t) => t.status === "blocked"),
     done: tasks.filter((t) => t.status === "done"),
   };
@@ -277,6 +277,7 @@ export const PRIORITY_COLORS: Record<TaskPriority, string> = {
 export const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-slate-400",
   in_progress: "bg-blue-500",
+  review: "bg-amber-500",
   blocked: "bg-red-500",
   done: "bg-emerald-500",
 };
@@ -284,6 +285,21 @@ export const STATUS_COLORS: Record<TaskStatus, string> = {
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: "To Do",
   in_progress: "In Progress",
+  review: "Review",
   blocked: "Blocked",
   done: "Done",
 };
+
+export function isTaskInReviewLane(task: PanelTask): boolean {
+  return task.status === "review";
+}
+
+export function buildKanbanColumns(tasks: PanelTask[]): Record<KanbanLaneKey, PanelTask[]> {
+  return {
+    todo: tasks.filter((task) => task.status === "todo"),
+    in_progress: tasks.filter((task) => task.status === "in_progress"),
+    review: tasks.filter((task) => task.status === "review"),
+    blocked: tasks.filter((task) => task.status === "blocked"),
+    done: tasks.filter((task) => task.status === "done"),
+  };
+}

@@ -3,13 +3,14 @@
 /**
  * TASK DETAIL MODAL
  * =================
- * Full CRUD task detail view in a Dialog for the Kanban board.
+ * Full CRUD task detail view in a Dialog for the Team Kanban board.
  *
  * KEY CONCEPTS:
  * - Inline editable title (click to edit pattern).
  * - Dropdowns for status, priority, and assignee.
  * - Notes textarea mapped to task_update with detail/notes.
  * - Action buttons use boardCommand mutation via onCommand callback.
+ * - Reviewable tasks expose human review actions without leaving the Team Panel.
  * - Separate "Delete" button with a confirm step to prevent accidents.
  *
  * USAGE:
@@ -20,18 +21,18 @@ import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { UI_Z } from "@/lib/z-index";
 import { Textarea } from "@/components/ui/textarea";
+import { useAppStore } from "@/lib/app-store";
+import { UI_Z } from "@/lib/z-index";
 import { TaskMemoryView } from "./task-memory-view";
 import {
+  isTaskInReviewLane,
+  type PanelTask,
   PRIORITY_COLORS,
   STATUS_COLORS,
-  STATUS_LABELS,
-  type PanelTask,
   type TaskPriority,
   type TaskStatus,
 } from "./team-panel-types";
-import { useAppStore } from "@/lib/app-store";
 
 type EmployeeOption = {
   id: string;
@@ -44,6 +45,7 @@ interface TaskDetailModalProps {
   onClose: () => void;
   employees: EmployeeOption[];
   ownerLabelById: Map<string, string>;
+  convexEnabled: boolean;
   isPending: boolean;
   onCommand: (
     command: string,
@@ -83,6 +85,7 @@ export function TaskDetailModal({
   onClose,
   employees,
   ownerLabelById,
+  convexEnabled,
   isPending,
   onCommand,
 }: TaskDetailModalProps): JSX.Element {
@@ -94,6 +97,8 @@ export function TaskDetailModal({
   const [notesDraft, setNotesDraft] = useState("");
   const [notesChanged, setNotesChanged] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewStatusText, setReviewStatusText] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -103,6 +108,8 @@ export function TaskDetailModal({
       setNotesChanged(false);
       setConfirmDelete(false);
       setEditingTitle(false);
+      setReviewNote("");
+      setReviewStatusText("");
     }
   }, [task]);
 
@@ -113,7 +120,7 @@ export function TaskDetailModal({
     }
   }, [editingTitle]);
 
-  if (!task) return <></>;
+  if (!task) return null;
 
   function handleSaveTitle(): void {
     const trimmed = titleDraft.trim();
@@ -163,10 +170,56 @@ export function TaskDetailModal({
     void onCommand("task_delete", { taskId: task?.id }, "Task deleted.").then(onClose);
   }
 
+  function appendReviewDecision(
+    notes: string | undefined,
+    nextState: "approved" | "changes_requested" | "rejected",
+    note: string,
+  ): string {
+    const base = (notes ?? "").trim();
+    const detail = note.trim();
+    const line = `Human review: ${nextState}${detail ? ` | ${detail}` : ""}`;
+    return base ? `${base}\n\n${line}` : line;
+  }
+
+  async function handleReviewDecision(
+    nextState: "approved" | "changes_requested" | "rejected",
+  ): Promise<void> {
+    if (!task) return;
+    setReviewStatusText("");
+    try {
+      await onCommand(
+        "task_update",
+        {
+          taskId: task.id,
+          approvalState: nextState,
+          notes: appendReviewDecision(notesDraft, nextState, reviewNote),
+        },
+        nextState === "approved"
+          ? "Review approved."
+          : nextState === "rejected"
+            ? "Task rejected."
+            : "Changes requested.",
+      );
+      setNotesDraft((current) => appendReviewDecision(current, nextState, reviewNote));
+      setNotesChanged(false);
+      setReviewNote("");
+      setReviewStatusText(
+        nextState === "approved"
+          ? "Human approval saved on the board task."
+          : nextState === "rejected"
+            ? "Task marked rejected."
+            : "Task sent back with requested changes.",
+      );
+    } catch (error) {
+      setReviewStatusText(error instanceof Error ? error.message : "task_update_failed");
+    }
+  }
+
   const currentOwnerLabel = task.ownerAgentId
     ? (ownerLabelById.get(task.ownerAgentId) ?? task.ownerAgentId)
     : "unassigned";
   const linkedAgentId = parseAgentIdFromSessionKey(task.linkedSessionKey);
+  const showReviewActions = convexEnabled && isTaskInReviewLane(task);
 
   return (
     <Dialog
@@ -176,15 +229,15 @@ export function TaskDetailModal({
       }}
     >
       <DialogContent
-        className="max-w-lg"
+        className="max-w-[min(96vw,1100px)] border border-border bg-background p-0"
         style={{ zIndex: UI_Z.panelModal }}
         overlayStyle={{ zIndex: UI_Z.panelModal - 1 }}
       >
-        <DialogHeader>
+        <DialogHeader className="border-b border-border bg-card px-6 py-5">
           <DialogTitle className="sr-only">Task Detail</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-5 px-6 py-5">
           {/* Title */}
           <div>
             {editingTitle ? (
@@ -273,7 +326,10 @@ export function TaskDetailModal({
 
           {/* Metadata badges */}
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className={`text-[10px] ${PRIORITY_COLORS[task.priority]}`}>
+            <Badge
+              variant="outline"
+              className={`rounded-none text-[10px] shadow-none ${PRIORITY_COLORS[task.priority]}`}
+            >
               {task.priority}
             </Badge>
             <span className="text-xs text-muted-foreground">Assigned to: {currentOwnerLabel}</span>
@@ -281,16 +337,63 @@ export function TaskDetailModal({
               <span className="text-xs text-muted-foreground">Due: {formatDate(task.dueAt)}</span>
             ) : null}
             {task.taskType ? (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="rounded-none text-[10px] shadow-none">
                 {task.taskType.replace(/_/g, " ")}
               </Badge>
             ) : null}
             {task.approvalState ? (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="rounded-none text-[10px] shadow-none">
                 approval: {task.approvalState.replace(/_/g, " ")}
               </Badge>
             ) : null}
           </div>
+
+          {showReviewActions ? (
+            <div className="space-y-3 border border-border bg-card p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Review
+              </p>
+              <Textarea
+                value={reviewNote}
+                onChange={(event) => setReviewNote(event.target.value)}
+                placeholder="Write review guidance directly on the shared task."
+                className="min-h-24 rounded-none border-border bg-background text-sm"
+                disabled={isPending}
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  disabled={isPending}
+                  onClick={() => void handleReviewDecision("approved")}
+                >
+                  Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-none border-border bg-background shadow-none"
+                  disabled={isPending}
+                  onClick={() => void handleReviewDecision("changes_requested")}
+                >
+                  Request Changes
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-none border-border bg-background shadow-none"
+                  disabled={isPending}
+                  onClick={() => void handleReviewDecision("rejected")}
+                >
+                  Reject
+                </Button>
+              </div>
+              {reviewStatusText ? (
+                <div className="border border-border bg-background p-3 text-sm text-muted-foreground">
+                  {reviewStatusText}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {task.linkedSessionKey || task.createdTeamId || task.createdProjectId ? (
             <div className="space-y-2 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">

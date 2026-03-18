@@ -1,5 +1,6 @@
 # HISTORY
 
+2026-03-18 16:10 +0000 | refactor | MEM-0196 | ui,teams,kanban,review | Restyled the Team Panel kanban toward the CEO Workbench board language, added a first-class Review lane driven by existing task approval metadata, and surfaced in-panel review actions on reviewable task cards instead of hiding that state only in badges.
 2026-03-18 11:40 +0000 | refactor | MEM-0209 | ui,memory,team-panel | Simplified the Team Memory composer by replacing the ambiguous kind dropdown with explicit kind buttons and moving the append-only guidance into a compact tooltip.
 2026-03-18 15:05 +0000 | feature | MEM-0209 | ui,convex,memory,team-panel | Replaced the Team Panel Activity tab with a realtime append-only Memory log backed by Convex, added a small operator note composer for shared team/project memory, and kept Timeline/Kanban separate from private OpenClaw memory and filesystem artefacts.
 2026-03-18 14:35 +0000 | refactor | MEM-0196 | ui,teams,team-panel | Split Team Panel orchestration into focused board/runtime/business hooks, added module-local Team System docs/contracts, and slimmed the panel shell so later Activity-to-Memory work can land on clearer seams without changing current behavior.

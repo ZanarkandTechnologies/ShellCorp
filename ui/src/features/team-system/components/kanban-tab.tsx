@@ -3,22 +3,27 @@
 /**
  * KANBAN TAB
  * ==========
- * Orchestrates the Notion-style Kanban board: four status columns + task detail modal.
+ * Orchestrates the Team Kanban board: status lanes, review lane, and task detail modal.
  *
  * KEY CONCEPTS:
  * - Board state is read from Convex (canonical) or sidecar (fallback).
  * - All mutations go through boardCommand via the onBoardCommand callback.
  * - Task detail modal is driven by selectedTask local state.
- * - Quick-add at the bottom of each column uses task_add command.
+ * - Quick-add at the bottom of each status lane uses task_add command.
  *
  * USAGE:
  * - Rendered inside TeamPanel as the "kanban" TabsContent.
  */
 
 import { useMemo, useState } from "react";
-import { statusColumns, type PanelTask, type TaskStatus } from "./team-panel-types";
 import { KanbanColumn } from "./kanban-column";
 import { TaskDetailModal } from "./task-detail-modal";
+import {
+  buildKanbanColumns,
+  type KanbanLaneKey,
+  type PanelTask,
+  type TaskStatus,
+} from "./team-panel-types";
 
 type EmployeeModel = {
   _id: string;
@@ -40,7 +45,7 @@ interface KanbanTabProps {
   ) => Promise<void>;
 }
 
-const COLUMN_ORDER: TaskStatus[] = ["todo", "in_progress", "blocked", "done"];
+const COLUMN_ORDER: KanbanLaneKey[] = ["todo", "in_progress", "review", "blocked", "done"];
 
 export function KanbanTab({
   projectTasks,
@@ -61,7 +66,7 @@ export function KanbanTab({
     [focusAgentId, projectTasks],
   );
 
-  const columns = statusColumns(visibleTasks);
+  const columns = buildKanbanColumns(visibleTasks);
 
   const employeeOptions = useMemo(
     () =>
@@ -115,12 +120,12 @@ export function KanbanTab({
         </div>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {COLUMN_ORDER.map((status) => (
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        {COLUMN_ORDER.map((laneKey) => (
           <KanbanColumn
-            key={status}
-            status={status}
-            tasks={columns[status]}
+            key={laneKey}
+            laneKey={laneKey}
+            tasks={columns[laneKey]}
             ownerLabelById={ownerLabelById}
             convexEnabled={convexEnabled}
             isPending={boardActionState.pending}
@@ -136,6 +141,7 @@ export function KanbanTab({
         onClose={closeDetail}
         employees={employeeOptions}
         ownerLabelById={ownerLabelById}
+        convexEnabled={convexEnabled}
         isPending={boardActionState.pending}
         onCommand={onBoardCommand}
       />

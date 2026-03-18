@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  deriveAgentPresenceRows,
+  buildKanbanColumns,
   type CommunicationRow,
+  deriveAgentPresenceRows,
+  isTaskInReviewLane,
   type PanelTask,
   type PresenceEmployee,
 } from "./team-panel-types";
@@ -118,5 +120,52 @@ describe("deriveAgentPresenceRows", () => {
     });
 
     expect(rows.map((row) => row.agentId)).toEqual(["beta", "alpha"]);
+  });
+});
+
+describe("kanban lane helpers", () => {
+  it("routes review-status tasks into the review lane", () => {
+    const tasks: PanelTask[] = [
+      {
+        id: "task-review",
+        title: "Founder review",
+        status: "review",
+        priority: "high",
+        provider: "internal",
+        syncState: "healthy",
+      },
+      {
+        id: "task-normal",
+        title: "Ship follow-up",
+        status: "in_progress",
+        priority: "medium",
+        provider: "internal",
+        syncState: "healthy",
+      },
+    ];
+
+    const columns = buildKanbanColumns(tasks);
+
+    expect(isTaskInReviewLane(tasks[0] as PanelTask)).toBe(true);
+    expect(columns.review.map((task) => task.id)).toEqual(["task-review"]);
+    expect(columns.in_progress.map((task) => task.id)).toEqual(["task-normal"]);
+  });
+
+  it("keeps completed tasks in done when they are not under review", () => {
+    const tasks: PanelTask[] = [
+      {
+        id: "task-done",
+        title: "Closed task",
+        status: "done",
+        priority: "low",
+        provider: "internal",
+        syncState: "healthy",
+      },
+    ];
+
+    const columns = buildKanbanColumns(tasks);
+
+    expect(columns.done.map((task) => task.id)).toEqual(["task-done"]);
+    expect(columns.review).toHaveLength(0);
   });
 });
