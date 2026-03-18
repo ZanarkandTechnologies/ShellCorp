@@ -36,6 +36,7 @@ Build Shell Company as a UI-first control center on top of OpenClaw:
 6. **Federated work orchestration**: unify external board work (Notion/Vibe/internal) into one operator surface.
 7. **Personalized presence and decor**: let operators style the office after the core founder-control loop is working.
 8. **Roster-first team oversight**: each team surface should show who each agent is, what they are doing now, and keep team coordination anchored to ticket activity and task memory instead of chat-style team conversation.
+9. **Session-scoped CLI actor identity**: agent-attributed ShellCorp CLI actions should resolve from an explicit shell-session actor claim so status, board activity, and targeted coordination are attributable without inventing a second auth/runtime layer.
 
 ## State Shape Rule
 
@@ -56,6 +57,7 @@ This product should not invent a large proposal/config schema when a board task 
 - Notion integration is shipped as an in-repo OpenClaw plugin
 - Chat actions from UI are bridged back to OpenClaw gateway APIs
 - Task and project execution memory should stay inspectable as markdown-first working state with append-only audit logs
+- Agent-attributed CLI writes should resolve caller identity from a session-scoped env contract (`SHELLCORP_AGENT_ID`, derived team/project/role) rather than loose per-command guessing
 
 ## MVP Focus
 
@@ -67,6 +69,7 @@ Single VPS, one shared OpenClaw instance, a small number of active teams:
 - Show per-team board/activity context for newly created teams
 - Make team oversight legible at a glance with compact member presence cards that show face/avatar, live state, latest task context, and quick actions
 - Make team oversight legible through a roster-first Overview plus a shared append-only Memory log tied to ticket execution and team decisions
+- Allow thin CLI coordination between agents when session-local context matters, but keep the durable artifact in shared timeline/task memory instead of restoring team chat as a second collaboration store
 - Ship Notion plugin in-repo and wired for MVP workflows
 - Ship practical Memory and Skills panels for active operators, not broad office clutter
 
@@ -86,6 +89,7 @@ After MVP baseline stabilizes, Shell Company extends from "minimal founder-contr
 - Keep the office small, readable, and useful by default
 - Provide reliable session and agent observability from real OpenClaw state
 - Keep CLI and sidecar state thin: structured for board mechanics, markdown-first for working content
+- Make agent-attributed CLI activity trustworthy through one explicit login/export flow per shell session
 - Make it easy to identify each agent on a team by face/avatar, role, and current work without opening separate panels first
 - Package Notion integration as an OpenClaw extension with schema-driven config
 - Keep architecture simple: local VPS state first, no mandatory external DB
@@ -115,6 +119,7 @@ After MVP baseline stabilizes, Shell Company extends from "minimal founder-contr
 - Spec-first workflow for major scope changes
 - Security-first defaults for plugin trust and secret handling
 - Prefer markdown/file-backed working state over new structured workflow stores unless routing or sync genuinely requires schema
+- Prefer session-scoped env identity for CLI attribution over shared login stores or hidden cwd-based auth files
 - Demo defaults should bias toward a tiny office and a small number of meaningful teams
 - External-provider write ownership must remain explicit and deterministic per project
 - Sync behavior must be observable/auditable in UI with failure states surfaced to operators

@@ -9,6 +9,7 @@
 - Reuse shared helpers for repo-root resolution and install/link flows instead of duplicating shell logic across commands.
 - Keep operator-facing commands JSON-friendly when they return structured state.
 - Treat `npm link` at the repo root as the canonical way to expose the global `shellcorp` alias.
+- Agent coordination must stay transport-thin: use native `openclaw agent` for the turn, log one shared timeline breadcrumb, and keep durable work context on board/task or team-memory surfaces instead of creating a second chat store. See `MEM-0211`.
 
 ## Validation
 

@@ -18,6 +18,7 @@ The CLI is broader than the intended MVP operating surface today. This document 
 ```bash
 npm run cli:reinstall
 shellcorp onboarding --yes
+eval "$(shellcorp agent login --agent-id alpha-pm)"
 shellcorp team list --json
 shellcorp team config show --team-id team-proj-alpha --json
 shellcorp team board task list --team-id team-proj-alpha --json
@@ -32,6 +33,7 @@ shellcorp team board task list --team-id team-proj-alpha --json
 - `office`: office printing, layout objects, and decor/style control
 - `doctor`: sidecar contract validation
 - top-level `status`: shortcut for writing structured task/activity updates
+- top-level `whoami`: inspect the resolved CLI caller for the current shell session
 
 ## Audit
 
@@ -59,7 +61,9 @@ The product direction is thinner than the current command count suggests.
 - `team board task add|update|move|list`
 - `team status report`
 - `agent config show|set-skills|set-heartbeat`
+- `agent login|logout`
 - `agent monitor`
+- `whoami`
 - `doctor team-data`
 
 ### What Feels Optional Or At Risk
@@ -125,14 +129,30 @@ If you are building against the current product direction, start with:
 
 ```bash
 shellcorp onboarding --yes
+eval "$(shellcorp agent login --agent-id affiliate-lab-pm)"
+shellcorp whoami
 shellcorp ui
 shellcorp team create --name "Affiliate Lab" --description "Small affiliate loop" --goal "Publish and learn"
 shellcorp team config resources set --team-id team-proj-affiliate-lab --text $'# Resources\n\nbudget: small\nconstraints: stay text-first\n'
 shellcorp team board task add --team-id team-proj-affiliate-lab --title "Draft execution brief" --detail $'Goal: turn the approved idea into a working markdown brief.\n\nNext:\n- define first KPI\n- define first content batch'
 shellcorp team board task memory append --team-id team-proj-affiliate-lab --task-id task-1 --text $'## Plan\n- gather context\n- draft first KPI\n- move to review'
+shellcorp status --state planning "Triaging approved work"
 shellcorp team board task move --team-id team-proj-affiliate-lab --task-id task-1 --status review
 shellcorp team monitor --team-id team-proj-affiliate-lab --json
 ```
+
+## Session Identity
+
+Agent-attributed CLI commands should run inside a shell session that has a caller identity claim.
+
+```bash
+eval "$(shellcorp agent login --agent-id alpha-pm)"
+shellcorp whoami --json
+shellcorp status --state planning "Starting my turn"
+shellcorp agent logout
+```
+
+ShellCorp treats `SHELLCORP_AGENT_ID` as the canonical caller identity for agent-attributed writes, then derives `teamId`, `projectId`, and role from `company.json`. Conflicting manual `SHELLCORP_TEAM_ID` or `SHELLCORP_PROJECT_ID` overrides fail fast.
 
 ## How To Think About Task State
 

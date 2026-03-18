@@ -42,6 +42,8 @@ UI-first OpenClaw mapping pivot:
 - Added Notion plugin gateway methods for task list/create/update/sync and profile bootstrap (`notion-shell.tasks.*`, `notion-shell.profile.bootstrap`) so external provider logic stays plugin-first.
 - Fixed office placement persistence regression: drag-release updates now resolve canonical office-object IDs across UI/persistence boundaries, re-sync local transforms after reload, and preserve last confirmed transform on save failure; added targeted tests and QA artifacts for placement persistence.
 - Added two-phase Notion comment webhook flow: temporary FastAPI payload probe (`tools/notion-webhook-probe`) for verification/capture, then OpenClaw hooks mapping + transform hot-swap (`~/.openclaw/hooks/transforms/notion.ts`) with comments-first routing.
+- Added thin agent coordination on the CLI: `agent list`, `agent search`, and `agent send` now wrap native `openclaw agent` turns and emit one shared `handoff` breadcrumb into the team timeline instead of restoring a separate communications channel.
+- Added session-scoped CLI actor identity: `agent login`, `agent logout`, and `whoami` now establish env-backed caller context (`SHELLCORP_AGENT_ID` plus derived team/project/role), top-level `status` resolves from that shared context, and conflicting manual team/project overrides fail fast.
 
 ---
 
