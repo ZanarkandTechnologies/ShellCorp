@@ -1,8 +1,16 @@
 # SC12: CEO Team Generation Workflow
 
+> Deprecated. The active replacement spec is [SC12-spec-board-native-task-planning-review.md](/home/kenjipcx/Zanarkand/ShellCorp/docs/specs/SC12-spec-board-native-task-planning-review.md).
+
 ## Status
 
-Proposed replacement for the deferred wizard framing. This spec supersedes the earlier SC12 "skill orchestration wizard" direction while preserving the existing planning trail.
+Deprecated planning trail for the earlier wizard/proposal framing. Keep this file for history only; implement against the board-native replacement spec instead.
+
+Current direction note:
+
+- `team proposal` is deprecated and removed from the CLI.
+- The active contract is board-native task planning, `review`-lane approval, and markdown task memory.
+- Any remaining proposal-specific sections below are migration-era context only.
 
 ## Purpose
 
@@ -10,17 +18,16 @@ Define the canonical founder workflow for starting a new team through the CEO Op
 
 - CEO chat as the entry point,
 - a CLI-backed team-generation skill,
-- a minimum-brief idea gate,
-- research-backed proposal generation,
-- founder review through User Tasks,
+- board-native task planning,
+- founder review through the `review` lane,
 - task-backed working memory on the board,
-- approval-triggered team creation,
+- approval-triggered execution,
 - and heartbeat handoff after bootstrap.
 
 The current product simplification for this spec is:
 
-- the CEO board task is the proposal container,
-- the same task carries founder approval state,
+- the board task is the workflow container,
+- `review` is a normal board lane rather than a separate approval object,
 - task notes act as compact working memory,
 - linked session/chat holds the richer working thread.
 
@@ -33,9 +40,9 @@ OpenClaw already owns agent runtime and behavior. ShellCorp already has a local 
 1. founder tells the CEO agent to start a team for an idea,
 2. CEO agent asks follow-up questions until the idea passes a minimum gate,
 3. CEO agent researches the likely team shape, tools, and data sources,
-4. CEO agent persists a readable proposal through ShellCorp CLI,
-5. founder approves or requests changes from User Tasks,
-6. CEO agent executes the approved proposal through ShellCorp CLI,
+4. CEO agent creates or updates board tasks through ShellCorp CLI,
+5. founder reviews work by operating the `review` lane in User Tasks,
+6. CEO agent executes approved work through ShellCorp CLI,
 7. the created team appears in the existing office/team surfaces,
 8. created board tasks become the short-term task/session memory surface,
 9. heartbeat takes over.
@@ -68,22 +75,22 @@ SC12 must build around current ShellCorp and OpenClaw primitives instead of intr
 
 - OpenClaw remains the runtime source of truth.
 - CEO behavior changes should come from skill instructions and heartbeat guidance, not new agent-runtime code in ShellCorp.
-- User Tasks is a filtered founder approval surface over CEO board tasks.
+- User Tasks is a filtered founder review surface over board tasks currently in `review`.
 - Team Panel and Business tab remain post-create inspection/editing surfaces, not the primary intake flow.
-- CEO proposal work should prefer shared board/chat/session primitives over proposal-specific workflow stores.
+- CEO planning work should prefer shared board/chat/session primitives over proposal-specific workflow stores.
 
 ## Primary Workflow
 
 1. Founder asks the CEO agent to start a team for an idea.
 2. CEO agent follows the SC12 team-generation skill:
    - gather missing business brief details,
-   - check minimum gate,
-   - run real-world research,
-   - prepare a proposal packet.
-3. CEO agent persists the work as a CEO board task through ShellCorp CLI.
-4. User Tasks shows the founder that CEO board task in a review filter.
-5. Founder approves, rejects, or requests changes.
-6. CEO agent monitors the proposal state and executes approved proposals through ShellCorp CLI.
+   - create planning tickets when no actionable work exists,
+   - write plan/context into task memory,
+   - move tasks into `review` when human sign-off is needed.
+3. CEO agent persists the work as board tasks through ShellCorp CLI.
+4. User Tasks shows the founder the board tasks currently in `review`.
+5. Founder approves by working the `review` lane.
+6. CEO agent monitors the board state and executes approved work through ShellCorp CLI.
 7. ShellCorp creates the team with existing create/business/equip/bootstrap flows.
 8. ShellCorp seeds the new team board with the initial tasks and working-memory template.
 9. Existing office/team surfaces display the created team.
@@ -97,26 +104,23 @@ SC12 is CLI-first and skill-driven.
 
 The CEO skill must instruct the agent to:
 
-1. ask follow-up questions until the idea gate passes,
-2. research likely roles, tools, workflows, and required data sources,
-3. write a concise readable proposal packet,
-4. persist that packet through the `shellcorp team proposal` CLI,
-5. wait for founder review state,
-6. execute only after founder approval.
+1. read the board before planning,
+2. create planning tickets when no actionable work exists,
+3. write concise plans and gathered context into task memory,
+4. move tasks into `review` when human approval is required,
+5. claim approved tasks back to an agent,
+6. execute from the same task memory rather than a separate proposal object.
 
-### Required CLI proposal lifecycle
+### Required CLI task lifecycle
 
-SC12 requires a `team proposal` CLI namespace that supports:
+SC12 requires the board CLI to support:
 
-- create
-- list
-- show
-- approve
-- reject
-- request-changes
-- execute
+- task create/update/list/move
+- task claim/assign
+- task memory set/append/show
+- task filtering for agent-scoped views
 
-Proposal persistence lives in sidecar company state, not a separate workflow backend.
+Workflow persistence lives directly on shared board tasks with markdown task memory, not in a separate workflow backend.
 
 ## Idea Gate Contract
 
@@ -143,7 +147,7 @@ The CEO must not persist a proposal as executable until the brief is complete en
 
 ## Proposal Packet Contract
 
-Each proposal must survive chat, review, and execution without depending on transient chat context.
+Each proposal must survive chat, review, and execution without depending on transient chat context. The canonical stored form is one shared board task with a readable markdown body and task-local approval/result metadata.
 
 ### Required proposal fields
 

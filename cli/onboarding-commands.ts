@@ -551,7 +551,7 @@ function buildNextSteps(inputValues: {
       ? `Use ${UI_ALIAS_COMMAND} or ${UI_START_COMMAND} from the repo root to open the ShellCorp UI.`
       : `Run ${CLI_INSTALL_COMMAND} from the repo root for the global \`shellcorp\` alias, or use ${UI_START_COMMAND} directly.`,
     "Use the in-app onboarding flow to finish connector setup and learn the office controls.",
-    "Ask the CEO agent to draft a team proposal, then review and approve it as your first office workflow.",
+    "Ask the CEO agent to create planning tickets on the board, move one into review, and approve it as your first office workflow.",
   ];
   if (!inputValues.uiEnv.VITE_CONVEX_URL.trim()) {
     steps.splice(
