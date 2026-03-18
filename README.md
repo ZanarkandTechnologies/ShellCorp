@@ -222,6 +222,7 @@ Useful commands:
 - `npm run shell -- ui`
 - `npm run shell -- team run live --team-id team-proj-shellcorp-dev-team --cadence-minutes 1 --goal "Live demo loop" --json`
 - `npm run shell -- team monitor --team-id team-proj-shellcorp-dev-team --json`
+- `npm run shell -- team archive --team-id team-proj-example --deregister-openclaw`
 - `npm run shell -- office decor docs`
 - `npm run shell -- office decor list`
 - `npm run shell -- office decor pack list`
@@ -243,6 +244,8 @@ For autonomous-team MVP work, the main runtime artifacts are:
 - `npm run shell -- doctor team-data --json`
 - `npm run shell -- office doctor --json`
 - `npm run shell -- team list --json`
+
+When you archive a team with `--deregister-openclaw`, ShellCorp now removes that team's OpenClaw `agents.list` entries and deletes each managed agent workspace under `~/.openclaw` so retired businesses do not leave stale runtime folders behind.
 - `npm run shell -- team proposal list --json`
 - `npm run shell -- team proposal show --proposal-id <proposalId> --json`
 - `scripts/reset-demo-office.sh --profile minimal`

@@ -16,7 +16,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { access, appendFile, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, appendFile, cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
@@ -1172,9 +1172,20 @@ export async function deregisterOpenclawAgents(opts: {
   agentIds: string[];
 }): Promise<void> {
   if (opts.agentIds.length === 0) return;
+  const stateRoot = resolveOpenclawStateRoot();
   const config = await opts.store.readOpenclawConfig();
   const agentsNode = asRecord(config.agents);
   const currentList = Array.isArray(agentsNode.list) ? [...agentsNode.list] : [];
+  const configuredWorkspaceByAgentId = new Map<string, string>();
+  for (const entry of currentList) {
+    const row = asRecord(entry);
+    const id = typeof row.id === "string" ? row.id.trim() : "";
+    if (!id) continue;
+    configuredWorkspaceByAgentId.set(
+      id,
+      tryResolveWorkspaceFromOpenclawConfig(config, stateRoot, id),
+    );
+  }
   const removeSet = new Set(opts.agentIds);
   const nextList = currentList.filter((entry) => {
     const id = asRecord(entry).id;
@@ -1185,6 +1196,21 @@ export async function deregisterOpenclawAgents(opts: {
     agents: { ...agentsNode, list: nextList },
   } as Record<string, unknown>;
   await opts.store.writeOpenclawConfig(nextConfig);
+
+  for (const agentId of opts.agentIds) {
+    const workspacePath = configuredWorkspaceByAgentId.get(agentId) ?? "";
+    const resolvedWorkspacePath = workspacePath ? path.resolve(workspacePath) : "";
+    const relativeWorkspacePath = resolvedWorkspacePath
+      ? path.relative(stateRoot, resolvedWorkspacePath)
+      : "";
+    const isManagedWorkspace =
+      relativeWorkspacePath.length > 0 &&
+      relativeWorkspacePath !== ".." &&
+      !relativeWorkspacePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relativeWorkspacePath);
+    if (!isManagedWorkspace) continue;
+    await rm(resolvedWorkspacePath, { recursive: true, force: true });
+  }
 }
 
 export function runDoctor(company: CompanyModel): string[] {
