@@ -1,4 +1,4 @@
-import { access, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Command } from "commander";
@@ -131,13 +131,23 @@ type CompanySnapshot = {
     heartbeatProfileId: string;
     role?: string;
   }>;
-  teamProposals?: Array<{
-    id: string;
-    approvalStatus: string;
-    executionStatus: string;
-    createdTeamId?: string;
-    createdProjectId?: string;
-  }>;
+};
+
+type MockBoardTask = {
+  taskId: string;
+  projectId: string;
+  title: string;
+  status: string;
+  ownerAgentId?: string;
+  priority: string;
+  notes?: string;
+  taskType?: string;
+  approvalState?: string;
+  linkedSessionKey?: string;
+  createdTeamId?: string;
+  createdProjectId?: string;
+  createdAt: number;
+  updatedAt: number;
 };
 
 async function setupStateDir(): Promise<string> {
@@ -203,6 +213,89 @@ async function readOfficeObjects(stateDir: string): Promise<
     position: [number, number, number];
     metadata?: Record<string, unknown>;
   }>;
+}
+
+function installBoardMock(): Map<string, MockBoardTask[]> {
+  const boardTasks = new Map<string, MockBoardTask[]>();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const payload = init?.body ? JSON.parse(String(init.body)) : {};
+    if (url.endsWith("/board/command")) {
+      const now = Date.now();
+      if (payload.command === "task_add") {
+        const rows = boardTasks.get(payload.projectId) ?? [];
+        rows.push({
+          taskId: payload.taskId,
+          projectId: payload.projectId,
+          title: payload.title,
+          status: payload.status ?? "todo",
+          ownerAgentId: payload.ownerAgentId,
+          priority: payload.priority ?? "medium",
+          notes: payload.notes ?? payload.detail,
+          taskType: payload.taskType,
+          approvalState: payload.approvalState,
+          linkedSessionKey: payload.linkedSessionKey,
+          createdTeamId: payload.createdTeamId,
+          createdProjectId: payload.createdProjectId,
+          createdAt: now,
+          updatedAt: now,
+        });
+        boardTasks.set(payload.projectId, rows);
+        return new Response(JSON.stringify({ ok: true, taskId: payload.taskId }), { status: 200 });
+      }
+      if (payload.command === "task_update") {
+        const rows = boardTasks.get(payload.projectId) ?? [];
+        const current = rows.find((row) => row.taskId === payload.taskId);
+        if (!current) {
+          return new Response(JSON.stringify({ ok: false, error: "task_not_found" }), {
+            status: 404,
+          });
+        }
+        if (typeof payload.title === "string") current.title = payload.title;
+        if (typeof payload.status === "string") current.status = payload.status;
+        if (typeof payload.notes === "string") current.notes = payload.notes;
+        if (typeof payload.detail === "string") current.notes = payload.detail;
+        if (typeof payload.approvalState === "string") current.approvalState = payload.approvalState;
+        if (typeof payload.createdTeamId === "string") current.createdTeamId = payload.createdTeamId;
+        if (typeof payload.createdProjectId === "string") current.createdProjectId = payload.createdProjectId;
+        current.updatedAt = now;
+        return new Response(JSON.stringify({ ok: true, taskId: payload.taskId }), { status: 200 });
+      }
+      if (payload.command === "task_move") {
+        const rows = boardTasks.get(payload.projectId) ?? [];
+        const current = rows.find((row) => row.taskId === payload.taskId);
+        if (!current) {
+          return new Response(JSON.stringify({ ok: false, error: "task_not_found" }), {
+            status: 404,
+          });
+        }
+        if (typeof payload.status === "string") current.status = payload.status;
+        current.updatedAt = now;
+        return new Response(JSON.stringify({ ok: true, taskId: payload.taskId }), { status: 200 });
+      }
+      if (payload.command === "task_assign") {
+        const rows = boardTasks.get(payload.projectId) ?? [];
+        const current = rows.find((row) => row.taskId === payload.taskId);
+        if (!current) {
+          return new Response(JSON.stringify({ ok: false, error: "task_not_found" }), {
+            status: 404,
+          });
+        }
+        if (typeof payload.ownerAgentId === "string") current.ownerAgentId = payload.ownerAgentId;
+        current.updatedAt = now;
+        return new Response(JSON.stringify({ ok: true, taskId: payload.taskId }), { status: 200 });
+      }
+    }
+    if (url.endsWith("/board/query")) {
+      const rows = boardTasks.get(payload.projectId) ?? [];
+      return new Response(JSON.stringify({ ok: true, data: { tasks: rows } }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ ok: false, error: "unknown_endpoint" }), {
+      status: 404,
+    });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return boardTasks;
 }
 
 afterEach(() => {
@@ -330,7 +423,7 @@ describe("team CLI", () => {
     expect(project?.goal).toContain("Continuously improve ShellCorp");
     expect(project?.kpis).toEqual([
       "feature-throughput",
-      "proposal-acceptance",
+      "review-throughput",
       "demo-readiness",
     ]);
 
@@ -960,151 +1053,173 @@ describe("team CLI", () => {
     expect(teamClusters[1]?.position).toEqual([-5, 0, -5]);
   });
 
-  it("persists and executes team proposals through the CLI", async () => {
+  it("stores task memory directly on board tasks and supports the review lane", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
-
-    await runCommand([
-      "team",
-      "proposal",
-      "create",
-      "--json-input",
-      JSON.stringify({
-        businessType: "affiliate_marketing",
-        requestedBy: "founder",
-        sourceAgentId: "main",
-        ideaBrief: {
-          focus: "affiliate content engine",
-          targetCustomer: "home office shoppers",
-          primaryGoal: "ship weekly revenue-producing content",
-          constraints: "keep spend low and use proven channels",
-        },
-      }),
-    ]);
-
-    const afterCreateRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
-    const afterCreate = JSON.parse(afterCreateRaw) as CompanySnapshot;
-    const proposalId = afterCreate.teamProposals?.[0]?.id;
-    expect(proposalId).toBeTruthy();
-
-    await runCommand([
-      "team",
-      "proposal",
-      "approve",
-      "--proposal-id",
-      proposalId!,
-      "--note",
-      "looks good",
-    ]);
-    await runCommand(["team", "proposal", "execute", "--proposal-id", proposalId!]);
-
-    const finalRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
-    const finalModel = JSON.parse(finalRaw) as CompanySnapshot;
-    const executed = finalModel.teamProposals?.find((entry) => entry.id === proposalId);
-    expect(executed?.approvalStatus).toBe("approved");
-    expect(executed?.executionStatus).toBe("created");
-    expect(executed?.createdTeamId).toBe("team-proj-affiliate-content-engine-team");
-    expect(
-      finalModel.projects.some((entry) => entry.id === "proj-affiliate-content-engine-team"),
-    ).toBe(true);
-
-    const teamClusters = (await readOfficeObjects(stateDir)).filter(
-      (entry) => entry.meshType === "team-cluster",
-    );
-    expect(teamClusters).toHaveLength(1);
-    expect(teamClusters[0]?.metadata?.teamId).toBe("team-proj-affiliate-content-engine-team");
-    expect(teamClusters[0]?.position).toEqual([0, 0, 0]);
-  });
-
-  it("proposal execution uses the next open cluster slot when one is already occupied", async () => {
-    const stateDir = await setupStateDir();
-    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "http://127.0.0.1:3211";
+    const boardTasks = installBoardMock();
 
     await runCommand([
       "team",
       "create",
       "--name",
-      "Anchor Team",
+      "Alpha",
       "--description",
-      "Existing cluster",
+      "Core team",
       "--goal",
-      "Occupy the first slot",
-      "--with-cluster",
+      "Ship fast",
     ]);
 
     await runCommand([
       "team",
-      "proposal",
-      "create",
-      "--json-input",
-      JSON.stringify({
-        businessType: "affiliate_marketing",
-        requestedBy: "founder",
-        sourceAgentId: "main",
-        ideaBrief: {
-          focus: "affiliate content engine",
-          targetCustomer: "home office shoppers",
-          primaryGoal: "ship weekly revenue-producing content",
-          constraints: "keep spend low and use proven channels",
-        },
-      }),
+      "board",
+      "task",
+      "add",
+      "--team-id",
+      "team-proj-alpha",
+      "--task-id",
+      "task-plan",
+      "--title",
+      "Plan the first sprint",
     ]);
-
-    const afterCreateRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
-    const afterCreate = JSON.parse(afterCreateRaw) as CompanySnapshot;
-    const proposalId = afterCreate.teamProposals?.[0]?.id;
-    expect(proposalId).toBeTruthy();
 
     await runCommand([
       "team",
-      "proposal",
-      "approve",
-      "--proposal-id",
-      proposalId!,
-      "--note",
-      "looks good",
+      "board",
+      "task",
+      "memory",
+      "set",
+      "--team-id",
+      "team-proj-alpha",
+      "--task-id",
+      "task-plan",
+      "--text",
+      "# Goal\nShip the first sprint plan",
     ]);
-    await runCommand(["team", "proposal", "execute", "--proposal-id", proposalId!]);
 
-    const clusterByTeamId = new Map(
-      (await readOfficeObjects(stateDir))
-        .filter((entry) => entry.meshType === "team-cluster")
-        .map((entry) => [String(entry.metadata?.teamId ?? ""), entry.position] as const),
-    );
-    expect(clusterByTeamId.get("team-proj-anchor-team")).toEqual([0, 0, 0]);
-    expect(clusterByTeamId.get("team-proj-affiliate-content-engine-team")).toEqual([-5, 0, -5]);
+    await runCommand([
+      "team",
+      "board",
+      "task",
+      "memory",
+      "append",
+      "--team-id",
+      "team-proj-alpha",
+      "--task-id",
+      "task-plan",
+      "--text",
+      "## Next Step\nMove this ticket into review for founder sign-off.",
+    ]);
+
+    await runCommand([
+      "team",
+      "board",
+      "task",
+      "move",
+      "--team-id",
+      "team-proj-alpha",
+      "--task-id",
+      "task-plan",
+      "--status",
+      "review",
+    ]);
+
+    const task = boardTasks.get("proj-alpha")?.find((entry) => entry.taskId === "task-plan");
+    expect(task?.status).toBe("review");
+    expect(task?.notes).toContain("# Goal");
+    expect(task?.notes).toContain("## Next Step");
   });
 
-  it("blocks proposal execution until founder approval is recorded", async () => {
+  it("claims tasks for an agent and supports agent-scoped board views", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "http://127.0.0.1:3211";
+    const boardTasks = installBoardMock();
+
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Alpha",
+      "--description",
+      "Core team",
+      "--goal",
+      "Ship fast",
+      "--auto-roles",
+      "builder,pm",
+    ]);
+
+    await runCommand([
+      "team",
+      "board",
+      "task",
+      "add",
+      "--team-id",
+      "team-proj-alpha",
+      "--task-id",
+      "task-1",
+      "--title",
+      "Take the first ticket",
+    ]);
+    await runCommand([
+      "team",
+      "board",
+      "task",
+      "add",
+      "--team-id",
+      "team-proj-alpha",
+      "--task-id",
+      "task-2",
+      "--title",
+      "Other builder work",
+      "--owner-agent-id",
+      "other-builder",
+    ]);
+    await runCommand([
+      "team",
+      "board",
+      "task",
+      "claim",
+      "--team-id",
+      "team-proj-alpha",
+      "--task-id",
+      "task-1",
+      "--agent-id",
+      "alpha-builder",
+      "--note",
+      "Starting implementation after reading ticket memory.",
+    ]);
+
+    const task = boardTasks.get("proj-alpha")?.find((entry) => entry.taskId === "task-1");
+    expect(task?.ownerAgentId).toBe("alpha-builder");
+    expect(task?.status).toBe("in_progress");
+    expect(task?.notes).toContain("Claimed by alpha-builder");
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand([
+      "team",
+      "board",
+      "task",
+      "mine",
+      "--team-id",
+      "team-proj-alpha",
+      "--agent-id",
+      "alpha-builder",
+      "--json",
+    ]);
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      tasks?: Array<{ taskId?: string }>;
+    };
+    expect(payload.tasks?.map((entry) => entry.taskId)).toEqual(["task-1"]);
+  });
+
+  it("removes the proposal command family from the CLI", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
 
-    await runCommand([
-      "team",
-      "proposal",
-      "create",
-      "--json-input",
-      JSON.stringify({
-        businessType: "affiliate_marketing",
-        requestedBy: "founder",
-        sourceAgentId: "main",
-        ideaBrief: {
-          focus: "affiliate content engine",
-          targetCustomer: "home office shoppers",
-          primaryGoal: "ship weekly revenue-producing content",
-          constraints: "keep spend low and use proven channels",
-        },
-      }),
-    ]);
-
-    const afterCreateRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
-    const afterCreate = JSON.parse(afterCreateRaw) as CompanySnapshot;
-    const proposalId = afterCreate.teamProposals?.[0]?.id;
-    expect(proposalId).toBeTruthy();
-
-    await expect(
-      runCommand(["team", "proposal", "execute", "--proposal-id", proposalId!]),
-    ).rejects.toThrow("proposal_not_approved");
+    await expect(runCommand(["team", "proposal", "list"])).rejects.toThrow(
+      /process\.exit unexpectedly called with "1"/,
+    );
   });
 
   it("sets team heartbeat profile and remaps agents", async () => {
@@ -1779,10 +1894,55 @@ describe("team CLI", () => {
     let ids = await readOpenclawAgentIds(stateDir);
     expect(ids).toContain("gamma-builder");
     expect(ids).toContain("gamma-pm");
+    await access(path.join(stateDir, "workspace-gamma-builder", "AGENTS.md"));
+    await access(path.join(stateDir, "workspace-gamma-pm", "AGENTS.md"));
     await runCommand(["team", "archive", "--team-id", "team-proj-gamma", "--deregister-openclaw"]);
     ids = await readOpenclawAgentIds(stateDir);
     expect(ids).not.toContain("gamma-builder");
     expect(ids).not.toContain("gamma-pm");
+    expect(ids).toContain("main");
+    await expect(access(path.join(stateDir, "workspace-gamma-builder"))).rejects.toThrow();
+    await expect(access(path.join(stateDir, "workspace-gamma-pm"))).rejects.toThrow();
+  });
+
+  it("removes configured workspace paths for archived agents during deregistration", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    await runCommand([
+      "team",
+      "create",
+      "--name",
+      "Delta",
+      "--description",
+      "Delta team",
+      "--goal",
+      "Ship fast",
+      "--auto-roles",
+      "builder",
+    ]);
+
+    const customWorkspacePath = path.join(stateDir, "workspace", "products", "delta-builder");
+    await mkdir(customWorkspacePath, { recursive: true });
+    await writeFile(path.join(customWorkspacePath, "AGENTS.md"), "# AGENTS\n", "utf-8");
+
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclawConfig = JSON.parse(openclawRaw) as {
+      agents?: { list?: Array<{ id?: string; workspace?: string }> };
+    };
+    const nextList = (openclawConfig.agents?.list ?? []).map((entry) =>
+      entry.id === "delta-builder" ? { ...entry, workspace: customWorkspacePath } : entry,
+    );
+    await writeFile(
+      path.join(stateDir, "openclaw.json"),
+      `${JSON.stringify({ ...openclawConfig, agents: { ...openclawConfig.agents, list: nextList } }, null, 2)}\n`,
+      "utf-8",
+    );
+
+    await runCommand(["team", "archive", "--team-id", "team-proj-delta", "--deregister-openclaw"]);
+
+    await expect(access(customWorkspacePath)).rejects.toThrow();
+    await access(path.join(stateDir, "workspace-delta-builder"));
+    await access(path.join(stateDir, "workspace"));
   });
 
   it("executes board and bot commands through Convex HTTP endpoints", async () => {
@@ -1892,10 +2052,6 @@ describe("team CLI", () => {
       "high",
       "--owner-agent-id",
       "delta-executor",
-      "--task-type",
-      "team_proposal",
-      "--approval-state",
-      "pending_review",
       "--linked-session-key",
       "agent:main:main",
       "--beat-id",
@@ -1914,8 +2070,6 @@ describe("team CLI", () => {
       "Draft launch copy",
       "--detail",
       "Updated via cli",
-      "--approval-state",
-      "approved",
       "--created-team-id",
       "team-proj-delta-launch",
       "--created-project-id",
@@ -1983,8 +2137,6 @@ describe("team CLI", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/board/query"))).toBe(true);
     expect(commandPayloads.some((payload) => payload.teamId === "team-proj-delta")).toBe(true);
     expect(commandPayloads.some((payload) => payload.beatId === "beat-delta-1")).toBe(true);
-    expect(commandPayloads.some((payload) => payload.taskType === "team_proposal")).toBe(true);
-    expect(commandPayloads.some((payload) => payload.approvalState === "approved")).toBe(true);
     expect(commandPayloads.some((payload) => payload.linkedSessionKey === "agent:main:main")).toBe(
       true,
     );
@@ -2188,49 +2340,54 @@ describe("team CLI", () => {
     ).rejects.toThrow("permission_denied:team.meta.write:role=operator");
   });
 
-  it("requires business and board permissions before executing a proposal", async () => {
+  it("requires board-write permission before task memory updates", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "http://127.0.0.1:3211";
+    installBoardMock();
 
     await runCommand([
       "team",
-      "proposal",
       "create",
-      "--json-input",
-      JSON.stringify({
-        businessType: "affiliate_marketing",
-        requestedBy: "founder",
-        sourceAgentId: "main",
-        ideaBrief: {
-          focus: "affiliate content engine",
-          targetCustomer: "home office shoppers",
-          primaryGoal: "ship weekly revenue-producing content",
-          constraints: "keep spend low and use proven channels",
-        },
-      }),
+      "--name",
+      "Alpha",
+      "--description",
+      "Core team",
+      "--goal",
+      "Ship fast",
     ]);
 
-    const afterCreateRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
-    const afterCreate = JSON.parse(afterCreateRaw) as CompanySnapshot;
-    const proposalId = afterCreate.teamProposals?.[0]?.id;
-    expect(proposalId).toBeTruthy();
-
     await runCommand([
       "team",
-      "proposal",
-      "approve",
-      "--proposal-id",
-      proposalId!,
-      "--note",
-      "approved",
+      "board",
+      "task",
+      "add",
+      "--team-id",
+      "team-proj-alpha",
+      "--task-id",
+      "task-1",
+      "--title",
+      "Plan work",
     ]);
 
     process.env.SHELLCORP_ACTOR_ROLE = "operator";
-    process.env.SHELLCORP_ALLOWED_PERMISSIONS = "team.meta.write";
+    process.env.SHELLCORP_ALLOWED_PERMISSIONS = "team.read";
 
     await expect(
-      runCommand(["team", "proposal", "execute", "--proposal-id", proposalId!]),
-    ).rejects.toThrow("permission_denied:team.business.write:role=operator");
+      runCommand([
+        "team",
+        "board",
+        "task",
+        "memory",
+        "append",
+        "--team-id",
+        "team-proj-alpha",
+        "--task-id",
+        "task-1",
+        "--text",
+        "Need approval before execution.",
+      ]),
+    ).rejects.toThrow("permission_denied:team.board.write:role=operator");
   });
 
   it("supports team funds deposit, spend, ledger, and balance", async () => {

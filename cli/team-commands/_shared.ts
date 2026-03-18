@@ -52,7 +52,7 @@ export type CapabilityCategory = "measure" | "execute" | "distribute";
 export type BusinessEquipMode = "replace_minimum" | "append_only";
 export type ResourceKind = ResourceType;
 export type ResourceEventKind = "refresh" | "consumption" | "adjustment";
-export type BoardTaskStatus = "todo" | "in_progress" | "blocked" | "done";
+export type BoardTaskStatus = "todo" | "in_progress" | "review" | "blocked" | "done";
 export type BoardTaskPriority = "low" | "medium" | "high";
 export type BoardActivityType =
   | "planning"
@@ -83,6 +83,9 @@ export type TeamEventKind =
   | "task_updated"
   | "task_deleted"
   | "task_assigned"
+  | "task_claimed"
+  | "task_memory_set"
+  | "task_memory_appended"
   | "task_blocked"
   | "task_done"
   | "task_reopened"
@@ -371,7 +374,15 @@ export function parseRoleSlotRole(raw: string): Exclude<AgentRole, "ceo"> {
 }
 
 export function parseBoardTaskStatus(raw: string): BoardTaskStatus {
-  if (raw === "todo" || raw === "in_progress" || raw === "blocked" || raw === "done") return raw;
+  if (
+    raw === "todo" ||
+    raw === "in_progress" ||
+    raw === "review" ||
+    raw === "blocked" ||
+    raw === "done"
+  ) {
+    return raw;
+  }
   throw new Error(`invalid_board_status:${raw}`);
 }
 

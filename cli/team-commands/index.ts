@@ -32,7 +32,6 @@ import { registerTeamResources } from "./team-resources.js";
 import { registerTeamFunds } from "./team-funds.js";
 import { registerTeamBoard } from "./team-board.js";
 import { registerTeamHeartbeat } from "./team-heartbeat.js";
-import { registerTeamProposal } from "./team-proposal.js";
 import { registerTeamPreset } from "./team-preset.js";
 import { registerTeamConfig } from "./team-config.js";
 import { registerTeamRun } from "./team-run.js";
@@ -153,7 +152,6 @@ export function registerTeamCommands(program: Command): void {
   registerTeamFunds(team, store);
   registerTeamBoard(team, store);
   registerTeamHeartbeat(team, store);
-  registerTeamProposal(team, store);
   registerTeamPreset(team, store);
   registerTeamConfig(team, store);
   registerTeamRun(team, store);
