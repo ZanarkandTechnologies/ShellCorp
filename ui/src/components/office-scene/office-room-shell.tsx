@@ -33,26 +33,26 @@ import type { OfficeFootprint } from "@/lib/office-footprint";
 import type { OfficeSettingsModel } from "@/lib/openclaw-types";
 import type { OfficeSceneViewSettings } from "./view-profile";
 
-function getWallVisibility(settings: OfficeSceneViewSettings): {
-  showNorth: boolean;
-  showSouth: boolean;
-  showWest: boolean;
-  showEast: boolean;
+/** In fixed 2.5D, the two "front" walls (facing camera) get zoom-based opacity; others stay full. */
+function getFrontWallsForOpacity(settings: OfficeSceneViewSettings): {
+  frontNorth: boolean;
+  frontSouth: boolean;
+  frontWest: boolean;
+  frontEast: boolean;
 } {
   if (settings.viewProfile !== "fixed_2_5d") {
-    return { showNorth: true, showSouth: true, showWest: true, showEast: true };
+    return { frontNorth: false, frontSouth: false, frontWest: false, frontEast: false };
   }
-
   switch (settings.cameraOrientation) {
     case "south_west":
-      return { showNorth: true, showSouth: false, showWest: false, showEast: true };
+      return { frontNorth: false, frontSouth: true, frontWest: true, frontEast: false };
     case "north_east":
-      return { showNorth: false, showSouth: true, showWest: true, showEast: false };
+      return { frontNorth: true, frontSouth: false, frontWest: false, frontEast: true };
     case "north_west":
-      return { showNorth: false, showSouth: true, showWest: false, showEast: true };
+      return { frontNorth: true, frontSouth: false, frontWest: true, frontEast: false };
     case "south_east":
     default:
-      return { showNorth: true, showSouth: false, showWest: true, showEast: false };
+      return { frontNorth: false, frontSouth: true, frontWest: false, frontEast: true };
   }
 }
 
@@ -83,6 +83,10 @@ export function OfficeRoomShell(props: {
   officeTheme: ReturnType<typeof getOfficeTheme>;
   sceneBuilderMode: boolean;
   onBackgroundClick: (event: ThreeEvent<MouseEvent>) => void;
+  /** When in fixed 2.5D, current orthographic zoom for front-wall opacity. */
+  cameraZoom?: number;
+  /** When in fixed 2.5D, zoom range so front walls fade from full to transparent as you zoom in. */
+  zoomRange?: { minZoom: number; maxZoom: number };
 }): JSX.Element {
   const {
     floorRef,
@@ -92,13 +96,25 @@ export function OfficeRoomShell(props: {
     officeTheme,
     sceneBuilderMode,
     onBackgroundClick,
+    cameraZoom,
+    zoomRange,
   } = props;
   const bounds = useMemo(() => getOfficeLayoutBounds(officeLayout), [officeLayout]);
   const tileSet = useMemo(() => getOfficeLayoutTileSet(officeLayout), [officeLayout]);
   const wallSegments = useMemo(() => getOfficeLayoutWallSegments(officeLayout), [officeLayout]);
   const wallColor = getWallColorPreset(officeDecorSettings.wallColorId).color;
-  const wallOpacity = sceneBuilderMode ? 0.22 : officeViewSettings.viewProfile === "fixed_2_5d" ? 0.96 : 1;
-  const { showNorth, showSouth, showWest, showEast } = getWallVisibility(officeViewSettings);
+  const baseWallOpacity = sceneBuilderMode ? 0.22 : officeViewSettings.viewProfile === "fixed_2_5d" ? 0.96 : 1;
+  const frontWalls = getFrontWallsForOpacity(officeViewSettings);
+  const isFixed25 = officeViewSettings.viewProfile === "fixed_2_5d" && zoomRange != null && cameraZoom != null;
+  const frontWallOpacity =
+    isFixed25 && zoomRange
+      ? Math.max(
+          0.08,
+          baseWallOpacity -
+            (baseWallOpacity - 0.08) *
+              Math.min(1, (cameraZoom! - zoomRange.minZoom) / (zoomRange.maxZoom - zoomRange.minZoom)),
+        )
+      : baseWallOpacity;
 
   return (
     <>
@@ -140,15 +156,14 @@ export function OfficeRoomShell(props: {
         );
       })}
 
-      {wallSegments
-        .filter((segment) => {
-          if (segment.id.endsWith(":north")) return showNorth;
-          if (segment.id.endsWith(":south")) return showSouth;
-          if (segment.id.endsWith(":west")) return showWest;
-          if (segment.id.endsWith(":east")) return showEast;
-          return true;
-        })
-        .map((segment) => (
+      {wallSegments.map((segment) => {
+        const isFront =
+          (segment.id.endsWith(":north") && frontWalls.frontNorth) ||
+          (segment.id.endsWith(":south") && frontWalls.frontSouth) ||
+          (segment.id.endsWith(":west") && frontWalls.frontWest) ||
+          (segment.id.endsWith(":east") && frontWalls.frontEast);
+        const opacity = isFront && isFixed25 ? frontWallOpacity : baseWallOpacity;
+        return (
           <Box
             key={segment.id}
             args={[segment.width, WALL_HEIGHT, segment.depth]}
@@ -164,10 +179,11 @@ export function OfficeRoomShell(props: {
               emissive={sceneBuilderMode ? officeTheme.scene.floor : "#000000"}
               emissiveIntensity={sceneBuilderMode ? 0.05 : 0}
               transparent
-              opacity={wallOpacity}
+              opacity={opacity}
             />
           </Box>
-        ))}
+        );
+      })}
     </>
   );
 }

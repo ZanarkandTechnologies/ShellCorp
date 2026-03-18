@@ -19,8 +19,7 @@
 
 import { Html, Plane } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "@/lib/app-store";
 import {
   applyOfficeLayoutPaint,
@@ -35,6 +34,7 @@ import {
 } from "@/lib/office-layout";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
+import { useLayoutEditorHudRegistration } from "./layout-editor-hud-context";
 import {
   describeOfficeLayoutRemovalBlockers,
   formatOfficeLayoutRemovalBlockers,
@@ -161,35 +161,7 @@ export function OfficeLayoutEditor(): JSX.Element | null {
     lastStrokeCellRef.current = null;
   }, [paintMode]);
 
-  if (!isBuilderMode || !paintMode) return null;
-
-  const recordCell = (x: number, z: number): void => {
-    const nextCell = { x, z };
-    const source = lastStrokeCellRef.current ?? nextCell;
-    const traversedCells = getCellsBetween(source, nextCell);
-    lastStrokeCellRef.current = nextCell;
-    setStrokeCells((current) => {
-      const next = new Set(current);
-      let changed = false;
-      for (const cell of traversedCells) {
-        const key = officeLayoutTileKey(cell.x, cell.z);
-        const exists = hasOfficeLayoutTile(officeSettings.officeLayout, cell.x, cell.z);
-        if (paintMode === "add" && exists) continue;
-        if (paintMode === "remove" && !exists) continue;
-        if (next.has(key)) continue;
-        next.add(key);
-        changed = true;
-      }
-      return changed ? next : current;
-    });
-  };
-
-  const resolveStrokeCell = (event: ThreeEvent<PointerEvent>): { x: number; z: number } => ({
-    x: snapCell(event.point.x),
-    z: snapCell(event.point.z),
-  });
-
-  const commitStroke = async (): Promise<void> => {
+  const commitStroke = useCallback(async (): Promise<void> => {
     if (strokeCells.size === 0) {
       setIsPainting(false);
       return;
@@ -347,7 +319,88 @@ export function OfficeLayoutEditor(): JSX.Element | null {
     } finally {
       setIsSaving(false);
     }
+  }, [
+    adapter,
+    applyOfficeSettings,
+    effectiveStrokeCells,
+    officeSettings,
+    officeObjects,
+    paintMode,
+    strokeCells.size,
+    teams,
+  ]);
+
+  const setLayoutEditorHud = useLayoutEditorHudRegistration();
+  useEffect(() => {
+    if (!paintMode) {
+      setLayoutEditorHud({
+        paintMode: null,
+        previewCount: 0,
+        error: null,
+        onCancel: () => {},
+        onApply: () => {},
+      });
+      return;
+    }
+    const onCancel = (): void => {
+      setStrokeCells(new Set());
+      setErrorMessage(null);
+      setIsPainting(false);
+      lastStrokeCellRef.current = null;
+    };
+    setLayoutEditorHud({
+      paintMode,
+      previewCount: previewCells.length,
+      error: errorMessage,
+      isSaving,
+      onCancel,
+      onApply: () => void commitStroke(),
+    });
+    return () => {
+      setLayoutEditorHud({
+        paintMode: null,
+        previewCount: 0,
+        error: null,
+        onCancel: () => {},
+        onApply: () => {},
+      });
+    };
+  }, [
+    paintMode,
+    previewCells.length,
+    errorMessage,
+    isSaving,
+    setLayoutEditorHud,
+    commitStroke,
+  ]);
+
+  if (!isBuilderMode || !paintMode) return null;
+
+  const recordCell = (x: number, z: number): void => {
+    const nextCell = { x, z };
+    const source = lastStrokeCellRef.current ?? nextCell;
+    const traversedCells = getCellsBetween(source, nextCell);
+    lastStrokeCellRef.current = nextCell;
+    setStrokeCells((current) => {
+      const next = new Set(current);
+      let changed = false;
+      for (const cell of traversedCells) {
+        const key = officeLayoutTileKey(cell.x, cell.z);
+        const exists = hasOfficeLayoutTile(officeSettings.officeLayout, cell.x, cell.z);
+        if (paintMode === "add" && exists) continue;
+        if (paintMode === "remove" && !exists) continue;
+        if (next.has(key)) continue;
+        next.add(key);
+        changed = true;
+      }
+      return changed ? next : current;
+    });
   };
+
+  const resolveStrokeCell = (event: ThreeEvent<PointerEvent>): { x: number; z: number } => ({
+    x: snapCell(event.point.x),
+    z: snapCell(event.point.z),
+  });
 
   return (
     <group>
@@ -447,52 +500,6 @@ export function OfficeLayoutEditor(): JSX.Element | null {
         </>
       ) : null}
 
-      <Html position={[editBounds.centerX, 3.6, editBounds.centerZ]} center>
-        <div className="pointer-events-auto min-w-80 rounded-2xl border border-border/70 bg-background/92 px-4 py-3 text-xs text-foreground shadow-lg backdrop-blur">
-          <p className="font-medium">
-            {paintMode === "add" ? "Drag to add floor tiles" : "Drag to remove floor tiles"}
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            Painted tiles stay in preview until you click <strong>Apply</strong>. Exiting builder
-            mode does not auto-save the current stroke.
-          </p>
-          {debugMode ? (
-            <p className="mt-1 text-muted-foreground">
-              Tile coordinates use integer center points like <strong>-16:-11</strong>.
-            </p>
-          ) : null}
-          {errorMessage ? <p className="mt-2 text-destructive">{errorMessage}</p> : null}
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <span className="text-muted-foreground">
-              {previewCells.length} tile{previewCells.length === 1 ? "" : "s"} selected
-            </span>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setStrokeCells(new Set());
-                  setErrorMessage(null);
-                  setIsPainting(false);
-                  lastStrokeCellRef.current = null;
-                }}
-                disabled={isSaving || previewCells.length === 0}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void commitStroke()}
-                disabled={isSaving || previewCells.length === 0}
-              >
-                {isSaving ? "Saving..." : "Apply"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Html>
     </group>
   );
 }

@@ -84,7 +84,7 @@ export function ManageAgentModal(): ReactElement {
   const setIsSkillsPanelOpen = useAppStore((state) => state.setIsSkillsPanelOpen);
   const setSelectedSkillStudioSkillId = useAppStore((state) => state.setSelectedSkillStudioSkillId);
   const setSkillStudioFocusAgentId = useAppStore((state) => state.setSkillStudioFocusAgentId);
-  const { employees } = useOfficeDataContext();
+  const { employees, refresh: refreshOffice } = useOfficeDataContext();
   const employee = employees.find((row) => row._id === manageAgentEmployeeId) ?? null;
   const isOpen = !!manageAgentEmployeeId;
   const { connected: gatewayConnected } = useGateway();
@@ -406,6 +406,7 @@ export function ManageAgentModal(): ReactElement {
       setConfig(nextConfig);
       setBaseDraft(cloneAgentConfigDraft(draft));
       setSaveStatus("Config saved.");
+      void refreshOffice();
     } catch (error) {
       setSaveStatus(error instanceof Error ? error.message : "config_save_failed");
     } finally {

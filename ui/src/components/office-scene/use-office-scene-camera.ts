@@ -22,7 +22,11 @@ import { getOfficeTheme } from "@/config/office-theme";
 import type { OfficeSettingsModel } from "@/lib/openclaw-types";
 import { getBackgroundPreset, type OfficeDecorSettings } from "@/lib/office-decor";
 import { buildConsultCameraState } from "./consult-camera";
-import { getOfficeSceneViewState, type OfficeSceneViewSettings } from "./view-profile";
+import {
+  getOfficeSceneViewState,
+  type OfficeLayoutCenter,
+  type OfficeSceneViewSettings,
+} from "./view-profile";
 
 function useOfficeSceneIsDarkMode(): boolean {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -64,7 +68,11 @@ export function useOfficeSceneTheme(): ReturnType<typeof getOfficeTheme> {
 
 export function getInitialOfficeCameraConfig(
   settings: Pick<OfficeSettingsModel, "viewProfile" | "orbitControlsEnabled" | "cameraOrientation">,
-  options?: { forcePerspective?: boolean; isBuilderMode?: boolean },
+  options?: {
+    forcePerspective?: boolean;
+    isBuilderMode?: boolean;
+    layoutCenter?: OfficeLayoutCenter;
+  },
 ): {
   projection: "perspective" | "orthographic";
   position: [number, number, number];
@@ -77,6 +85,7 @@ export function getInitialOfficeCameraConfig(
     isDragging: false,
     settings,
     forcePerspective: options?.forcePerspective,
+    layoutCenter: options?.layoutCenter,
   });
   return {
     projection: viewState.cameraProjection,
@@ -98,6 +107,7 @@ export function useOfficeSceneCameraTransition(params: {
   setAnimatingCamera: (value: boolean) => void;
   consultCameraTarget?: [number, number, number] | null;
   forcePerspective?: boolean;
+  layoutCenter?: OfficeLayoutCenter;
 }): void {
   const {
     isBuilderMode,
@@ -106,6 +116,7 @@ export function useOfficeSceneCameraTransition(params: {
     setAnimatingCamera,
     consultCameraTarget,
     forcePerspective,
+    layoutCenter,
   } = params;
 
   useEffect(() => {
@@ -125,6 +136,7 @@ export function useOfficeSceneCameraTransition(params: {
           isDragging: false,
           settings,
           forcePerspective,
+          layoutCenter,
         });
     const endPos = new THREE.Vector3(
       ...(consultCameraState?.position ?? nextViewState?.cameraPosition ?? [0, 25, 30]),
@@ -152,7 +164,9 @@ export function useOfficeSceneCameraTransition(params: {
       camera.position.lerpVectors(startPos, endPos, eased);
       controls.target.lerpVectors(startTarget, endTarget, eased);
       camera.lookAt(controls.target);
-      camera.updateProjectionMatrix();
+      if ("updateProjectionMatrix" in camera && typeof camera.updateProjectionMatrix === "function") {
+        camera.updateProjectionMatrix();
+      }
       controls.update();
 
       if (progress < 1) {
@@ -167,6 +181,7 @@ export function useOfficeSceneCameraTransition(params: {
     consultCameraTarget,
     forcePerspective,
     isBuilderMode,
+    layoutCenter,
     orbitControlsRef,
     setAnimatingCamera,
     settings,

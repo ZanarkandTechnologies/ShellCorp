@@ -58,6 +58,11 @@ export interface Employee {
   gender?: string;
   profileImageUrl?: string;
   deskId?: OfficeId<"desks">;
+  appearance?: {
+    clothesStyle?: "default" | "dj" | "professional" | "techBro";
+    hairColor?: string;
+    petType?: "none" | "dog" | "cat" | "goldfish" | "rabbit" | "lobster";
+  };
 }
 
 export interface OfficeObject {

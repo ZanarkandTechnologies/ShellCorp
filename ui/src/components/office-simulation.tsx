@@ -1,6 +1,7 @@
 import OfficeScene from "./office-scene";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TeamOptionsDialog } from "./dialogs/team-options-dialog";
+import { LayoutEditorHudProvider } from "./office-scene/layout-editor-hud-context";
 import SettingsDialog from "./dialogs/settings-dialog";
 import { LogsDrawer } from "./hud/logs-drawer";
 import { LogsToggleButton } from "./hud/logs-toggle-button";
@@ -112,9 +113,10 @@ export default function OfficeSimulation() {
   }, []);
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      {sceneShellReady ? (
-        <OfficeScene
+    <LayoutEditorHudProvider>
+      <div style={{ position: "relative", width: "100%", height: "100%" }}>
+        {sceneShellReady ? (
+          <OfficeScene
           teams={teams}
           employees={employees}
           desks={desks}
@@ -197,9 +199,10 @@ export default function OfficeSimulation() {
         </>
       ) : null}
 
-      {!bootstrapState.isReady ? (
-        <OfficeLoader completionRatio={bootstrapState.completionRatio} stages={bootstrapStages} />
-      ) : null}
-    </div>
+        {!bootstrapState.isReady ? (
+          <OfficeLoader completionRatio={bootstrapState.completionRatio} stages={bootstrapStages} />
+        ) : null}
+      </div>
+    </LayoutEditorHudProvider>
   );
 }

@@ -1591,6 +1591,45 @@ export class OpenClawAdapter {
     }
   }
 
+  async generateMeshyAsset(input: {
+    prompt: string;
+    stylePrompt?: string;
+    label?: string;
+    signal?: AbortSignal;
+  }): Promise<{ ok: boolean; asset?: MeshAssetModel; error?: string }> {
+    try {
+      const response = await fetch(`${this.stateUrl}/openclaw/mesh-assets/generate-meshy`, {
+        method: "POST",
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify({
+          prompt: input.prompt,
+          stylePrompt: input.stylePrompt,
+          label: input.label,
+        }),
+        signal: input.signal,
+      });
+      if (!response.ok) {
+        return { ok: false, error: `mesh_generation_failed:${response.status}` };
+      }
+      const payload = (await response.json()) as Json;
+      if (payload.ok === false) {
+        return {
+          ok: false,
+          error:
+            typeof payload.error === "string" ? payload.error : "mesh_generation_failed",
+        };
+      }
+      const asset = toMeshAsset(payload.asset);
+      if (!asset) return { ok: false, error: "mesh_asset_invalid" };
+      return { ok: true, asset };
+    } catch (error) {
+      if (input.signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
+        return { ok: false, error: "mesh_generation_cancelled" };
+      }
+      return { ok: false, error: "mesh_generation_unavailable" };
+    }
+  }
+
   async saveOfficeObjects(
     objects: OfficeObjectSidecarModel[],
   ): Promise<{ ok: boolean; objects: OfficeObjectSidecarModel[]; error?: string }> {

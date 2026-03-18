@@ -33,9 +33,10 @@ import {
   Package,
   Palette,
   Sofa,
+  Sparkles,
   Store,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -94,225 +95,33 @@ const FURNITURE_CATEGORIES: BuiltInCatalogItem["category"][] = [
 
 const BUILT_IN_ITEMS: BuiltInCatalogItem[] = [
   // Plants (6)
-  {
-    id: "plant-potted",
-    meshType: "plant",
-    name: "Potted Plant",
-    description: "Classic potted plant for a touch of green.",
-    category: "Plants",
-    imagePath: "/furniture/plant.png",
-    icon: Monitor,
-  },
-  {
-    id: "plant-succulent",
-    meshType: "plant",
-    name: "Succulent",
-    description: "Low-maintenance succulent for desks and shelves.",
-    category: "Plants",
-    imagePath: "/furniture/plant.png",
-    icon: Monitor,
-  },
-  {
-    id: "plant-fern",
-    meshType: "plant",
-    name: "Fern",
-    description: "Lush fern for corners and waiting areas.",
-    category: "Plants",
-    imagePath: "/furniture/plant.png",
-    icon: Monitor,
-  },
-  {
-    id: "plant-cactus",
-    meshType: "plant",
-    name: "Cactus",
-    description: "Desert cactus for a modern look.",
-    category: "Plants",
-    imagePath: "/furniture/plant.png",
-    icon: Monitor,
-  },
-  {
-    id: "plant-palm",
-    meshType: "plant",
-    name: "Palm",
-    description: "Tall palm for open spaces.",
-    category: "Plants",
-    imagePath: "/furniture/plant.png",
-    icon: Monitor,
-  },
-  {
-    id: "plant-monstera",
-    meshType: "plant",
-    name: "Monstera",
-    description: "Trendy monstera for breakout areas.",
-    category: "Plants",
-    imagePath: "/furniture/plant.png",
-    icon: Monitor,
-  },
+  { id: "plant-potted", meshType: "plant", name: "Potted Plant", description: "Classic potted plant for a touch of green.", category: "Plants", imagePath: "/furniture/plant-potted.png", icon: Monitor },
+  { id: "plant-succulent", meshType: "plant", name: "Succulent", description: "Low-maintenance succulent for desks and shelves.", category: "Plants", imagePath: "/furniture/plant-succulent.png", icon: Monitor },
+  { id: "plant-fern", meshType: "plant", name: "Fern", description: "Lush fern for corners and waiting areas.", category: "Plants", imagePath: "/furniture/plant-fern.png", icon: Monitor },
+  { id: "plant-cactus", meshType: "plant", name: "Cactus", description: "Desert cactus for a modern look.", category: "Plants", imagePath: "/furniture/plant-cactus.png", icon: Monitor },
+  { id: "plant-palm", meshType: "plant", name: "Palm", description: "Tall palm for open spaces.", category: "Plants", imagePath: "/furniture/plant-palm.png", icon: Monitor },
+  { id: "plant-monstera", meshType: "plant", name: "Monstera", description: "Trendy monstera for breakout areas.", category: "Plants", imagePath: "/furniture/plant-monstera.png", icon: Monitor },
   // Office (6)
-  {
-    id: "bookshelf",
-    meshType: "bookshelf",
-    name: "Bookshelf",
-    description: "Neutral storage shelf for office props and decor.",
-    category: "Office",
-    imagePath: "/furniture/bookshelf.png",
-    icon: Library,
-  },
-  {
-    id: "bookshelf-tall",
-    meshType: "bookshelf",
-    name: "Tall Bookshelf",
-    description: "Floor-to-ceiling style storage unit.",
-    category: "Office",
-    imagePath: "/furniture/bookshelf.png",
-    icon: Library,
-  },
-  {
-    id: "pantry",
-    meshType: "pantry",
-    name: "Pantry Counter",
-    description: "Pantry module for kitchen corners and social zones.",
-    category: "Office",
-    imagePath: "/furniture/pantry.png",
-    icon: Briefcase,
-  },
-  {
-    id: "pantry-supply",
-    meshType: "pantry",
-    name: "Supply Cabinet",
-    description: "Storage for supplies and snacks.",
-    category: "Office",
-    imagePath: "/furniture/pantry.png",
-    icon: Briefcase,
-  },
-  {
-    id: "bookshelf-storage",
-    meshType: "bookshelf",
-    name: "Storage Shelf",
-    description: "Compact shelf for documents and items.",
-    category: "Office",
-    imagePath: "/furniture/bookshelf.png",
-    icon: Library,
-  },
-  {
-    id: "pantry-counter",
-    meshType: "pantry",
-    name: "Break Room Counter",
-    description: "Counter with fridge and microwave.",
-    category: "Office",
-    imagePath: "/furniture/pantry.png",
-    icon: Briefcase,
-  },
+  { id: "bookshelf", meshType: "bookshelf", name: "Bookshelf", description: "Neutral storage shelf for office props and decor.", category: "Office", imagePath: "/furniture/bookshelf.png", icon: Library },
+  { id: "bookshelf-tall", meshType: "bookshelf", name: "Tall Bookshelf", description: "Floor-to-ceiling style storage unit.", category: "Office", imagePath: "/furniture/bookshelf-tall.png", icon: Library },
+  { id: "pantry", meshType: "pantry", name: "Pantry Counter", description: "Pantry module for kitchen corners and social zones.", category: "Office", imagePath: "/furniture/pantry.png", icon: Briefcase },
+  { id: "pantry-supply", meshType: "pantry", name: "Supply Cabinet", description: "Storage for supplies and snacks.", category: "Office", imagePath: "/furniture/pantry-supply.png", icon: Briefcase },
+  { id: "bookshelf-storage", meshType: "bookshelf", name: "Storage Shelf", description: "Compact shelf for documents and items.", category: "Office", imagePath: "/furniture/bookshelf-storage.png", icon: Library },
+  { id: "pantry-counter", meshType: "pantry", name: "Break Room Counter", description: "Counter with fridge and microwave.", category: "Office", imagePath: "/furniture/pantry-counter.png", icon: Briefcase },
   // Leisure (6)
-  {
-    id: "couch",
-    meshType: "couch",
-    name: "Lounge Couch",
-    description: "Minimal waiting area couch for collaboration.",
-    category: "Leisure",
-    imagePath: "/furniture/couch.png",
-    icon: Sofa,
-  },
-  {
-    id: "couch-sofa",
-    meshType: "couch",
-    name: "Sofa",
-    description: "Comfortable sofa for breakout areas.",
-    category: "Leisure",
-    imagePath: "/furniture/couch.png",
-    icon: Sofa,
-  },
-  {
-    id: "couch-beanbag",
-    meshType: "couch",
-    name: "Bean Bag",
-    description: "Casual seating for informal zones.",
-    category: "Leisure",
-    imagePath: "/furniture/couch.png",
-    icon: Sofa,
-  },
-  {
-    id: "couch-armchair",
-    meshType: "couch",
-    name: "Armchair",
-    description: "Single armchair for reading nooks.",
-    category: "Leisure",
-    imagePath: "/furniture/couch.png",
-    icon: Sofa,
-  },
-  {
-    id: "couch-ottoman",
-    meshType: "couch",
-    name: "Ottoman",
-    description: "Footrest or extra seating.",
-    category: "Leisure",
-    imagePath: "/furniture/couch.png",
-    icon: Sofa,
-  },
-  {
-    id: "couch-loveseat",
-    meshType: "couch",
-    name: "Love Seat",
-    description: "Two-person love seat for small spaces.",
-    category: "Leisure",
-    imagePath: "/furniture/couch.png",
-    icon: Sofa,
-  },
+  { id: "couch", meshType: "couch", name: "Lounge Couch", description: "Minimal waiting area couch for collaboration.", category: "Leisure", imagePath: "/furniture/couch.png", icon: Sofa },
+  { id: "couch-sofa", meshType: "couch", name: "Sofa", description: "Comfortable sofa for breakout areas.", category: "Leisure", imagePath: "/furniture/couch-sofa.png", icon: Sofa },
+  { id: "couch-beanbag", meshType: "couch", name: "Bean Bag", description: "Casual seating for informal zones.", category: "Leisure", imagePath: "/furniture/couch-beanbag.png", icon: Sofa },
+  { id: "couch-armchair", meshType: "couch", name: "Armchair", description: "Single armchair for reading nooks.", category: "Leisure", imagePath: "/furniture/couch-armchair.png", icon: Sofa },
+  { id: "couch-ottoman", meshType: "couch", name: "Ottoman", description: "Footrest or extra seating.", category: "Leisure", imagePath: "/furniture/couch-ottoman.png", icon: Sofa },
+  { id: "couch-loveseat", meshType: "couch", name: "Love Seat", description: "Two-person love seat for small spaces.", category: "Leisure", imagePath: "/furniture/couch-loveseat.png", icon: Sofa },
   // Miscellaneous (6)
-  {
-    id: "misc-plant",
-    meshType: "plant",
-    name: "Corner Plant",
-    description: "Filler plant for empty corners.",
-    category: "Miscellaneous",
-    imagePath: "/furniture/plant.png",
-    icon: Monitor,
-  },
-  {
-    id: "misc-couch",
-    meshType: "couch",
-    name: "Accent Seat",
-    description: "Extra seating for visitors.",
-    category: "Miscellaneous",
-    imagePath: "/furniture/couch.png",
-    icon: Sofa,
-  },
-  {
-    id: "misc-bookshelf",
-    meshType: "bookshelf",
-    name: "Display Shelf",
-    description: "Showcase for awards and mementos.",
-    category: "Miscellaneous",
-    imagePath: "/furniture/bookshelf.png",
-    icon: Library,
-  },
-  {
-    id: "misc-pantry",
-    meshType: "pantry",
-    name: "Coffee Station",
-    description: "Compact coffee and snack station.",
-    category: "Miscellaneous",
-    imagePath: "/furniture/pantry.png",
-    icon: Briefcase,
-  },
-  {
-    id: "misc-plant2",
-    meshType: "plant",
-    name: "Reception Plant",
-    description: "Welcoming plant for reception areas.",
-    category: "Miscellaneous",
-    imagePath: "/furniture/plant.png",
-    icon: Monitor,
-  },
-  {
-    id: "misc-bookshelf2",
-    meshType: "bookshelf",
-    name: "Magazine Rack",
-    description: "Shelf for magazines and brochures.",
-    category: "Miscellaneous",
-    imagePath: "/furniture/bookshelf.png",
-    icon: Library,
-  },
+  { id: "misc-plant", meshType: "plant", name: "Corner Plant", description: "Filler plant for empty corners.", category: "Miscellaneous", imagePath: "/furniture/misc-plant.png", icon: Monitor },
+  { id: "misc-couch", meshType: "couch", name: "Accent Seat", description: "Extra seating for visitors.", category: "Miscellaneous", imagePath: "/furniture/misc-couch.png", icon: Sofa },
+  { id: "misc-bookshelf", meshType: "bookshelf", name: "Display Shelf", description: "Showcase for awards and mementos.", category: "Miscellaneous", imagePath: "/furniture/misc-bookshelf.png", icon: Library },
+  { id: "misc-pantry", meshType: "pantry", name: "Coffee Station", description: "Compact coffee and snack station.", category: "Miscellaneous", imagePath: "/furniture/misc-pantry.png", icon: Briefcase },
+  { id: "misc-plant2", meshType: "plant", name: "Reception Plant", description: "Welcoming plant for reception areas.", category: "Miscellaneous", imagePath: "/furniture/misc-plant2.png", icon: Monitor },
+  { id: "misc-bookshelf2", meshType: "bookshelf", name: "Magazine Rack", description: "Shelf for magazines and brochures.", category: "Miscellaneous", imagePath: "/furniture/misc-bookshelf2.png", icon: Library },
 ];
 
 interface FurnitureShopProps {
@@ -333,6 +142,11 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
   const [meshUrlInput, setMeshUrlInput] = useState("");
   const [meshLabelInput, setMeshLabelInput] = useState("");
   const [isDownloadingMesh, setIsDownloadingMesh] = useState(false);
+  const [meshyPrompt, setMeshyPrompt] = useState("");
+  const [meshyStyle, setMeshyStyle] = useState("");
+  const [meshyLabel, setMeshyLabel] = useState("");
+  const [isGeneratingMesh, setIsGeneratingMesh] = useState(false);
+  const [meshyStatus, setMeshyStatus] = useState<string | null>(null);
   const [isSavingDir, setIsSavingDir] = useState(false);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [meshError, setMeshError] = useState<string | null>(null);
@@ -348,6 +162,8 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
   const [draftBackgroundId, setDraftBackgroundId] = useState<OfficeBackgroundId>(
     officeSettings.decor.backgroundId,
   );
+  const meshyAbortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
 
   const hasMeshAssets = meshAssets.length > 0;
 
@@ -414,6 +230,29 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     }
   }, [isOpen]);
 
+  const cancelMeshyGeneration = useCallback(() => {
+    const controller = meshyAbortRef.current;
+    if (!controller) return;
+    controller.abort();
+    meshyAbortRef.current = null;
+    if (!isMountedRef.current) return;
+    setIsGeneratingMesh(false);
+    setMeshyStatus("Generation cancelled.");
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) return;
+    cancelMeshyGeneration();
+  }, [cancelMeshyGeneration, isOpen]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      meshyAbortRef.current?.abort();
+      meshyAbortRef.current = null;
+    };
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
     setDraftFloorPatternId(officeSettings.decor.floorPatternId);
@@ -466,6 +305,56 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     setMeshUrlInput("");
     setMeshLabelInput("");
     await loadMeshAssets();
+  };
+
+  const handleGenerateWithMeshy = async () => {
+    const prompt = meshyPrompt.trim();
+    if (!prompt) {
+      setMeshError("Describe the furniture you want (e.g. 'modern office chair').");
+      return;
+    }
+    meshyAbortRef.current?.abort();
+    const controller = new AbortController();
+    meshyAbortRef.current = controller;
+    setIsGeneratingMesh(true);
+    setMeshError(null);
+    setMeshyStatus("Generating with Meshy...");
+    try {
+      const result = await adapter.generateMeshyAsset({
+        prompt,
+        stylePrompt: meshyStyle.trim() || undefined,
+        label: meshyLabel.trim() || undefined,
+        signal: controller.signal,
+      });
+      if (!isMountedRef.current || controller.signal.aborted) return;
+      if (!result.ok) {
+        if (result.error === "mesh_generation_cancelled") {
+          setMeshyStatus("Generation cancelled.");
+          return;
+        }
+        setMeshError(result.error ?? "Generation failed.");
+        return;
+      }
+      setMeshyPrompt("");
+      setMeshyStyle("");
+      setMeshyLabel("");
+      setMeshyStatus("Saved to Custom Library.");
+      await loadMeshAssets();
+      if (!isMountedRef.current || controller.signal.aborted) return;
+      setActiveTab("custom");
+    } catch (error) {
+      if (!isMountedRef.current || controller.signal.aborted) return;
+      setMeshError(error instanceof Error ? error.message : "Generation failed.");
+    } finally {
+      if (meshyAbortRef.current === controller) {
+        meshyAbortRef.current = null;
+      }
+      if (!isMountedRef.current) return;
+      setIsGeneratingMesh(false);
+      if (!controller.signal.aborted) {
+        setMeshyStatus(null);
+      }
+    }
   };
 
   const handleApplyDecor = async () => {
@@ -574,6 +463,7 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     startPlacement(item.meshType, {
       companyId: company._id,
       displayName: item.name,
+      furnitureId: item.id,
     });
   };
 
@@ -721,10 +611,81 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
       <div>
         <h3 className="text-lg font-semibold">Import Custom Assets</h3>
         <p className="text-sm text-muted-foreground">
-          Download new .glb/.gltf files and optionally add lightweight preview metadata for catalog
-          cards.
+          Generate furniture with AI, or download .glb/.gltf files. Saved items appear in Custom
+          Library.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="w-4 h-4" />
+            Generate with AI (Meshy)
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Describe the furniture and style; a 3D model will be generated and added to your Custom
+            Library.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Requires a server-side Meshy key via{" "}
+            <code className="rounded bg-muted px-1">SHELLCORP_MESHY_API_KEY</code> or{" "}
+            <code className="rounded bg-muted px-1">MESHY_API_KEY</code>.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="meshy-prompt">What furniture? (required)</Label>
+            <Input
+              id="meshy-prompt"
+              value={meshyPrompt}
+              onChange={(e) => setMeshyPrompt(e.target.value)}
+              placeholder="e.g. modern office chair, minimalist desk lamp"
+              maxLength={600}
+              disabled={isGeneratingMesh}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="meshy-style">Style (optional)</Label>
+            <Input
+              id="meshy-style"
+              value={meshyStyle}
+              onChange={(e) => setMeshyStyle(e.target.value)}
+              placeholder="e.g. matte white, Scandinavian wood"
+              maxLength={600}
+              disabled={isGeneratingMesh}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="meshy-label">Label in library (optional)</Label>
+            <Input
+              id="meshy-label"
+              value={meshyLabel}
+              onChange={(e) => setMeshyLabel(e.target.value)}
+              placeholder="e.g. my-chair"
+              disabled={isGeneratingMesh}
+            />
+          </div>
+          {meshyStatus && <p className="text-sm text-muted-foreground">{meshyStatus}</p>}
+          {meshError && (
+            <p className="text-sm text-destructive" role="alert">
+              {meshError}
+            </p>
+          )}
+        </CardContent>
+        <CardFooter className="flex gap-2">
+          <Button
+            onClick={() => void handleGenerateWithMeshy()}
+            disabled={isGeneratingMesh}
+          >
+            {isGeneratingMesh ? "Generating…" : "Generate & add to Custom Library"}
+          </Button>
+          {isGeneratingMesh ? (
+            <Button variant="outline" onClick={cancelMeshyGeneration}>
+              Cancel
+            </Button>
+          ) : null}
+        </CardFooter>
+      </Card>
 
       <Card>
         <CardHeader>

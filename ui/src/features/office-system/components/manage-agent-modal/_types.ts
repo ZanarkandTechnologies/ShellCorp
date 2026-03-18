@@ -11,6 +11,9 @@ export type AgentConfigDraft = {
   toolsDeny: string[];
   skillsMode: SkillsMode;
   selectedSkills: string[];
+  appearanceClothesStyle: "default" | "dj" | "professional" | "techBro";
+  appearanceHairColor: string;
+  appearancePetType: "none" | "dog" | "cat" | "goldfish" | "rabbit" | "lobster";
 };
 
 export type TabId = "overview" | "files" | "tools" | "channels" | "cron";

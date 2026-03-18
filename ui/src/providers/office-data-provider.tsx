@@ -49,6 +49,7 @@ import type {
   ProviderIndexProfile,
   ReconciliationWarning,
   UnifiedOfficeModel,
+  OpenClawConfigSnapshot,
 } from "@/lib/openclaw-types";
 import type { Company, DeskLayoutData, EmployeeData, OfficeObject, TeamData } from "@/lib/types";
 import { stabilizeOfficeData } from "@/providers/office-data-stability";
@@ -81,8 +82,33 @@ interface OfficeDataContextType {
 
 const OfficeDataContext = createContext<OfficeDataContextType | undefined>(undefined);
 const CLUSTER_MARGIN = 2;
+type EmployeeAppearance = NonNullable<EmployeeData["appearance"]>;
 
 const demoCompany: Company = { _id: "company-demo", name: "Shell Company" };
+
+function isAppearanceClothesStyle(
+  value: unknown,
+): value is NonNullable<EmployeeAppearance["clothesStyle"]> {
+  return (
+    value === "default" ||
+    value === "dj" ||
+    value === "professional" ||
+    value === "techBro"
+  );
+}
+
+function isAppearancePetType(
+  value: unknown,
+): value is NonNullable<EmployeeAppearance["petType"]> {
+  return (
+    value === "none" ||
+    value === "dog" ||
+    value === "cat" ||
+    value === "goldfish" ||
+    value === "rabbit" ||
+    value === "lobster"
+  );
+}
 
 function clampClusterPositionForLayout(
   position: [number, number, number],
@@ -283,6 +309,7 @@ function toOfficeData(
   officeSettings: OfficeDataContextType["officeSettings"],
   pendingApprovals: PendingApprovalModel[] = [],
   liveStatusByAgent: Record<string, AgentLiveStatus> = {},
+  configSnapshot?: OpenClawConfigSnapshot,
 ): OfficeDataContextType {
   const runtimeAgents = unified.runtimeAgents;
   const configuredAgents = unified.configuredAgents;
@@ -303,6 +330,30 @@ function toOfficeData(
     (project) => project.status !== "archived",
   );
   const companyAgents = companyModel.agents ?? [];
+
+  const appearanceByAgentId = new Map<
+    string,
+    {
+      clothesStyle?: EmployeeAppearance["clothesStyle"];
+      hairColor?: string;
+      petType?: EmployeeAppearance["petType"];
+    }
+  >();
+
+  const rootConfig = configSnapshot?.config as Record<string, unknown> | undefined;
+  if (rootConfig && typeof rootConfig.agentAppearances === "object") {
+    const appearancesNode = rootConfig.agentAppearances as Record<string, unknown>;
+    for (const [agentId, value] of Object.entries(appearancesNode)) {
+      if (!value || typeof value !== "object") continue;
+      const row = value as Record<string, unknown>;
+      const clothesStyle = isAppearanceClothesStyle(row.clothesStyle)
+        ? row.clothesStyle
+        : undefined;
+      const hairColor = typeof row.hairColor === "string" ? (row.hairColor as string) : undefined;
+      const petType = isAppearancePetType(row.petType) ? row.petType : undefined;
+      appearanceByAgentId.set(agentId, { clothesStyle, hairColor, petType });
+    }
+  }
   const teamClusterAnchorsByTeamId = new Map<string, [number, number, number]>();
   const persistedTeamClusterByTeamId = buildPersistedTeamClusterByTeamId(sidecarObjects);
   for (const object of sidecarObjects.filter((entry) => entry.meshType === "team-cluster")) {
@@ -586,6 +637,9 @@ function toOfficeData(
                   : liveStatus?.state === "no_work"
                     ? "info"
                     : undefined;
+
+    const appearance = appearanceByAgentId.get(agent.agentId);
+
     return {
       _id: `employee-${agent.agentId}`,
       companyId,
@@ -633,6 +687,7 @@ function toOfficeData(
       heartbeatBubbles:
         liveStatus?.bubbles?.map((bubble) => ({ label: bubble.label, weight: bubble.weight })) ??
         [],
+      appearance,
     };
   });
 
@@ -706,10 +761,11 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
     const adapter = adapterRef.current;
     if (!adapter) return;
     try {
-      const [unified, pendingApprovals, officeSettings] = await Promise.all([
+      const [unified, pendingApprovals, officeSettings, configSnapshot] = await Promise.all([
         adapter.getUnifiedOfficeModel(),
         adapter.getPendingApprovals(),
         adapter.getOfficeSettings(),
+        adapter.getConfigSnapshot(),
       ]);
       const nextAgentIds = [
         ...new Set([
@@ -735,7 +791,7 @@ export function OfficeDataProvider({ children }: { children: ReactNode }): React
       setValue((current) => {
         const next = stabilizeOfficeData(
           current,
-          toOfficeData(unified, officeSettings, pendingApprovals, statusByAgent),
+          toOfficeData(unified, officeSettings, pendingApprovals, statusByAgent, configSnapshot),
         );
         // Returning the same object lets React skip a provider broadcast for status refreshes that changed nothing material.
         if (next === current) return current;

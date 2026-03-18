@@ -32,6 +32,8 @@ export interface OfficeSceneViewState {
   cameraTarget: [number, number, number];
   cameraFov: number;
   cameraZoom: number;
+  minZoom?: number;
+  maxZoom?: number;
   controlsEnabled: boolean;
   rotateEnabled: boolean;
   panEnabled: boolean;
@@ -67,13 +69,20 @@ export function getOfficePresentationRotationY(
   return Math.atan2(x, z);
 }
 
+/** Layout center for centering 2.5D camera on the office floor. */
+export interface OfficeLayoutCenter {
+  x: number;
+  z: number;
+}
+
 export function getOfficeSceneViewState(params: {
   isBuilderMode: boolean;
   isDragging: boolean;
   settings: OfficeSceneViewSettings;
   forcePerspective?: boolean;
+  layoutCenter?: OfficeLayoutCenter;
 }): OfficeSceneViewState {
-  const { isBuilderMode, isDragging, settings, forcePerspective = false } = params;
+  const { isBuilderMode, isDragging, settings, forcePerspective = false, layoutCenter } = params;
   if (isBuilderMode) {
     return {
       cameraProjection: "perspective",
@@ -92,12 +101,21 @@ export function getOfficeSceneViewState(params: {
 
   if (isFixedOfficeSceneView(settings) && !forcePerspective) {
     const controlsEnabled = settings.orbitControlsEnabled && !isDragging;
+    const basePos = getFixedViewCameraPosition(settings.cameraOrientation);
+    const target: [number, number, number] = layoutCenter
+      ? [layoutCenter.x, 0, layoutCenter.z]
+      : [0, 0, 0];
+    const position: [number, number, number] = layoutCenter
+      ? [basePos[0] + layoutCenter.x, basePos[1], basePos[2] + layoutCenter.z]
+      : basePos;
     return {
       cameraProjection: "orthographic",
-      cameraPosition: getFixedViewCameraPosition(settings.cameraOrientation),
-      cameraTarget: [0, 0, 0],
+      cameraPosition: position,
+      cameraTarget: target,
       cameraFov: 35,
       cameraZoom: 28,
+      minZoom: 12,
+      maxZoom: 55,
       controlsEnabled,
       rotateEnabled: false,
       panEnabled: controlsEnabled,

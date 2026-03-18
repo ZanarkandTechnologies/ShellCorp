@@ -33,6 +33,9 @@ export const EMPTY_AGENT_CONFIG_DRAFT: AgentConfigDraft = {
   toolsDeny: [],
   skillsMode: "all",
   selectedSkills: [],
+  appearanceClothesStyle: "default",
+  appearanceHairColor: "",
+  appearancePetType: "none",
 };
 
 export function resolveAgentConfigDraft(
@@ -75,6 +78,40 @@ export function resolveAgentConfigDraft(
     ? entry.skills.filter((item): item is string => typeof item === "string")
     : null;
   const skillsMode = skillsArray === null ? "all" : skillsArray.length === 0 ? "none" : "selected";
+
+  const appearancesNode =
+    config && typeof (config as Record<string, unknown>).agentAppearances === "object"
+      ? ((config as Record<string, unknown>).agentAppearances as Record<string, unknown>)
+      : {};
+  const appearanceRow =
+    appearancesNode && typeof appearancesNode[agentId] === "object"
+      ? (appearancesNode[agentId] as Record<string, unknown>)
+      : {};
+
+  const clothesStyleRaw =
+    typeof appearanceRow.clothesStyle === "string" ? appearanceRow.clothesStyle : "default";
+  const appearanceClothesStyle =
+    clothesStyleRaw === "dj" ||
+    clothesStyleRaw === "professional" ||
+    clothesStyleRaw === "techBro" ||
+    clothesStyleRaw === "default"
+      ? (clothesStyleRaw as AgentConfigDraft["appearanceClothesStyle"])
+      : "default";
+
+  const appearanceHairColor =
+    typeof appearanceRow.hairColor === "string" ? (appearanceRow.hairColor as string) : "";
+
+  const petTypeRaw =
+    typeof appearanceRow.petType === "string" ? (appearanceRow.petType as string) : "none";
+  const appearancePetType: AgentConfigDraft["appearancePetType"] =
+    petTypeRaw === "dog" ||
+    petTypeRaw === "cat" ||
+    petTypeRaw === "goldfish" ||
+    petTypeRaw === "rabbit" ||
+    petTypeRaw === "lobster"
+      ? petTypeRaw
+      : "none";
+
   return {
     primaryModel,
     fallbackModels,
@@ -83,6 +120,9 @@ export function resolveAgentConfigDraft(
     toolsDeny,
     skillsMode,
     selectedSkills: skillsArray ?? [],
+    appearanceClothesStyle,
+    appearanceHairColor,
+    appearancePetType,
   };
 }
 
@@ -141,6 +181,34 @@ export function buildNextAgentConfig(
     baseEntry.skills = [];
   } else {
     baseEntry.skills = [...draft.selectedSkills];
+  }
+
+  const appearancesNode =
+    root.agentAppearances && typeof root.agentAppearances === "object"
+      ? (cloneConfig(root.agentAppearances) as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+
+  const appearanceEntry: Record<string, unknown> = {};
+  if (draft.appearanceClothesStyle && draft.appearanceClothesStyle !== "default") {
+    appearanceEntry.clothesStyle = draft.appearanceClothesStyle;
+  }
+  if (draft.appearanceHairColor.trim()) {
+    appearanceEntry.hairColor = draft.appearanceHairColor.trim();
+  }
+  if (draft.appearancePetType && draft.appearancePetType !== "none") {
+    appearanceEntry.petType = draft.appearancePetType;
+  }
+
+  if (Object.keys(appearanceEntry).length > 0) {
+    appearancesNode[agentId] = appearanceEntry;
+  } else {
+    delete appearancesNode[agentId];
+  }
+
+  if (Object.keys(appearancesNode).length > 0) {
+    root.agentAppearances = appearancesNode;
+  } else {
+    delete root.agentAppearances;
   }
 
   if (idx >= 0) list[idx] = baseEntry;
