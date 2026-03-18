@@ -124,6 +124,23 @@ export interface SkillItemModel {
   updatedAt?: number;
 }
 
+export interface InstalledSkillEntry {
+  skillId: string;
+  sourcePath: string;
+  scope: "agent" | "shared";
+}
+
+export interface AgentSkillsInventory {
+  agentId: string;
+  workspacePath: string;
+  workspaceSkills: InstalledSkillEntry[];
+  sharedSkills: InstalledSkillEntry[];
+}
+
+export interface GlobalSkillsInventory {
+  sharedSkills: InstalledSkillEntry[];
+}
+
 export interface MemoryItemModel {
   id: string;
   agentId: string;
@@ -990,6 +1007,7 @@ export interface SkillStudioFileContent {
   path: string;
   kind: SkillStudioFileEntry["kind"];
   isText: boolean;
+  writable?: boolean;
   content?: string;
   sizeBytes?: number;
 }

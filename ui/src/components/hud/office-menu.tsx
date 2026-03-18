@@ -155,7 +155,7 @@ export function OfficeMenu({ className }: SpeedDialProps) {
       {
         id: "global-skills",
         icon: BookOpen,
-        label: "Skill Studio",
+        label: "Global Skills",
         onClick: () => {
           setSelectedSkillStudioSkillId(null);
           setSkillStudioFocusAgentId(null);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactElement } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { SkillItemModel, SkillStatusReport } from "@/lib/openclaw-types";
@@ -14,9 +14,13 @@ type SkillsPanelProps = {
   onReloadConfig: () => Promise<void>;
   onRefreshSkills: () => Promise<void>;
   onOpenSkillStudio: (skillId: string) => void;
+  onSaveConfig?: () => Promise<void>;
+  isSavingConfig?: boolean;
+  disableSaveConfig?: boolean;
+  saveStatus?: string;
 };
 
-export function SkillsPanel(props: SkillsPanelProps): JSX.Element {
+export function SkillsPanel(props: SkillsPanelProps): ReactElement {
   const [filter, setFilter] = useState("");
   const selected = new Set(props.draft.selectedSkills);
   const reportRows = props.skillsReport?.skills ?? [];
@@ -70,8 +74,23 @@ export function SkillsPanel(props: SkillsPanelProps): JSX.Element {
           <Button size="sm" variant="outline" onClick={() => void props.onRefreshSkills()}>
             Refresh
           </Button>
+          {props.onSaveConfig ? (
+            <Button
+              size="sm"
+              onClick={() => {
+                const onSaveConfig = props.onSaveConfig;
+                if (onSaveConfig) {
+                  void onSaveConfig();
+                }
+              }}
+              disabled={props.isSavingConfig || props.disableSaveConfig}
+            >
+              {props.isSavingConfig ? "Saving..." : "Save Skill Config"}
+            </Button>
+          ) : null}
         </div>
       </div>
+      {props.saveStatus ? <p className="text-xs text-muted-foreground">{props.saveStatus}</p> : null}
       <div className="flex items-center gap-2">
         <Button
           size="sm"

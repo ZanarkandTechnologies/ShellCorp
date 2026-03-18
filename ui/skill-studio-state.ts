@@ -346,8 +346,35 @@ export async function readSkillStudioFile(
     path: requestedPath,
     kind: entry.kind,
     isText: true,
+    writable: !requestedPath.startsWith("ref:"),
     content: await readFile(filePath, "utf-8"),
     sizeBytes: stats.size,
+  };
+}
+
+export async function saveSkillStudioFile(
+  skillsRoot: string,
+  repoRoot: string,
+  skillId: string,
+  requestedPath: string,
+  content: string,
+): Promise<SkillStudioFileContent | null> {
+  const records = await readAllSkillPackages(skillsRoot, repoRoot);
+  const record = findSkillRecord(records, skillId);
+  if (!record) return null;
+  const entry = record.fileEntries.find((file) => file.path === requestedPath);
+  if (!entry || !entry.isText || requestedPath.startsWith("ref:")) return null;
+  const filePath = resolveSkillFilePath(record, repoRoot, requestedPath);
+  if (!filePath) return null;
+  await writeFile(filePath, content, "utf-8");
+  const stats = await stat(filePath).catch(() => null);
+  return {
+    path: requestedPath,
+    kind: entry.kind,
+    isText: true,
+    writable: true,
+    content,
+    sizeBytes: stats?.size,
   };
 }
 

@@ -14,6 +14,8 @@
  * - MEM-0160
  * - MEM-0166
  * - MEM-0188
+ * - MEM-0203
+ * - MEM-0205
  */
 
 import { useEffect, useMemo, useState, type ReactElement } from "react";
@@ -37,7 +39,6 @@ import { usePollWithInterval } from "@/hooks/use-poll-with-interval";
 import { useAppStore } from "@/lib/app-store";
 import { formatTimestamp as fmtTs } from "@/lib/format-utils";
 import type {
-  SkillItemModel,
   SkillDemoRunResult,
   SkillManifest,
   SkillStatusReport,
@@ -48,18 +49,32 @@ import type {
 import { stringifySkillManifest } from "@/lib/skill-studio";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import { UI_Z } from "@/lib/z-index";
-import type { AgentConfigDraft } from "@/features/office-system/components/manage-agent-modal/_types";
+import type { AgentSkillsInventory, GlobalSkillsInventory } from "@/lib/openclaw-types";
+import {
+  buildGlobalSkillRows,
+  buildInheritedRuntimeSkillKeys,
+  buildNextGlobalSkillConfig,
+} from "@/features/office-system/components/skills-panel.runtime";
+import {
+  buildKnownAgentSkillIds,
+  findRuntimeStatusForDetail,
+  groupInheritedRuntimeSkills,
+} from "@/features/office-system/components/skills-panel-data";
 import {
   buildNextAgentConfig,
-  cloneAgentConfigDraft,
-  EMPTY_AGENT_CONFIG_DRAFT,
   resolveAgentConfigDraft,
 } from "@/features/office-system/components/manage-agent-modal/config-draft";
 import {
-  getCustomSelectionDraft,
   isSkillEquipped,
   toggleSidebarSkill,
 } from "@/features/office-system/components/skills-panel.helpers";
+import { SkillsPanelSidebar } from "@/features/office-system/components/skills-panel-sidebar";
+import { SkillsPanelOverviewTab } from "@/features/office-system/components/skills-panel-overview-tab";
+import { SkillsPanelFilesTab } from "@/features/office-system/components/skills-panel-files-tab";
+import { SkillsPanelDiagramTab } from "@/features/office-system/components/skills-panel-diagram-tab";
+import { SkillsPanelDemosTab } from "@/features/office-system/components/skills-panel-demos-tab";
+import { SkillsPanelControlsTab } from "@/features/office-system/components/skills-panel-controls-tab";
+import type { DetailTab } from "@/features/office-system/components/skills-panel-types";
 
 function joinLines(lines: string[]): string {
   return lines.join("\n");
@@ -70,6 +85,19 @@ function splitLines(text: string): string[] {
     .split("\n")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function buildVisibleGlobalSkillRows(
+  rows: ReturnType<typeof buildGlobalSkillRows>,
+  sharedSkills: NonNullable<GlobalSkillsInventory["sharedSkills"]>,
+  runtimeSearch: string,
+): ReturnType<typeof buildGlobalSkillRows> {
+  const sharedIds = new Set(sharedSkills.map((entry) => entry.skillId));
+  return rows.filter((row) => {
+    if (!sharedIds.has(row.skillKey) && row.envCount === 0 && row.configCount === 0) return false;
+    if (!runtimeSearch) return true;
+    return row.skillKey.toLowerCase().includes(runtimeSearch);
+  });
 }
 
 function getDemoStepKey(
@@ -205,7 +233,72 @@ function buildMermaidDocument(diagram: string): string {
 </html>`;
 }
 
-type DetailTab = "overview" | "files" | "diagram" | "demos";
+function buildEmptySkillManifest(displayName: string, description: string): SkillManifest {
+  return {
+    interface: {
+      displayName,
+      shortDescription: description,
+    },
+    policy: {
+      allowImplicitInvocation: false,
+    },
+    dependencies: {
+      tools: [],
+      skills: [],
+      docs: [],
+    },
+    state: {
+      mode: "stateless",
+    },
+    paths: {
+      read: [],
+      write: [],
+    },
+    visualization: {},
+    references: [],
+    demos: {
+      labels: {},
+    },
+  };
+}
+
+function buildRuntimeOnlySkillDetail(input: {
+  skillId: string;
+  catalogEntry?: SkillStudioCatalogEntry | null;
+  runtimeStatus?: SkillStatusReport["skills"][number] | null;
+  sharedEntry?: NonNullable<GlobalSkillsInventory["sharedSkills"]>[number] | null;
+  focusAgentId?: string | null;
+}): SkillStudioDetail {
+  const displayName =
+    input.catalogEntry?.displayName ||
+    input.runtimeStatus?.skillKey ||
+    input.runtimeStatus?.name ||
+    input.skillId;
+  const description =
+    input.catalogEntry?.description || input.runtimeStatus?.description || "Runtime skill";
+  const sourcePath =
+    input.runtimeStatus?.filePath || input.sharedEntry?.sourcePath || input.catalogEntry?.sourcePath || "";
+  return {
+    skillId: input.skillId,
+    packageKey: input.catalogEntry?.packageKey || input.skillId,
+    displayName,
+    description,
+    category: input.catalogEntry?.category || "runtime",
+    scope: input.focusAgentId ? "agent" : "shared",
+    sourcePath,
+    updatedAt: input.catalogEntry?.updatedAt,
+    manifest: buildEmptySkillManifest(displayName, description),
+    manifestPath: "",
+    hasManifest: false,
+    overviewMarkdown: description,
+    mermaid: undefined,
+    relatedSkills: [],
+    fileEntries: [],
+    demoCases: [],
+    runtimeStatus: input.runtimeStatus ?? undefined,
+    focusAgentId: input.focusAgentId ?? undefined,
+  };
+}
 
 export function SkillsPanel(): ReactElement {
   const isOpen = useAppStore((state) => state.isSkillsPanelOpen);
@@ -219,13 +312,15 @@ export function SkillsPanel(): ReactElement {
   const [selectedDetail, setSelectedDetail] = useState<SkillStudioDetail | null>(null);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<SkillStudioFileContent | null>(null);
+  const [fileDraft, setFileDraft] = useState("");
+  const [fileSaveStatus, setFileSaveStatus] = useState("");
+  const [isSavingFile, setIsSavingFile] = useState(false);
   const [selectedDemoId, setSelectedDemoId] = useState<string | null>(null);
   const [lastDemoRun, setLastDemoRun] = useState<SkillDemoRunResult | null>(null);
   const [skillsReport, setSkillsReport] = useState<SkillStatusReport | null>(null);
-  const [fallbackSkills, setFallbackSkills] = useState<SkillItemModel[]>([]);
+  const [agentInventory, setAgentInventory] = useState<AgentSkillsInventory | null>(null);
+  const [globalInventory, setGlobalInventory] = useState<GlobalSkillsInventory | null>(null);
   const [configSnapshot, setConfigSnapshot] = useState<Record<string, unknown> | null>(null);
-  const [agentDraft, setAgentDraft] = useState<AgentConfigDraft>(EMPTY_AGENT_CONFIG_DRAFT);
-  const [agentBaseDraft, setAgentBaseDraft] = useState<AgentConfigDraft>(EMPTY_AGENT_CONFIG_DRAFT);
   const [search, setSearch] = useState("");
   const [flagFilter, setFlagFilter] = useState("all");
   const [errorText, setErrorText] = useState("");
@@ -233,9 +328,10 @@ export function SkillsPanel(): ReactElement {
   const [rawManifest, setRawManifest] = useState("");
   const [editorMode, setEditorMode] = useState<"structured" | "raw">("structured");
   const [saveStatus, setSaveStatus] = useState("");
-  const [agentConfigStatus, setAgentConfigStatus] = useState("");
+  const [runtimeStatusText, setRuntimeStatusText] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [isSavingAgentConfig, setIsSavingAgentConfig] = useState(false);
+  const [isMutatingWorkspace, setIsMutatingWorkspace] = useState(false);
+  const [isSavingGlobalConfig, setIsSavingGlobalConfig] = useState(false);
   const [isRunningDemo, setIsRunningDemo] = useState(false);
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const selectOverlayStyle = useMemo(() => ({ zIndex: UI_Z.panelModal + 1 }), []);
@@ -244,17 +340,20 @@ export function SkillsPanel(): ReactElement {
     async (signal) => {
       if (!isOpen) return;
       try {
-        const [catalog, report] = await Promise.all([
-          adapter.listSkillStudioCatalog(),
-          focusAgentId ? adapter.getSkillsStatus(focusAgentId) : Promise.resolve(null),
-        ]);
+        const [catalog, report, nextAgentInventory, nextGlobalInventory, snapshot] =
+          await Promise.all([
+            adapter.listSkillStudioCatalog(),
+            focusAgentId ? adapter.getSkillsStatus(focusAgentId) : Promise.resolve(null),
+            focusAgentId ? adapter.getAgentSkillsInventory(focusAgentId) : Promise.resolve(null),
+            focusAgentId ? Promise.resolve(null) : adapter.getGlobalSkillsInventory(),
+            adapter.getConfigSnapshot().catch(() => null),
+          ]);
         if (signal.cancelled) return;
         setSkills(mergeRuntimeStatus(catalog, report));
         setSkillsReport(report);
-        if (focusAgentId) {
-          const listedSkills = await adapter.listSkills().catch(() => []);
-          if (!signal.cancelled) setFallbackSkills(listedSkills);
-        }
+        setAgentInventory(nextAgentInventory);
+        setGlobalInventory(nextGlobalInventory);
+        setConfigSnapshot(snapshot?.config ?? null);
         const nextSelectedId = selectedSkillId ?? catalog[0]?.skillId ?? null;
         if (nextSelectedId && nextSelectedId !== selectedSkillId) {
           setSelectedSkillId(nextSelectedId);
@@ -274,43 +373,15 @@ export function SkillsPanel(): ReactElement {
   }, [focusAgentId, isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !focusAgentId) {
-      setConfigSnapshot(null);
-      setAgentDraft(EMPTY_AGENT_CONFIG_DRAFT);
-      setAgentBaseDraft(EMPTY_AGENT_CONFIG_DRAFT);
-      setAgentConfigStatus("");
-      return;
-    }
-    let cancelled = false;
-    const agentId = focusAgentId;
-    async function loadAgentConfig(): Promise<void> {
-      try {
-        const snapshot = await adapter.getConfigSnapshot();
-        if (cancelled) return;
-        const nextDraft = resolveAgentConfigDraft(snapshot.config, agentId);
-        setConfigSnapshot(snapshot.config);
-        setAgentDraft(nextDraft);
-        setAgentBaseDraft(nextDraft);
-        setAgentConfigStatus("");
-      } catch (error) {
-        if (!cancelled) {
-          setAgentConfigStatus(
-            error instanceof Error ? error.message : "skill_agent_config_load_failed",
-          );
-        }
-      }
-    }
-    void loadAgentConfig();
-    return () => {
-      cancelled = true;
-    };
-  }, [adapter, focusAgentId, isOpen]);
-
-  useEffect(() => {
     if (!isOpen || !selectedSkillId) return;
     let cancelled = false;
     const skillId = selectedSkillId;
     async function loadDetail(): Promise<void> {
+      const catalogEntry = skills.find((entry) => entry.skillId === skillId) ?? null;
+      const runtimeEntry =
+        skillsReport?.skills.find((entry) => entry.name === skillId || entry.skillKey === skillId) ?? null;
+      const sharedEntry =
+        globalInventory?.sharedSkills.find((entry) => entry.skillId === skillId) ?? null;
       try {
         const detail = await adapter.getSkillStudioDetail(skillId, focusAgentId ?? undefined);
         if (cancelled || !detail) return;
@@ -330,20 +401,41 @@ export function SkillsPanel(): ReactElement {
         setSelectedDemoId(nextDetail.demoCases[0]?.id ?? null);
         setLastDemoRun(null);
         setSaveStatus("");
+        setErrorText("");
       } catch (error) {
-        if (!cancelled)
-          setErrorText(error instanceof Error ? error.message : "skill_detail_failed");
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "skill_detail_failed";
+        if (message.includes(":404")) {
+          const fallback = buildRuntimeOnlySkillDetail({
+            skillId,
+            catalogEntry,
+            runtimeStatus: runtimeEntry,
+            sharedEntry,
+            focusAgentId,
+          });
+          setSelectedDetail(fallback);
+          setManifestDraft(toManifestDraft(fallback));
+          setRawManifest(stringifySkillManifest(fallback.manifest));
+          setSelectedFilePath(null);
+          setSelectedDemoId(null);
+          setLastDemoRun(null);
+          setSaveStatus("");
+          setErrorText("");
+          return;
+        }
+        setErrorText(message);
       }
     }
     void loadDetail();
     return () => {
       cancelled = true;
     };
-  }, [adapter, focusAgentId, isOpen, selectedSkillId, skillsReport]);
+  }, [adapter, focusAgentId, globalInventory, isOpen, selectedSkillId, skills, skillsReport]);
 
   useEffect(() => {
     if (!selectedDetail || !selectedFilePath) {
       setSelectedFile(null);
+      setFileDraft("");
       return;
     }
     let cancelled = false;
@@ -351,7 +443,11 @@ export function SkillsPanel(): ReactElement {
     const filePath = selectedFilePath;
     async function loadFile(): Promise<void> {
       const file = await adapter.getSkillStudioFile(detail.skillId, filePath);
-      if (!cancelled) setSelectedFile(file);
+      if (!cancelled) {
+        setSelectedFile(file);
+        setFileDraft(file?.isText ? file.content ?? "" : "");
+        setFileSaveStatus("");
+      }
     }
     void loadFile();
     return () => {
@@ -377,24 +473,20 @@ export function SkillsPanel(): ReactElement {
       }),
     [flagFilter, search, skills],
   );
-  const availableSkillIds = useMemo(
-    () =>
-      [...new Set([...skills.map((entry) => entry.skillId), ...fallbackSkills.map((entry) => entry.name)])],
-    [fallbackSkills, skills],
-  );
-
+  const runtimeSearch = search.trim().toLowerCase();
   const selectedDemo = useMemo(
     () => selectedDetail?.demoCases.find((entry) => entry.id === selectedDemoId) ?? null,
     [selectedDemoId, selectedDetail],
   );
+  const selectedDemoTitle = selectedDemo?.title ?? null;
+  const diagramDocument = useMemo(
+    () => (selectedDetail?.mermaid ? buildMermaidDocument(selectedDetail.mermaid) : null),
+    [selectedDetail],
+  );
 
-  const runtimeStatus =
-    selectedDetail?.runtimeStatus ??
-    skillsReport?.skills.find(
-      (entry) =>
-        entry.name === selectedDetail?.skillId || entry.skillKey === selectedDetail?.skillId,
-    ) ??
-    null;
+  const runtimeStatus = useMemo(() => {
+    return selectedDetail?.runtimeStatus ?? findRuntimeStatusForDetail(skillsReport, selectedDetail);
+  }, [selectedDetail, skillsReport]);
 
   const manifestEditor = manifestDraft;
   const readPathsText = manifestEditor ? joinLines(manifestEditor.paths.read) : "";
@@ -402,10 +494,103 @@ export function SkillsPanel(): ReactElement {
   const dependencySkillsText = manifestEditor ? joinLines(manifestEditor.dependencies.skills) : "";
   const dependencyDocsText = manifestEditor ? joinLines(manifestEditor.dependencies.docs) : "";
   const referencesText = manifestEditor ? joinLines(manifestEditor.references) : "";
-  const canSave = Boolean(selectedDetail && manifestEditor && !isSaving);
-  const isAgentConfigDirty = useMemo(
-    () => JSON.stringify(agentDraft) !== JSON.stringify(agentBaseDraft),
-    [agentBaseDraft, agentDraft],
+  const canSave = Boolean(selectedDetail?.hasManifest && manifestEditor && !isSaving);
+  const workspaceSkillIds = useMemo(
+    () => new Set((agentInventory?.workspaceSkills ?? []).map((entry) => entry.skillId)),
+    [agentInventory],
+  );
+  const inheritedRuntimeSkills = useMemo(() => {
+    const keys = buildInheritedRuntimeSkillKeys(skillsReport, workspaceSkillIds);
+    return keys.map((key) => skillsReport?.skills.find((entry) => (entry.skillKey || entry.name) === key)).filter(
+      (entry): entry is NonNullable<typeof entry> => entry !== undefined,
+    );
+  }, [skillsReport, workspaceSkillIds]);
+  const globalSkillRows = useMemo(
+    () => buildGlobalSkillRows(configSnapshot, globalInventory),
+    [configSnapshot, globalInventory],
+  );
+  const filteredWorkspaceSkills = useMemo(
+    () =>
+      (agentInventory?.workspaceSkills ?? []).filter((entry) =>
+        entry.skillId.toLowerCase().includes(runtimeSearch),
+      ),
+    [agentInventory, runtimeSearch],
+  );
+  const filteredInheritedRuntimeSkills = useMemo(
+    () =>
+      inheritedRuntimeSkills.filter((entry) =>
+        `${entry.skillKey || entry.name} ${entry.description} ${entry.source}`
+          .toLowerCase()
+          .includes(runtimeSearch),
+      ),
+    [inheritedRuntimeSkills, runtimeSearch],
+  );
+  const groupedInheritedRuntimeSkills = useMemo(
+    () => groupInheritedRuntimeSkills(filteredInheritedRuntimeSkills),
+    [filteredInheritedRuntimeSkills],
+  );
+  const filteredGlobalSkillRows = useMemo(
+    () => buildVisibleGlobalSkillRows(globalSkillRows, globalInventory?.sharedSkills ?? [], runtimeSearch),
+    [globalInventory, globalSkillRows, runtimeSearch],
+  );
+  const knownAgentSkillIds = useMemo(
+    () =>
+      buildKnownAgentSkillIds({
+        skills,
+        workspaceSkills: agentInventory?.workspaceSkills ?? [],
+        inheritedRuntimeSkills,
+        selectedDetail,
+      }),
+    [agentInventory, inheritedRuntimeSkills, selectedDetail, skills],
+  );
+  const agentConfigDraft = useMemo(
+    () => (focusAgentId ? resolveAgentConfigDraft(configSnapshot, focusAgentId) : null),
+    [configSnapshot, focusAgentId],
+  );
+  const selectedSkillInstalledInWorkspace = selectedDetail
+    ? workspaceSkillIds.has(selectedDetail.skillId)
+    : false;
+  const selectedGlobalSkillRow = useMemo(
+    () =>
+      selectedDetail
+        ? globalSkillRows.find((row) => row.skillKey === selectedDetail.skillId) ?? null
+        : null,
+    [globalSkillRows, selectedDetail],
+  );
+  const selectedSharedSkillEntry = useMemo(
+    () =>
+      selectedDetail
+        ? (globalInventory?.sharedSkills ?? []).find((entry) => entry.skillId === selectedDetail.skillId) ??
+          null
+        : null,
+    [globalInventory, selectedDetail],
+  );
+  const selectedInheritedRuntimeSkill = useMemo(
+    () =>
+      selectedDetail
+        ? inheritedRuntimeSkills.find(
+            (entry) => (entry.skillKey || entry.name) === selectedDetail.skillId,
+          ) ?? null
+        : null,
+    [inheritedRuntimeSkills, selectedDetail],
+  );
+  const selectedWorkspaceSkillEntry = useMemo(
+    () =>
+      selectedDetail
+        ? (agentInventory?.workspaceSkills ?? []).find((entry) => entry.skillId === selectedDetail.skillId) ??
+          null
+        : null,
+    [agentInventory, selectedDetail],
+  );
+  const selectedAgentSkillEnabled = useMemo(
+    () =>
+      Boolean(
+        focusAgentId &&
+          selectedDetail &&
+          agentConfigDraft &&
+          isSkillEquipped(agentConfigDraft, selectedDetail.skillId),
+      ),
+    [agentConfigDraft, focusAgentId, selectedDetail],
   );
 
   async function handleRunDemo(): Promise<void> {
@@ -449,77 +634,142 @@ export function SkillsPanel(): ReactElement {
     setManifestDraft({ ...manifestEditor, ...next });
   }
 
-  async function refreshAgentConfig(): Promise<void> {
-    if (!focusAgentId) return;
+  async function refreshRuntimeView(): Promise<void> {
     try {
-      const snapshot = await adapter.getConfigSnapshot();
-      const nextDraft = resolveAgentConfigDraft(snapshot.config, focusAgentId);
-      setConfigSnapshot(snapshot.config);
-      setAgentDraft(nextDraft);
-      setAgentBaseDraft(nextDraft);
-      setAgentConfigStatus("Config reloaded.");
-    } catch (error) {
-      setAgentConfigStatus(error instanceof Error ? error.message : "config_reload_failed");
-    }
-  }
-
-  async function refreshAgentSkills(): Promise<void> {
-    if (!focusAgentId) return;
-    try {
-      const [report, listedSkills] = await Promise.all([
-        adapter.getSkillsStatus(focusAgentId),
-        adapter.listSkills().catch(() => []),
+      const [report, snapshot] = await Promise.all([
+        focusAgentId ? adapter.getSkillsStatus(focusAgentId) : Promise.resolve(null),
+        adapter.getConfigSnapshot().catch(() => null),
       ]);
       setSkillsReport(report);
-      setFallbackSkills(listedSkills);
-      setAgentConfigStatus("Skill status refreshed.");
+      setConfigSnapshot(snapshot?.config ?? null);
+      if (focusAgentId) {
+        setAgentInventory(await adapter.getAgentSkillsInventory(focusAgentId));
+      } else {
+        setGlobalInventory(await adapter.getGlobalSkillsInventory());
+      }
+      setRuntimeStatusText("Runtime view refreshed.");
     } catch (error) {
-      setAgentConfigStatus(error instanceof Error ? error.message : "skills_refresh_failed");
+      setRuntimeStatusText(error instanceof Error ? error.message : "skills_refresh_failed");
     }
   }
 
-  async function handleSaveAgentConfig(): Promise<void> {
-    if (!focusAgentId || !configSnapshot || !isAgentConfigDirty) return;
-    setIsSavingAgentConfig(true);
-    setAgentConfigStatus("");
+  async function refreshRuntimeViewWithMessage(message: string): Promise<void> {
+    await refreshRuntimeView();
+    setRuntimeStatusText(message);
+  }
+
+  async function handleToggleGlobalSkill(skillKey: string, enabled: boolean): Promise<void> {
+    if (!configSnapshot) return;
+    setIsSavingGlobalConfig(true);
+    setRuntimeStatusText("");
     try {
-      const nextConfig = buildNextAgentConfig(configSnapshot, focusAgentId, agentDraft);
+      const nextConfig = buildNextGlobalSkillConfig(configSnapshot, skillKey, enabled);
       const result = await adapter.applyConfig(nextConfig, true);
       if (!result.ok) {
-        setAgentConfigStatus(result.error ?? "config_save_failed");
+        setRuntimeStatusText(result.error ?? "global_skill_config_save_failed");
         return;
       }
       setConfigSnapshot(nextConfig);
-      setAgentBaseDraft(cloneAgentConfigDraft(agentDraft));
-      setAgentConfigStatus("Skill config saved.");
-      const nextReport = await adapter.getSkillsStatus(focusAgentId).catch(() => null);
-      setSkillsReport(nextReport);
+      await refreshRuntimeViewWithMessage(`Updated global skill config for ${skillKey}.`);
     } catch (error) {
-      setAgentConfigStatus(error instanceof Error ? error.message : "config_save_failed");
+      setRuntimeStatusText(
+        error instanceof Error ? error.message : "global_skill_config_save_failed",
+      );
     } finally {
-      setIsSavingAgentConfig(false);
+      setIsSavingGlobalConfig(false);
     }
   }
 
-  function updateAgentSkill(skillId: string): void {
-    setAgentDraft((current) => toggleSidebarSkill(current, skillId, availableSkillIds));
+  async function handleToggleAgentSkill(skillId: string): Promise<void> {
+    if (!focusAgentId || !configSnapshot) return;
+    setIsSavingGlobalConfig(true);
+    setRuntimeStatusText("");
+    try {
+      const currentDraft = resolveAgentConfigDraft(configSnapshot, focusAgentId);
+      const nextDraft = toggleSidebarSkill(currentDraft, skillId, knownAgentSkillIds);
+      const nextConfig = buildNextAgentConfig(configSnapshot, focusAgentId, nextDraft);
+      const result = await adapter.applyConfig(nextConfig, true);
+      if (!result.ok) {
+        setRuntimeStatusText(result.error ?? "agent_skill_config_save_failed");
+        return;
+      }
+      setConfigSnapshot(nextConfig);
+      await refreshRuntimeViewWithMessage(
+        isSkillEquipped(nextDraft, skillId)
+          ? `Enabled ${skillId} for ${focusAgentId}.`
+          : `Disabled ${skillId} for ${focusAgentId}.`,
+      );
+    } catch (error) {
+      setRuntimeStatusText(error instanceof Error ? error.message : "agent_skill_config_save_failed");
+    } finally {
+      setIsSavingGlobalConfig(false);
+    }
+  }
+
+  async function handleWorkspaceSkillToggle(skillId: string, install: boolean): Promise<void> {
+    if (!focusAgentId) return;
+    setIsMutatingWorkspace(true);
+    setRuntimeStatusText("");
+    try {
+      const result = install
+        ? await adapter.installRepoSkillToAgentWorkspace(focusAgentId, skillId)
+        : await adapter.removeAgentWorkspaceSkill(focusAgentId, skillId);
+      if (!result.ok) {
+        setRuntimeStatusText(result.error ?? "workspace_skill_mutation_failed");
+        return;
+      }
+      setAgentInventory(await adapter.getAgentSkillsInventory(focusAgentId));
+      await refreshRuntimeViewWithMessage(
+        install ? `Installed ${skillId} into agent workspace.` : `Removed ${skillId} from agent workspace.`,
+      );
+    } catch (error) {
+      setRuntimeStatusText(error instanceof Error ? error.message : "workspace_skill_mutation_failed");
+    } finally {
+      setIsMutatingWorkspace(false);
+    }
+  }
+
+  async function handleSaveFile(): Promise<void> {
+    if (!selectedDetail || !selectedFilePath || !selectedFile?.isText || selectedFile.writable === false) {
+      return;
+    }
+    setIsSavingFile(true);
+    setFileSaveStatus("");
+    try {
+      const saved = await adapter.saveSkillStudioFile(selectedDetail.skillId, selectedFilePath, fileDraft);
+      if (!saved) {
+        setFileSaveStatus("skill_file_save_failed");
+        return;
+      }
+      setSelectedFile(saved);
+      setFileDraft(saved.content ?? "");
+      setFileSaveStatus("File saved.");
+    } catch (error) {
+      setFileSaveStatus(error instanceof Error ? error.message : "skill_file_save_failed");
+    } finally {
+      setIsSavingFile(false);
+    }
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent
-        className="min-w-[88vw] max-w-none h-[92vh] overflow-hidden p-0"
-        style={{ zIndex: UI_Z.panelElevated }}
-      >
+        <DialogContent
+          className="flex h-[92vh] min-w-[88vw] max-w-none flex-col gap-0 overflow-hidden p-0"
+          style={{ zIndex: UI_Z.panelElevated }}
+        >
         <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle>Skill Studio</DialogTitle>
+          <DialogTitle>{focusAgentId ? "Agent Skills" : "Global Skills"}</DialogTitle>
           {focusAgentId ? (
             <p className="text-xs text-muted-foreground">Focused agent: {focusAgentId}</p>
-          ) : null}
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Shared OpenClaw skills on the left. Inspect files, diagrams, demos, and controls in the viewer.
+            </p>
+          )}
           {errorText ? <p className="text-xs text-destructive">{errorText}</p> : null}
         </DialogHeader>
         <div
-          className="grid h-full overflow-hidden"
+          className="grid min-h-0 flex-1 overflow-hidden"
           style={{ gridTemplateColumns: `${SKILL_STUDIO_SIDEBAR_WIDTH}px minmax(0, 1fr)` }}
         >
           <div className="flex min-h-0 flex-col border-r p-4">
@@ -544,134 +794,34 @@ export function SkillsPanel(): ReactElement {
                 </SelectContent>
               </Select>
             </div>
-            {focusAgentId ? (
-              <div className="mt-3 rounded-md border p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant={agentDraft.skillsMode === "all" ? "default" : "outline"}
-                    onClick={() => setAgentDraft((current) => ({ ...current, skillsMode: "all" }))}
-                  >
-                    All
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={agentDraft.skillsMode === "none" ? "default" : "outline"}
-                    onClick={() =>
-                      setAgentDraft((current) => ({
-                        ...current,
-                        skillsMode: "none",
-                        selectedSkills: [],
-                      }))
-                    }
-                  >
-                    None
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={agentDraft.skillsMode === "selected" ? "default" : "outline"}
-                    onClick={() =>
-                      setAgentDraft((current) => getCustomSelectionDraft(current, availableSkillIds))
-                    }
-                  >
-                    Custom
-                  </Button>
-                  <div className="ml-auto flex items-center gap-2">
-                    <Button size="sm" variant="ghost" onClick={() => void refreshAgentConfig()}>
-                      Reload
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => void refreshAgentSkills()}>
-                      Refresh
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => void handleSaveAgentConfig()}
-                      disabled={isSavingAgentConfig || !isAgentConfigDirty}
-                    >
-                      {isSavingAgentConfig ? "Saving..." : "Save"}
-                    </Button>
-                  </div>
-                </div>
-                {agentConfigStatus ? (
-                  <p className="mt-2 text-[11px] text-muted-foreground">{agentConfigStatus}</p>
-                ) : null}
-              </div>
-            ) : null}
-
-            <ScrollArea className="mt-4 min-h-0 flex-1 rounded-md border">
-              <div className="space-y-2 p-2">
-                {filteredSkills.map((skill) => (
-                  <div
-                    key={skill.packageKey}
-                    className={`w-full min-w-0 rounded-md border p-3 transition ${selectedSkillId === skill.skillId ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
-                    style={{ maxWidth: `calc(${SKILL_STUDIO_SIDEBAR_WIDTH}px - 2rem)` }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSkillId(skill.skillId)}
-                      className="w-full text-left"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="min-w-0 flex-1 truncate font-medium">{skill.displayName}</p>
-                        {focusAgentId ? (
-                          <Badge
-                            variant={isSkillEquipped(agentDraft, skill.skillId) ? "secondary" : "outline"}
-                          >
-                            {isSkillEquipped(agentDraft, skill.skillId) ? "on" : "off"}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">{skill.category}</Badge>
-                        )}
-                      </div>
-                      <p className="mt-1 max-w-full break-words text-xs leading-relaxed text-muted-foreground">
-                        {truncateSkillCardDescription(skill.description || skill.skillId)}
-                      </p>
-                    </button>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {skill.hasTests ? <Badge variant="outline">tests</Badge> : null}
-                      {skill.hasDiagram ? <Badge variant="outline">diagram</Badge> : null}
-                      {skill.hasSkillMemory ? <Badge variant="outline">skill memory</Badge> : null}
-                      {skill.runtimeStatus?.blockedByAllowlist ? (
-                        <Badge variant="destructive">blocked</Badge>
-                      ) : null}
-                      {skill.runtimeStatus?.eligible ? (
-                        <Badge variant="secondary">eligible</Badge>
-                      ) : null}
-                      {!focusAgentId ? <Badge variant="outline">{skill.category}</Badge> : null}
-                    </div>
-                    {focusAgentId ? (
-                      <div className="mt-3 flex items-center justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setSelectedSkillId(skill.skillId)}
-                        >
-                          Open
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={isSkillEquipped(agentDraft, skill.skillId) ? "outline" : "default"}
-                          onClick={() => updateAgentSkill(skill.skillId)}
-                        >
-                          {isSkillEquipped(agentDraft, skill.skillId) ? "Unequip" : "Equip"}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-                {filteredSkills.length === 0 ? (
-                  <p className="p-2 text-sm text-muted-foreground">
-                    No skills match the current filters.
-                  </p>
-                ) : null}
-              </div>
-            </ScrollArea>
+            <SkillsPanelSidebar
+              focusAgentId={focusAgentId}
+              runtimeStatusText={runtimeStatusText}
+              selectedSkillId={selectedSkillId}
+              filteredWorkspaceSkills={filteredWorkspaceSkills}
+              groupedInheritedRuntimeSkills={groupedInheritedRuntimeSkills}
+              filteredGlobalSkillRows={filteredGlobalSkillRows}
+              isSavingGlobalConfig={isSavingGlobalConfig}
+              isMutatingWorkspace={isMutatingWorkspace}
+              isAgentSkillEquipped={(skillId) =>
+                agentConfigDraft ? isSkillEquipped(agentConfigDraft, skillId) : true
+              }
+              onRefresh={() => void refreshRuntimeView()}
+              onSelectSkill={setSelectedSkillId}
+              onToggleGlobalSkill={(skillKey, enabled) =>
+                void handleToggleGlobalSkill(skillKey, enabled)
+              }
+              onToggleAgentSkill={(skillId) => void handleToggleAgentSkill(skillId)}
+              onToggleWorkspaceSkill={(skillId, install) =>
+                void handleWorkspaceSkillToggle(skillId, install)
+              }
+            />
           </div>
 
-          <div className="min-h-0 overflow-hidden p-4">
+          <div className="min-h-0 min-w-0 overflow-hidden p-4">
             {!selectedDetail || !manifestEditor ? (
               <div className="flex h-full items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
-                Select a skill to inspect its files, diagram, and demos.
+                Select a runtime skill to inspect its files, diagram, demos, and controls.
               </div>
             ) : (
               <Tabs
@@ -684,418 +834,142 @@ export function SkillsPanel(): ReactElement {
                   <TabsTrigger value="files">Files</TabsTrigger>
                   <TabsTrigger value="diagram">Diagram</TabsTrigger>
                   <TabsTrigger value="demos">Demos</TabsTrigger>
+                  <TabsTrigger value="controls">Controls</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="min-h-0 flex-1 overflow-hidden">
-                  <ScrollArea className="h-full min-h-0 rounded-md border p-4">
-                    <div className="space-y-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <h3 className="text-lg font-semibold">{selectedDetail.displayName}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {selectedDetail.description || selectedDetail.skillId}
-                          </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {selectedDetail.sourcePath}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="secondary">{selectedDetail.category}</Badge>
-                          {selectedDetail.hasManifest ? (
-                            <Badge variant="outline">manifest</Badge>
-                          ) : null}
-                          {selectedDetail.manifest.state.mode === "skill_memory" ? (
-                            <Badge variant="outline">skill memory</Badge>
-                          ) : null}
-                          {runtimeStatus?.eligible ? (
-                            <Badge variant="secondary">eligible</Badge>
-                          ) : null}
-                          {runtimeStatus?.blockedByAllowlist ? (
-                            <Badge variant="destructive">blocked by allowlist</Badge>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm">Runtime Readiness</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-2 text-sm">
-                          <p>
-                            Updated:{" "}
-                            {selectedDetail.updatedAt ? fmtTs(selectedDetail.updatedAt) : "n/a"}
-                          </p>
-                          <p>
-                            Scope: {focusAgentId ? `agent-aware (${focusAgentId})` : "repo package"}
-                          </p>
-                          <p>
-                            Allowlist state:{" "}
-                            {runtimeStatus?.blockedByAllowlist
-                              ? "blocked"
-                              : runtimeStatus
-                                ? "allowed"
-                                : "n/a"}
-                          </p>
-                          <p>
-                            Requirements:{" "}
-                            {runtimeStatus
-                              ? `${runtimeStatus.requirements.env.length} env, ${runtimeStatus.requirements.bins.length} bins, ${runtimeStatus.requirements.config.length} config`
-                              : "n/a"}
-                          </p>
-                        </CardContent>
-                      </Card>
-
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm">Metadata Editor</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant={editorMode === "structured" ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => setEditorMode("structured")}
-                            >
-                              Structured
-                            </Button>
-                            <Button
-                              variant={editorMode === "raw" ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => setEditorMode("raw")}
-                            >
-                              Raw YAML
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => void handleSaveManifest()}
-                              disabled={!canSave}
-                            >
-                              {isSaving ? "Saving..." : "Save metadata"}
-                            </Button>
-                            {saveStatus ? (
-                              <span className="text-xs text-muted-foreground">{saveStatus}</span>
-                            ) : null}
-                          </div>
-
-                          {editorMode === "structured" ? (
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <div className="space-y-2">
-                                <Label>Display Name</Label>
-                                <Input
-                                  value={manifestEditor.interface.displayName}
-                                  onChange={(event) =>
-                                    updateManifest({
-                                      interface: {
-                                        ...manifestEditor.interface,
-                                        displayName: event.target.value,
-                                      },
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Brand Color</Label>
-                                <Input
-                                  value={manifestEditor.interface.brandColor ?? ""}
-                                  onChange={(event) =>
-                                    updateManifest({
-                                      interface: {
-                                        ...manifestEditor.interface,
-                                        brandColor: event.target.value || undefined,
-                                      },
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2 md:col-span-2">
-                                <Label>Short Description</Label>
-                                <Textarea
-                                  value={manifestEditor.interface.shortDescription}
-                                  onChange={(event) =>
-                                    updateManifest({
-                                      interface: {
-                                        ...manifestEditor.interface,
-                                        shortDescription: event.target.value,
-                                      },
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2 md:col-span-2">
-                                <Label>Default Prompt</Label>
-                                <Textarea
-                                  value={manifestEditor.interface.defaultPrompt ?? ""}
-                                  onChange={(event) =>
-                                    updateManifest({
-                                      interface: {
-                                        ...manifestEditor.interface,
-                                        defaultPrompt: event.target.value || undefined,
-                                      },
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>State Mode</Label>
-                                <Select
-                                  value={manifestEditor.state.mode}
-                                  onValueChange={(value) =>
-                                    updateManifest({
-                                      state: {
-                                        ...manifestEditor.state,
-                                        mode: value as SkillManifest["state"]["mode"],
-                                      },
-                                    })
-                                  }
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent style={selectOverlayStyle}>
-                                    <SelectItem value="stateless">stateless</SelectItem>
-                                    <SelectItem value="agent_memory">agent_memory</SelectItem>
-                                    <SelectItem value="skill_memory">skill_memory</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Memory File</Label>
-                                <Input
-                                  value={manifestEditor.state.memoryFile ?? ""}
-                                  onChange={(event) =>
-                                    updateManifest({
-                                      state: {
-                                        ...manifestEditor.state,
-                                        memoryFile: event.target.value || undefined,
-                                      },
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Read Paths</Label>
-                                <Textarea
-                                  value={readPathsText}
-                                  onChange={(event) =>
-                                    updateManifest({
-                                      paths: {
-                                        ...manifestEditor.paths,
-                                        read: splitLines(event.target.value),
-                                      },
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Write Paths</Label>
-                                <Textarea
-                                  value={writePathsText}
-                                  onChange={(event) =>
-                                    updateManifest({
-                                      paths: {
-                                        ...manifestEditor.paths,
-                                        write: splitLines(event.target.value),
-                                      },
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Related Skills</Label>
-                                <Textarea
-                                  value={dependencySkillsText}
-                                  onChange={(event) =>
-                                    updateManifest({
-                                      dependencies: {
-                                        ...manifestEditor.dependencies,
-                                        skills: splitLines(event.target.value),
-                                      },
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Docs</Label>
-                                <Textarea
-                                  value={dependencyDocsText}
-                                  onChange={(event) =>
-                                    updateManifest({
-                                      dependencies: {
-                                        ...manifestEditor.dependencies,
-                                        docs: splitLines(event.target.value),
-                                      },
-                                    })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2 md:col-span-2">
-                                <Label>References</Label>
-                                <Textarea
-                                  value={referencesText}
-                                  onChange={(event) =>
-                                    updateManifest({ references: splitLines(event.target.value) })
-                                  }
-                                />
-                              </div>
-                            </div>
-                          ) : (
-                            <Textarea
-                              className="min-h-[28rem] font-mono text-xs"
-                              value={rawManifest}
-                              onChange={(event) => setRawManifest(event.target.value)}
-                            />
-                          )}
-                        </CardContent>
-                      </Card>
-                    </div>
-                  </ScrollArea>
+                  <SkillsPanelOverviewTab
+                    focusAgentId={focusAgentId}
+                    selection={{
+                      selectedDetail,
+                      selectedGlobalSkillRow,
+                      selectedSharedSkillEntry,
+                      selectedInheritedRuntimeSkill,
+                      selectedWorkspaceSkillEntry,
+                      selectedSkillInstalledInWorkspace,
+                      selectedAgentSkillEnabled,
+                      runtimeStatus,
+                    }}
+                    isSavingGlobalConfig={isSavingGlobalConfig}
+                    isMutatingWorkspace={isMutatingWorkspace}
+                    onToggleWorkspaceSkill={(skillId, install) =>
+                      void handleWorkspaceSkillToggle(skillId, install)
+                    }
+                    onToggleAgentSkill={(skillId) => void handleToggleAgentSkill(skillId)}
+                    onToggleGlobalSkill={(skillId, enabled) =>
+                      void handleToggleGlobalSkill(skillId, enabled)
+                    }
+                    onOpenControls={() => setActiveTab("controls")}
+                  />
+                </TabsContent>
+                <TabsContent value="controls" className="min-h-0 flex-1 overflow-hidden">
+                  <SkillsPanelControlsTab
+                    focusAgentId={focusAgentId}
+                    agentWorkspacePath={agentInventory?.workspacePath ?? null}
+                    selection={{
+                      selectedDetail,
+                      selectedGlobalSkillRow,
+                      selectedSharedSkillEntry,
+                      selectedInheritedRuntimeSkill,
+                      selectedWorkspaceSkillEntry,
+                      selectedSkillInstalledInWorkspace,
+                      selectedAgentSkillEnabled,
+                      runtimeStatus,
+                    }}
+                    manifestState={{
+                      manifestEditor,
+                      rawManifest,
+                      editorMode,
+                      saveStatus,
+                      canSave,
+                      isSaving,
+                      readPathsText,
+                      writePathsText,
+                      dependencySkillsText,
+                      dependencyDocsText,
+                      referencesText,
+                    }}
+                    isSavingGlobalConfig={isSavingGlobalConfig}
+                    isMutatingWorkspace={isMutatingWorkspace}
+                    selectOverlayStyle={selectOverlayStyle}
+                    onSetEditorMode={setEditorMode}
+                    onSaveManifest={() => void handleSaveManifest()}
+                    onUpdateManifest={updateManifest}
+                    onChangeRawManifest={setRawManifest}
+                    onToggleWorkspaceSkill={(skillId, install) =>
+                      void handleWorkspaceSkillToggle(skillId, install)
+                    }
+                    onToggleAgentSkill={(skillId) => void handleToggleAgentSkill(skillId)}
+                    onToggleGlobalSkill={(skillId, enabled) =>
+                      void handleToggleGlobalSkill(skillId, enabled)
+                    }
+                    splitLines={splitLines}
+                  />
                 </TabsContent>
 
                 <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden">
-                  <div className="grid h-full min-h-0 grid-cols-[260px_minmax(0,1fr)] gap-4">
-                    <ScrollArea className="h-full min-h-0 rounded-md border">
-                      <div className="space-y-1 p-2">
-                        {selectedDetail.fileEntries.map((file) => (
-                          <button
-                            key={file.path}
-                            type="button"
-                            onClick={() => setSelectedFilePath(file.path)}
-                            className={`w-full rounded-md px-3 py-2 text-left text-sm ${selectedFilePath === file.path ? "bg-primary/10 text-primary" : "hover:bg-muted/40"}`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span>{file.path}</span>
-                              <Badge variant="outline">{file.kind}</Badge>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                    <ScrollArea className="h-full min-h-0 rounded-md border">
-                      <div className="min-h-full p-4">
-                        {!selectedFile ? (
-                          <p className="text-sm text-muted-foreground">
-                            Select a file to preview it.
-                          </p>
-                        ) : !selectedFile.isText ? (
-                          <p className="text-sm text-muted-foreground">
-                            Binary or non-text asset. Size: {selectedFile.sizeBytes ?? 0} bytes.
-                          </p>
-                        ) : (
-                          <pre className="whitespace-pre-wrap break-words text-xs leading-6">
-                            {selectedFile.content}
-                          </pre>
-                        )}
-                      </div>
-                    </ScrollArea>
-                  </div>
+                  <SkillsPanelFilesTab
+                    selection={{
+                      selectedDetail,
+                      selectedGlobalSkillRow,
+                      selectedSharedSkillEntry,
+                      selectedInheritedRuntimeSkill,
+                      selectedWorkspaceSkillEntry,
+                      selectedSkillInstalledInWorkspace,
+                      selectedAgentSkillEnabled,
+                      runtimeStatus,
+                    }}
+                    fileState={{
+                      selectedFilePath,
+                      selectedFile,
+                      fileDraft,
+                      fileSaveStatus,
+                      isSavingFile,
+                    }}
+                    onSelectFilePath={setSelectedFilePath}
+                    onChangeFileDraft={setFileDraft}
+                    onSaveFile={() => void handleSaveFile()}
+                  />
                 </TabsContent>
 
                 <TabsContent value="diagram" className="min-h-0 flex-1 overflow-hidden">
-                  <ScrollArea className="h-full min-h-0 rounded-md border p-4">
-                    {selectedDetail.mermaid ? (
-                      <div className="space-y-4">
-                        <iframe
-                          title={`${selectedDetail.displayName} diagram`}
-                          srcDoc={buildMermaidDocument(selectedDetail.mermaid)}
-                          className="h-[28rem] w-full rounded-md border bg-background"
-                        />
-                        <Textarea
-                          readOnly
-                          className="min-h-[20rem] font-mono text-xs"
-                          value={selectedDetail.mermaid}
-                        />
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        No Mermaid diagram found in this skill package yet.
-                      </p>
-                    )}
-                  </ScrollArea>
+                  <SkillsPanelDiagramTab
+                    selection={{
+                      selectedDetail,
+                      selectedGlobalSkillRow,
+                      selectedSharedSkillEntry,
+                      selectedInheritedRuntimeSkill,
+                      selectedWorkspaceSkillEntry,
+                      selectedSkillInstalledInWorkspace,
+                      selectedAgentSkillEnabled,
+                      runtimeStatus,
+                    }}
+                    diagramDocument={diagramDocument}
+                  />
                 </TabsContent>
 
                 <TabsContent value="demos" className="min-h-0 flex-1 overflow-hidden">
-                  <div className="grid h-full min-h-0 grid-cols-[280px_minmax(0,1fr)] gap-4">
-                    <ScrollArea className="h-full min-h-0 rounded-md border">
-                      <div className="space-y-2 p-2">
-                        {selectedDetail.demoCases.map((demo) => (
-                          <button
-                            key={demo.id}
-                            type="button"
-                            onClick={() => setSelectedDemoId(demo.id)}
-                            className={`w-full rounded-md border p-3 text-left ${selectedDemoId === demo.id ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
-                          >
-                            <p className="font-medium">{demo.title}</p>
-                            <p className="text-xs text-muted-foreground">{demo.relativePath}</p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {demo.stepCount} step(s)
-                            </p>
-                          </button>
-                        ))}
-                        {selectedDetail.demoCases.length === 0 ? (
-                          <p className="p-2 text-sm text-muted-foreground">
-                            No demo cases found under `tests/*.md`.
-                          </p>
-                        ) : null}
-                      </div>
-                    </ScrollArea>
-                    <ScrollArea className="h-full min-h-0 rounded-md border">
-                      <div className="min-h-full space-y-4 p-4">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            onClick={() => void handleRunDemo()}
-                            disabled={!selectedDemo || isRunningDemo}
-                          >
-                            {isRunningDemo ? "Running..." : "Run saved case"}
-                          </Button>
-                          {selectedDemo ? (
-                            <p className="text-sm text-muted-foreground">{selectedDemo.title}</p>
-                          ) : null}
-                        </div>
-                        {!lastDemoRun ? (
-                          <p className="text-sm text-muted-foreground">
-                            Run a saved markdown demo case to inspect stdout, assertions, and
-                            step-by-step results.
-                          </p>
-                        ) : (
-                          <div className="space-y-4">
-                            <div className="flex flex-wrap gap-2">
-                              <Badge variant={lastDemoRun.passed ? "secondary" : "destructive"}>
-                                {lastDemoRun.passed ? "passed" : "failed"}
-                              </Badge>
-                              <Badge variant="outline">{lastDemoRun.durationMs} ms</Badge>
-                            </div>
-                            {lastDemoRun.steps.map((step, index) => (
-                              <Card key={getDemoStepKey(lastDemoRun.caseId, step, index)}>
-                                <CardHeader className="pb-2">
-                                  <CardTitle className="text-sm">Step {index + 1}</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-2 text-xs">
-                                  <pre className="whitespace-pre-wrap break-words rounded bg-muted/40 p-2">
-                                    {step.run.join(" ")}
-                                  </pre>
-                                  {step.stdout ? (
-                                    <pre className="whitespace-pre-wrap break-words rounded bg-muted/30 p-2">
-                                      {step.stdout}
-                                    </pre>
-                                  ) : null}
-                                  {step.stderr ? (
-                                    <pre className="whitespace-pre-wrap break-words rounded bg-destructive/10 p-2">
-                                      {step.stderr}
-                                    </pre>
-                                  ) : null}
-                                  {step.failures.length > 0 ? (
-                                    <pre className="whitespace-pre-wrap break-words rounded bg-destructive/10 p-2">
-                                      {step.failures.join("\n")}
-                                    </pre>
-                                  ) : null}
-                                </CardContent>
-                              </Card>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </ScrollArea>
-                  </div>
+                  <SkillsPanelDemosTab
+                    selection={{
+                      selectedDetail,
+                      selectedGlobalSkillRow,
+                      selectedSharedSkillEntry,
+                      selectedInheritedRuntimeSkill,
+                      selectedWorkspaceSkillEntry,
+                      selectedSkillInstalledInWorkspace,
+                      selectedAgentSkillEnabled,
+                      runtimeStatus,
+                    }}
+                    demoState={{
+                      selectedDemoId,
+                      lastDemoRun,
+                      isRunningDemo,
+                    }}
+                    selectedDemoTitle={selectedDemoTitle}
+                    getDemoStepKey={getDemoStepKey}
+                    onSelectDemoId={setSelectedDemoId}
+                    onRunDemo={() => void handleRunDemo()}
+                  />
                 </TabsContent>
               </Tabs>
             )}

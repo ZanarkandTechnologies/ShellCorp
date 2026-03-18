@@ -73,6 +73,8 @@ import type {
   TeamProposalModel,
   TeamProposalIdeaBrief,
   TeamProposalApprovalStatus,
+  AgentSkillsInventory,
+  GlobalSkillsInventory,
 } from "./openclaw-types";
 import { buildGatewayHeaders } from "./gateway-config";
 import type { GatewayWsClient } from "./gateway-ws-client";
@@ -553,6 +555,65 @@ export class OpenClawAdapter {
     return toSkillStatusReport(result.payload);
   }
 
+  async getAgentSkillsInventory(agentId: string): Promise<AgentSkillsInventory | null> {
+    const payload = await this.readSkillStudioJson(
+      `/openclaw/skills/agent-inventory?agentId=${encodeURIComponent(agentId)}`,
+    );
+    if (!payload || typeof payload !== "object") return null;
+    return {
+      agentId: typeof payload.agentId === "string" ? payload.agentId : agentId,
+      workspacePath: typeof payload.workspacePath === "string" ? payload.workspacePath : "",
+      workspaceSkills: normalizeArray(payload.workspaceSkills, (entry) => {
+        if (!entry || typeof entry !== "object") return null;
+        const row = entry as Json;
+        const skillId = String(row.skillId ?? "").trim();
+        const sourcePath = String(row.sourcePath ?? "").trim();
+        const scope = row.scope === "shared" ? "shared" : "agent";
+        if (!skillId || !sourcePath) return null;
+        return { skillId, sourcePath, scope };
+      }),
+      sharedSkills: normalizeArray(payload.sharedSkills, (entry) => {
+        if (!entry || typeof entry !== "object") return null;
+        const row = entry as Json;
+        const skillId = String(row.skillId ?? "").trim();
+        const sourcePath = String(row.sourcePath ?? "").trim();
+        const scope = row.scope === "agent" ? "agent" : "shared";
+        if (!skillId || !sourcePath) return null;
+        return { skillId, sourcePath, scope };
+      }),
+    };
+  }
+
+  async getGlobalSkillsInventory(): Promise<GlobalSkillsInventory | null> {
+    const payload = await this.readSkillStudioJson("/openclaw/skills/global-inventory");
+    if (!payload || typeof payload !== "object") return null;
+    return {
+      sharedSkills: normalizeArray(payload.sharedSkills, (entry) => {
+        if (!entry || typeof entry !== "object") return null;
+        const row = entry as Json;
+        const skillId = String(row.skillId ?? "").trim();
+        const sourcePath = String(row.sourcePath ?? "").trim();
+        const scope = row.scope === "agent" ? "agent" : "shared";
+        if (!skillId || !sourcePath) return null;
+        return { skillId, sourcePath, scope };
+      }),
+    };
+  }
+
+  async installRepoSkillToAgentWorkspace(
+    agentId: string,
+    skillId: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return this.postWorkspaceSkillMutation("/openclaw/skills/install-workspace", { agentId, skillId });
+  }
+
+  async removeAgentWorkspaceSkill(
+    agentId: string,
+    skillId: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return this.postWorkspaceSkillMutation("/openclaw/skills/remove-workspace", { agentId, skillId });
+  }
+
   async getChannelsStatus(): Promise<ChannelsStatusSnapshot | null> {
     const result = await this.invokeGatewayMethod("channels.status", {});
     if (!result.ok) return null;
@@ -719,6 +780,19 @@ export class OpenClawAdapter {
     return toSkillStudioFileContent(payload.file ?? payload);
   }
 
+  async saveSkillStudioFile(
+    skillId: string,
+    filePath: string,
+    content: string,
+  ): Promise<SkillStudioFileContent | null> {
+    const payload = await this.postSkillStudioJson(
+      `/openclaw/skills/${encodeURIComponent(skillId)}/file`,
+      { path: filePath, content },
+    );
+    if (!payload) return null;
+    return toSkillStudioFileContent(payload.file ?? payload);
+  }
+
   async runSkillStudioDemo(skillId: string, caseId: string): Promise<SkillDemoRunResult | null> {
     const payload = await this.postSkillStudioJson(
       `/openclaw/skills/${encodeURIComponent(skillId)}/demos/run`,
@@ -815,6 +889,33 @@ export class OpenClawAdapter {
       ok: Boolean(payload.ok ?? true),
       error: typeof payload.error === "string" ? payload.error : undefined,
     };
+  }
+
+  private async postWorkspaceSkillMutation(
+    path: string,
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; error?: string }> {
+    let response: Response;
+    try {
+      response = await fetch(`${this.stateUrl}${path}`, {
+        method: "POST",
+        headers: buildGatewayHeaders({ "content-type": "application/json" }),
+        body: JSON.stringify(body),
+      });
+    } catch {
+      return { ok: false, error: `request_unreachable:${path}` };
+    }
+    const payload = (await response.json().catch(() => ({}))) as Json;
+    if (!response.ok || payload.ok === false) {
+      return {
+        ok: false,
+        error:
+          typeof payload.error === "string"
+            ? payload.error
+            : `request_failed:${path}:${response.status}`,
+      };
+    }
+    return { ok: true };
   }
 
   private async getCompanyModelWithSource(): Promise<{

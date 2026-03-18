@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { toggleSidebarSkill } from "../skills-panel.helpers";
+
 import {
   buildNextAgentConfig,
   EMPTY_AGENT_CONFIG_DRAFT,
@@ -83,6 +85,46 @@ describe("manage agent config draft helpers", () => {
     expect(resolveAgentConfigDraft(disabledConfig, "agent-alpha")).toEqual({
       ...EMPTY_AGENT_CONFIG_DRAFT,
       skillsMode: "none",
+    });
+  });
+
+  it("supports disabling one inherited skill for a single agent without touching global skill entries", () => {
+    const currentConfig = {
+      skills: {
+        entries: {
+          "1password": { enabled: true },
+        },
+      },
+      agents: {
+        list: [
+          { id: "agent-alpha" },
+          { id: "agent-beta", skills: ["keep-me"] },
+        ],
+      },
+    } satisfies Record<string, unknown>;
+
+    const nextDraft = toggleSidebarSkill(resolveAgentConfigDraft(currentConfig, "agent-alpha"), "1password", [
+      "1password",
+      "apple-notes",
+    ]);
+    const nextConfig = buildNextAgentConfig(currentConfig, "agent-alpha", nextDraft);
+
+    expect(resolveAgentConfigDraft(nextConfig, "agent-alpha")).toEqual({
+      ...EMPTY_AGENT_CONFIG_DRAFT,
+      skillsMode: "selected",
+      selectedSkills: ["apple-notes"],
+    });
+    expect(resolveAgentConfigDraft(nextConfig, "agent-beta")).toEqual({
+      ...EMPTY_AGENT_CONFIG_DRAFT,
+      skillsMode: "selected",
+      selectedSkills: ["keep-me"],
+    });
+    expect(nextConfig).toMatchObject({
+      skills: {
+        entries: {
+          "1password": { enabled: true },
+        },
+      },
     });
   });
 });

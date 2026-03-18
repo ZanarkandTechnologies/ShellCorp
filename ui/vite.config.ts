@@ -1,6 +1,6 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, writeFile, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, writeFile, stat } from "node:fs/promises";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -11,6 +11,7 @@ import {
   readSkillStudioFile,
   runSkillStudioDemo,
   saveSkillStudioManifest,
+  saveSkillStudioFile,
 } from "./skill-studio-state";
 import { normalizeBridgeOfficeSettings, type BridgeOfficeSettings as OfficeSettings } from "./office-settings-bridge";
 
@@ -41,6 +42,7 @@ const DEFAULT_MESH_ASSET_DIR = path.join(OPENCLAW_HOME, "assets", "meshes");
 const CRON_JOBS_PATH = path.join(OPENCLAW_HOME, "cron", "jobs.json");
 const MESH_EXTENSIONS = new Set([".glb", ".gltf"]);
 const MESH_PREVIEW_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+const SKILL_PACKAGE_FILE_NAMES = ["SKILL.md", "skill.md"] as const;
 
 interface SessionUsageTotals {
   inputTokens: number;
@@ -70,6 +72,64 @@ async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
   } catch {
     return fallback;
   }
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isDirectory(filePath: string): Promise<boolean> {
+  try {
+    return (await stat(filePath)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function readInstalledSkillDirectories(rootDir: string, scope: "agent" | "shared"): Promise<JsonObject[]> {
+  if (!(await isDirectory(rootDir))) return [];
+  const entries = await readdir(rootDir, { withFileTypes: true });
+  const rows: JsonObject[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const skillDir = path.join(rootDir, entry.name);
+    const hasPackageFile = await Promise.all(
+      SKILL_PACKAGE_FILE_NAMES.map((fileName) => pathExists(path.join(skillDir, fileName))),
+    ).then((results) => results.some(Boolean));
+    if (!hasPackageFile) continue;
+    rows.push({
+      skillId: entry.name,
+      sourcePath: skillDir,
+      scope,
+    });
+  }
+  return rows.sort((a, b) => String(a.skillId ?? "").localeCompare(String(b.skillId ?? "")));
+}
+
+async function resolveRepoSkillDirectory(skillId: string): Promise<string | null> {
+  const direct = path.join(SKILLS_ROOT, skillId);
+  if (await isDirectory(direct)) return direct;
+  const categories = await readdir(SKILLS_ROOT).catch(() => [] as string[]);
+  for (const category of categories) {
+    const nested = path.join(SKILLS_ROOT, category, skillId);
+    if (await isDirectory(nested)) return nested;
+  }
+  return null;
+}
+
+async function resolveAgentWorkspacePath(agentId: string): Promise<string> {
+  const config = await readJsonFile<JsonObject>(OPENCLAW_CONFIG_PATH, {});
+  const agentsNode =
+    config.agents && typeof config.agents === "object" ? (config.agents as JsonObject) : {};
+  const list = Array.isArray(agentsNode.list) ? (agentsNode.list as JsonObject[]) : [];
+  const match = list.find((entry) => String(entry.id ?? "").trim() === agentId);
+  const workspacePath = typeof match?.workspace === "string" ? match.workspace.trim() : "";
+  return workspacePath || path.join(OPENCLAW_HOME, "workspace", agentId);
 }
 
 function writeJson(res: { setHeader: (k: string, v: string) => void; end: (body: string) => void }, status: number, payload: unknown): void {
@@ -1296,6 +1356,78 @@ function shellcorpStateBridge() {
           return;
         }
 
+        if (method === "GET" && pathname === "/openclaw/skills/global-inventory") {
+          const sharedSkills = await readInstalledSkillDirectories(
+            path.join(OPENCLAW_HOME, "skills"),
+            "shared",
+          );
+          writeJson(res, 200, { sharedSkills });
+          return;
+        }
+
+        if (method === "GET" && pathname === "/openclaw/skills/agent-inventory") {
+          const agentId = String(url.searchParams.get("agentId") ?? "").trim();
+          if (!agentId) {
+            writeJson(res, 400, { ok: false, error: "agent_id_required" });
+            return;
+          }
+          const workspacePath = await resolveAgentWorkspacePath(agentId);
+          const workspaceSkills = await readInstalledSkillDirectories(
+            path.join(workspacePath, "skills"),
+            "agent",
+          );
+          const sharedSkills = await readInstalledSkillDirectories(
+            path.join(OPENCLAW_HOME, "skills"),
+            "shared",
+          );
+          writeJson(res, 200, { agentId, workspacePath, workspaceSkills, sharedSkills });
+          return;
+        }
+
+        if (method === "POST" && pathname === "/openclaw/skills/install-workspace") {
+          if (!hasBridgeWriteAccess(req)) {
+            writeJson(res, 403, { ok: false, error: "forbidden" });
+            return;
+          }
+          const body = (await readBody(req)) as JsonObject;
+          const agentId = String(body.agentId ?? "").trim();
+          const skillId = String(body.skillId ?? "").trim();
+          if (!agentId || !skillId) {
+            writeJson(res, 400, { ok: false, error: "skill_install_invalid_payload" });
+            return;
+          }
+          const sourceDir = await resolveRepoSkillDirectory(skillId);
+          if (!sourceDir) {
+            writeJson(res, 404, { ok: false, error: "skill_source_not_found" });
+            return;
+          }
+          const workspacePath = await resolveAgentWorkspacePath(agentId);
+          const destinationDir = path.join(workspacePath, "skills", skillId);
+          await mkdir(path.dirname(destinationDir), { recursive: true });
+          await cp(sourceDir, destinationDir, { recursive: true, force: true });
+          writeJson(res, 200, { ok: true });
+          return;
+        }
+
+        if (method === "POST" && pathname === "/openclaw/skills/remove-workspace") {
+          if (!hasBridgeWriteAccess(req)) {
+            writeJson(res, 403, { ok: false, error: "forbidden" });
+            return;
+          }
+          const body = (await readBody(req)) as JsonObject;
+          const agentId = String(body.agentId ?? "").trim();
+          const skillId = String(body.skillId ?? "").trim();
+          if (!agentId || !skillId) {
+            writeJson(res, 400, { ok: false, error: "skill_remove_invalid_payload" });
+            return;
+          }
+          const workspacePath = await resolveAgentWorkspacePath(agentId);
+          const destinationDir = path.join(workspacePath, "skills", skillId);
+          await rm(destinationDir, { recursive: true, force: true });
+          writeJson(res, 200, { ok: true });
+          return;
+        }
+
         if (method === "GET" && pathname === "/openclaw/skills") {
           const catalog = await listSkillStudioCatalog(SKILLS_ROOT, REPO_ROOT);
           writeJson(res, 200, {
@@ -1344,6 +1476,36 @@ function shellcorpStateBridge() {
           const file = await readSkillStudioFile(SKILLS_ROOT, REPO_ROOT, skillId, filePath);
           if (!file) {
             writeJson(res, 404, { error: "skill_file_not_found" });
+            return;
+          }
+          writeJson(res, 200, { file });
+          return;
+        }
+        if (method === "POST" && skillFileMatch) {
+          if (!hasBridgeWriteAccess(req)) {
+            writeJson(res, 403, { error: "forbidden" });
+            return;
+          }
+          const skillId = decodeURIComponent(skillFileMatch[1]);
+          const body = (await readBody(req)) as JsonObject;
+          const filePath = String(body.path ?? "").trim();
+          if (!filePath) {
+            writeJson(res, 400, { error: "skill_file_path_required" });
+            return;
+          }
+          if (typeof body.content !== "string") {
+            writeJson(res, 400, { error: "skill_file_content_required" });
+            return;
+          }
+          const file = await saveSkillStudioFile(
+            SKILLS_ROOT,
+            REPO_ROOT,
+            skillId,
+            filePath,
+            body.content,
+          );
+          if (!file) {
+            writeJson(res, 404, { error: "skill_file_not_writable" });
             return;
           }
           writeJson(res, 200, { file });

@@ -20,7 +20,6 @@ import { ObjectConfigPanel } from "@/features/office-system/components/object-co
 import { ObjectInteractionPanel } from "@/features/office-system/components/object-interaction-panel";
 import { ObjectTransformPanel } from "@/features/office-system/components/object-transform-panel";
 import { SkillsPanel } from "@/features/office-system/components/skills-panel";
-import { TrainingModal } from "@/features/self-improvement-system/components/training-modal";
 import { TeamPanel } from "@/features/team-system/components/team-panel";
 import { preloadMeshes } from "@/features/office-system/systems/mesh-cache";
 import { buildOfficeBootstrapStages, getOfficeBootstrapState } from "./office-bootstrap";
@@ -36,8 +35,6 @@ export default function OfficeSimulation() {
   const isTeamOptionsDialogOpen = useAppStore((state) => state.isTeamOptionsDialogOpen);
   const setIsTeamOptionsDialogOpen = useAppStore((state) => state.setIsTeamOptionsDialogOpen);
   const activeTeamForOptions = useAppStore((state) => state.activeTeamForOptions);
-  const trainingEmployeeId = useAppStore((state) => state.trainingEmployeeId);
-  const setTrainingEmployeeId = useAppStore((state) => state.setTrainingEmployeeId);
   const isTeamPanelOpen = useAppStore((state) => state.isTeamPanelOpen);
   const setIsTeamPanelOpen = useAppStore((state) => state.setIsTeamPanelOpen);
   const activeTeamId = useAppStore((state) => state.activeTeamId);
@@ -136,17 +133,6 @@ export default function OfficeSimulation() {
           <ChatDialog />
           <AgentMemoryPanel />
           <ManageAgentModal />
-          <TrainingModal
-            isOpen={!!trainingEmployeeId}
-            onOpenChange={(open) => {
-              if (!open) {
-                setTrainingEmployeeId(null);
-              }
-            }}
-            employeeName={
-              employees.find((employee) => employee._id === trainingEmployeeId)?.name ?? "Agent"
-            }
-          />
           {/* Keep mounted so close/reopen preserves in-panel draft state; TeamPanel gates its expensive queries when closed. */}
           <TeamPanel
             teamId={activeTeamId}
@@ -167,7 +153,7 @@ export default function OfficeSimulation() {
           <AgentSessionPanel />
           <SkillsPanel />
           <ObjectConfigPanel />
-          <div className="pointer-events-none absolute top-4 right-4 z-[69]">
+          <div className="pointer-events-none absolute inset-0 z-[69]">
             <ObjectTransformPanel />
           </div>
           <ObjectInteractionPanel />
