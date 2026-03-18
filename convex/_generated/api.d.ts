@@ -18,6 +18,7 @@ import type * as http from "../http.js";
 import type * as status from "../status.js";
 import type * as status_contract from "../status_contract.js";
 import type * as status_http_contract from "../status_http_contract.js";
+import type * as team_memory from "../team_memory.js";
 
 import type {
   ApiFromModules,
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   status: typeof status;
   status_contract: typeof status_contract;
   status_http_contract: typeof status_http_contract;
+  team_memory: typeof team_memory;
 }>;
 
 /**

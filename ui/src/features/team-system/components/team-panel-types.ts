@@ -18,7 +18,7 @@ export type TabKey =
   | "overview"
   | "kanban"
   | "projects"
-  | "communications"
+  | "memory"
   | "timeline"
   | "business"
   | "ledger";
@@ -40,6 +40,8 @@ export type TaskApprovalState =
   | "executed";
 
 export type CommunicationsFilter = "all" | "planning" | "executing" | "blocked" | "handoff";
+export type TeamMemoryEntryKind = "note" | "decision" | "handoff" | "result" | "risk" | "summary";
+export type TeamMemoryAuthorType = "agent" | "operator" | "system";
 
 export type PanelTask = {
   id: string;
@@ -81,6 +83,18 @@ export type CommunicationRow = {
   detail?: string;
   occurredAt: number;
   taskId?: string;
+};
+
+export type TeamMemoryRow = {
+  id: string;
+  teamId?: string;
+  projectId: string;
+  taskId?: string;
+  agentId?: string;
+  authorType: TeamMemoryAuthorType;
+  kind: TeamMemoryEntryKind;
+  body: string;
+  createdAt: number;
 };
 
 export type AgentCandidate = {
@@ -175,8 +189,8 @@ export function deriveAgentPresenceRows(input: {
   communicationRows: CommunicationRow[];
 }): AgentPresenceRow[] {
   const { employees, projectTasks, communicationRows } = input;
-  return employees
-    .map((employee) => {
+  const rows = employees
+    .map((employee): AgentPresenceRow | null => {
       const agentId = normalizeAgentId(employee._id);
       if (!agentId) return null;
       const tasks = projectTasks.filter((task) => task.ownerAgentId?.trim() === agentId);
@@ -211,16 +225,19 @@ export function deriveAgentPresenceRows(input: {
         completedTaskCount: completedTasks.length,
         isAssigned: tasks.length > 0,
       };
-    })
-    .filter((row): row is AgentPresenceRow => row !== null)
-    .sort((left, right) => {
-      if (left.latestOccurredAt !== right.latestOccurredAt) {
-        return (right.latestOccurredAt ?? 0) - (left.latestOccurredAt ?? 0);
-      }
-      if (left.openTaskCount !== right.openTaskCount)
-        return right.openTaskCount - left.openTaskCount;
-      return left.name.localeCompare(right.name);
     });
+
+  const presentRows = rows.filter((row): row is AgentPresenceRow => row !== null);
+
+  return presentRows.sort((left, right) => {
+    if (left.latestOccurredAt !== right.latestOccurredAt) {
+      return (right.latestOccurredAt ?? 0) - (left.latestOccurredAt ?? 0);
+    }
+    if (left.openTaskCount !== right.openTaskCount) {
+      return right.openTaskCount - left.openTaskCount;
+    }
+    return left.name.localeCompare(right.name);
+  });
 }
 
 export function statusColumns(tasks: PanelTask[]): Record<TaskStatus, PanelTask[]> {

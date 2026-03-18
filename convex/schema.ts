@@ -99,4 +99,25 @@ export default defineSchema({
     .index("by_project_occurred_at", ["projectId", "occurredAt"])
     .index("by_project_task_occurred_at", ["projectId", "taskId", "occurredAt"])
     .index("by_project_step_key", ["projectId", "stepKey"]),
+
+  teamMemoryEntries: defineTable({
+    teamId: v.optional(v.string()),
+    projectId: v.string(),
+    taskId: v.optional(v.string()),
+    agentId: v.optional(v.string()),
+    authorType: v.union(v.literal("agent"), v.literal("operator"), v.literal("system")),
+    kind: v.union(
+      v.literal("note"),
+      v.literal("decision"),
+      v.literal("handoff"),
+      v.literal("result"),
+      v.literal("risk"),
+      v.literal("summary"),
+    ),
+    body: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_project_created_at", ["projectId", "createdAt"])
+    .index("by_team_created_at", ["teamId", "createdAt"])
+    .index("by_project_task_created_at", ["projectId", "taskId", "createdAt"]),
 });
