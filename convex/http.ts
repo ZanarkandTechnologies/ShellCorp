@@ -1,3 +1,22 @@
+/**
+ * CONVEX HTTP ROUTES
+ * ==================
+ * Purpose
+ * - Expose thin HTTP ingress for ShellCorp CLI and external hooks over the canonical Convex runtime.
+ *
+ * KEY CONCEPTS:
+ * - Board/status writes stay mutation-backed and CLI-safe.
+ * - Timeline-style reads exposed to the CLI must share the same feed contract as the UI.
+ *
+ * USAGE:
+ * - `/board/command`
+ * - `/board/query`
+ * - `/status/report`
+ *
+ * MEMORY REFERENCES:
+ * - MEM-0212
+ * - MEM-0216
+ */
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
@@ -163,6 +182,31 @@ http.route({
           limit: parsed.limit,
           agentId: parsed.agentId,
         });
+        return new Response(JSON.stringify({ ok: true, data }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (parsed.query === "timeline") {
+        const teamId = parsed.teamId?.trim();
+        if (!teamId) {
+          return new Response(JSON.stringify({ ok: false, error: "missing_team_id" }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        const feed = await ctx.runQuery(api.status.getTeamActivityFeed, {
+          teamId,
+          limit: parsed.limit,
+          agentId: parsed.agentId,
+        });
+        const data = Array.isArray(feed?.events)
+          ? feed.events.filter((row) =>
+              typeof parsed.projectId === "string" && parsed.projectId.trim().length > 0
+                ? row.projectId === parsed.projectId
+                : true,
+            )
+          : [];
         return new Response(JSON.stringify({ ok: true, data }), {
           status: 200,
           headers: { "content-type": "application/json" },

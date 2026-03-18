@@ -16,7 +16,8 @@
  * MEMORY REFERENCES:
  * - MEM-0196
  * - MEM-0200
- * - MEM-0202
+ * - MEM-0212
+ * - MEM-0215
  */
 import path from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -26,16 +27,15 @@ import {
   formatOutput,
   asRecord,
   resolveOpenclawConfigPath,
-  resolveProjectEventsLogPath,
   resolveProjectLogsDir,
   resolveProjectOutputsDir,
   resolveOpenclawStateRoot,
   resolveProjectOrFail,
-  readRecentTeamEvents,
   tryResolveWorkspaceFromOpenclawConfig,
   type CompanyAgentModel,
   type SidecarStore,
 } from "./_shared.js";
+import { getRecentTeamTimeline, type TeamTimelineEventRow } from "./_convex.js";
 
 type CronJob = {
   id?: string;
@@ -53,6 +53,49 @@ type RuntimeAgentSnapshot = {
   openclawHeartbeatEvery: string | null;
   openclawAgentFound: boolean;
 };
+
+type MonitorRecentEvent = {
+  kind: string;
+  label?: string;
+  detail?: string;
+  occurredAt?: string;
+  taskId?: string;
+  agentId?: string;
+  sourceType?: "agent_event" | "board_event";
+};
+
+function normalizeTimelineEventKind(row: TeamTimelineEventRow): string {
+  if (row.sourceType === "board_event") {
+    if (row.eventType === "task_created") return "task_added";
+    return String(row.eventType ?? "board_event");
+  }
+  if (row.eventType === "status_report") return "status_reported";
+  if (row.eventType === "activity_log") return "activity_logged";
+  return String(row.eventType ?? row.activityType ?? "agent_event");
+}
+
+function mapTimelineRow(row: TeamTimelineEventRow): MonitorRecentEvent {
+  return {
+    kind: normalizeTimelineEventKind(row),
+    label: typeof row.label === "string" ? row.label : undefined,
+    detail: typeof row.detail === "string" ? row.detail : undefined,
+    occurredAt:
+      typeof row.occurredAt === "number" ? new Date(row.occurredAt).toISOString() : undefined,
+    taskId: typeof row.taskId === "string" ? row.taskId : undefined,
+    agentId:
+      typeof row.agentId === "string"
+        ? row.agentId
+        : typeof row.actorAgentId === "string"
+          ? row.actorAgentId
+          : undefined,
+    sourceType: row.sourceType,
+  };
+}
+
+async function readRecentTeamActivity(projectId: string, teamId: string): Promise<MonitorRecentEvent[]> {
+  const rows = await getRecentTeamTimeline({ projectId, teamId, limit: 20 });
+  return rows.map(mapTimelineRow);
+}
 
 function resourcesMarkdownPath(store: SidecarStore, projectId: string): string {
   return path.join(path.dirname(store.companyPath), "projects", projectId, "RESOURCES.md");
@@ -113,7 +156,7 @@ export async function buildTeamSnapshot(
   const cronJobs = (await readCronJobs()).filter(
     (job) => typeof job.agentId === "string" && agents.some((entry) => entry.agentId === job.agentId),
   );
-  const recentEvents = await readRecentTeamEvents(projectId, 20);
+  const recentEvents = await readRecentTeamActivity(projectId, teamId);
   const openclawConfig = await store.readOpenclawConfig();
   const openclawAgents = Array.isArray(asRecord(openclawConfig.agents).list)
     ? (asRecord(openclawConfig.agents).list as Array<Record<string, unknown>>)
@@ -152,7 +195,6 @@ export async function buildTeamSnapshot(
       openclawConfigPath: resolveOpenclawConfigPath(),
       logsDir: resolveProjectLogsDir(projectId),
       outputsDir: resolveProjectOutputsDir(projectId),
-      eventsLogPath: resolveProjectEventsLogPath(projectId),
       recentEvents,
       agentWorkspaces: runtimeAgents,
     },

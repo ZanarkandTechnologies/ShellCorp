@@ -639,9 +639,7 @@ export const getTeamTimeline = query({
 
     const merged = [
       ...boardEvents.map((row) => ({ ...row, sourceType: "board_event" as const })),
-      ...activityEvents
-        .filter((row) => typeof row.activityType === "string" && row.activityType.trim().length > 0)
-        .map((row) => ({ ...row, sourceType: "activity_event" as const })),
+      ...activityEvents.map((row) => ({ ...row, sourceType: "agent_event" as const })),
     ]
       .filter((row) => (projectId ? row.projectId === projectId : true))
       .sort((a, b) => b.occurredAt - a.occurredAt);

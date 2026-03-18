@@ -530,7 +530,18 @@ describe("team CLI", () => {
   it("shows team config and manages file-backed resources markdown", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "https://shellcorp.example";
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        if (String(_input).endsWith("/board/query") && body.query === "timeline") {
+          return new Response(JSON.stringify({ ok: true, data: [] }), { status: 200 });
+        }
+        throw new Error(`unexpected_fetch:${String(_input)}`);
+      }),
+    );
 
     await runCommand([
       "team",
@@ -703,7 +714,18 @@ describe("team CLI", () => {
   it("enables live mode through the simplified team run surface and syncs openclaw heartbeat cadence", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "https://shellcorp.example";
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        if (String(_input).endsWith("/board/query") && body.query === "timeline") {
+          return new Response(JSON.stringify({ ok: true, data: [] }), { status: 200 });
+        }
+        throw new Error(`unexpected_fetch:${String(_input)}`);
+      }),
+    );
     await runCommand([
       "team",
       "create",
@@ -734,21 +756,16 @@ describe("team CLI", () => {
       updatedOpenclawAgents?: number;
       runtime?: {
         openclawConfigPath?: string;
-        eventsLogPath?: string;
         agentWorkspaces?: Array<{ agentId?: string; openclawHeartbeatEvery?: string; heartbeatFilePath?: string }>;
       };
     };
     expect(payload.heartbeatProfileId).toBe("hb-team-proj-live-team");
     expect(payload.updatedOpenclawAgents).toBe(2);
     expect(payload.runtime?.openclawConfigPath).toBe(path.join(stateDir, "openclaw.json"));
-    expect(payload.runtime?.eventsLogPath).toBe(
-      path.join(stateDir, "projects", "proj-live-team", "logs", "events.jsonl"),
-    );
     expect(
       payload.runtime?.agentWorkspaces?.every((entry) => entry.openclawHeartbeatEvery === "1m"),
     ).toBe(true);
     await access(payload.runtime?.agentWorkspaces?.[0]?.heartbeatFilePath ?? "");
-    await access(payload.runtime?.eventsLogPath ?? "");
 
     const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
     const company = JSON.parse(companyRaw) as CompanySnapshot;
@@ -765,18 +782,24 @@ describe("team CLI", () => {
     );
     expect(liveEntries).toHaveLength(2);
     expect(liveEntries.every((entry) => entry.heartbeat?.every === "1m")).toBe(true);
-    const eventsRaw = await readFile(
-      path.join(stateDir, "projects", "proj-live-team", "logs", "events.jsonl"),
-      "utf-8",
-    );
-    expect(eventsRaw).toContain('"kind":"heartbeat_config_updated"');
     logSpy.mockRestore();
   });
 
   it("includes runtime inspection paths in team monitor output", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_CONVEX_SITE_URL = "https://shellcorp.example";
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        if (String(_input).endsWith("/board/query") && body.query === "timeline") {
+          return new Response(JSON.stringify({ ok: true, data: [] }), { status: 200 });
+        }
+        throw new Error(`unexpected_fetch:${String(_input)}`);
+      }),
+    );
     await runCommand([
       "team",
       "create",
@@ -803,7 +826,6 @@ describe("team CLI", () => {
         openclawConfigPath?: string;
         logsDir?: string;
         outputsDir?: string;
-        eventsLogPath?: string;
         agentWorkspaces?: Array<{
           agentId?: string;
           workspacePath?: string;
@@ -818,16 +840,13 @@ describe("team CLI", () => {
     expect(payload.runtime?.outputsDir).toBe(
       path.join(stateDir, "projects", "proj-monitor-team", "outputs"),
     );
-    expect(payload.runtime?.eventsLogPath).toBe(
-      path.join(stateDir, "projects", "proj-monitor-team", "logs", "events.jsonl"),
-    );
     expect(payload.runtime?.agentWorkspaces).toHaveLength(2);
     expect(payload.runtime?.agentWorkspaces?.every((entry) => entry.openclawAgentFound)).toBe(true);
     await access(payload.runtime?.agentWorkspaces?.[0]?.heartbeatFilePath ?? "");
     logSpy.mockRestore();
   });
 
-  it("appends task and status activity into the team events log exposed by monitor", async () => {
+  it("surfaces task and status activity through the Convex timeline exposed by monitor", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -932,7 +951,7 @@ describe("team CLI", () => {
     logSpy.mockRestore();
   });
 
-  it("prefers Convex timeline rows over the sidecar events log for team monitor", async () => {
+  it("reads recent team monitor activity from Convex timeline rows only", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
     process.env.SHELLCORP_CONVEX_SITE_URL = "https://shellcorp.example";
@@ -950,20 +969,6 @@ describe("team CLI", () => {
       "--auto-roles",
       "builder",
     ]);
-
-    await mkdir(path.join(stateDir, "projects", "proj-timeline-team", "logs"), { recursive: true });
-    await writeFile(
-      path.join(stateDir, "projects", "proj-timeline-team", "logs", "events.jsonl"),
-      `${JSON.stringify({
-        id: "evt-local-1",
-        ts: new Date(Date.now() - 5000).toISOString(),
-        kind: "heartbeat_config_updated",
-        teamId: "team-proj-timeline-team",
-        projectId: "proj-timeline-team",
-        label: "local-fallback-only",
-      })}\n`,
-      "utf-8",
-    );
 
     vi.stubGlobal(
       "fetch",
@@ -1005,9 +1010,6 @@ describe("team CLI", () => {
       runtime?: { recentEvents?: Array<{ kind?: string; detail?: string; label?: string }> };
     };
     expect(payload.runtime?.recentEvents?.[0]?.detail).toBe("convex-recent-event");
-    expect(payload.runtime?.recentEvents?.some((entry) => entry.label === "local-fallback-only")).toBe(
-      false,
-    );
     logSpy.mockRestore();
   });
 

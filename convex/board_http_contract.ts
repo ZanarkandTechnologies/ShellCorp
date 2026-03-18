@@ -34,7 +34,7 @@ export type ParsedBoardCommandPayload = {
 export type ParsedBoardQueryPayload = {
   teamId?: string;
   projectId: string;
-  query: "tasks" | "board_events" | "activity" | "next";
+  query: "tasks" | "board_events" | "activity" | "timeline" | "next";
   taskId?: string;
   agentId?: string;
   limit?: number;
@@ -119,7 +119,13 @@ export function parseBoardQueryPayload(value: unknown): ParsedBoardQueryPayload 
   const projectId = asTrimmedString(record.projectId);
   const query = asTrimmedString(record.query);
   if (!projectId || !query) return null;
-  if (query !== "tasks" && query !== "board_events" && query !== "activity" && query !== "next")
+  if (
+    query !== "tasks" &&
+    query !== "board_events" &&
+    query !== "activity" &&
+    query !== "timeline" &&
+    query !== "next"
+  )
     return null;
   const payload: ParsedBoardQueryPayload = {
     projectId,
