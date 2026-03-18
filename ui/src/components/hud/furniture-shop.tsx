@@ -36,7 +36,7 @@ import {
   Sparkles,
   Store,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -65,12 +65,6 @@ import {
   type OfficeWallColorId,
   type WallArtSlotId,
 } from "@/lib/office-decor";
-import {
-  createTextTo3dPreview,
-  createTextTo3dRefine,
-  isMeshyConfigured,
-  pollTextTo3dTask,
-} from "@/lib/meshy-api";
 import type { MeshAssetModel } from "@/lib/openclaw-types";
 import { cn } from "@/lib/utils";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
@@ -153,7 +147,6 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
   const [meshyLabel, setMeshyLabel] = useState("");
   const [isGeneratingMesh, setIsGeneratingMesh] = useState(false);
   const [meshyStatus, setMeshyStatus] = useState<string | null>(null);
-  const [meshyProgress, setMeshyProgress] = useState<number | null>(null);
   const [isSavingDir, setIsSavingDir] = useState(false);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [meshError, setMeshError] = useState<string | null>(null);
@@ -169,6 +162,8 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
   const [draftBackgroundId, setDraftBackgroundId] = useState<OfficeBackgroundId>(
     officeSettings.decor.backgroundId,
   );
+  const meshyAbortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
 
   const hasMeshAssets = meshAssets.length > 0;
 
@@ -235,6 +230,29 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
     }
   }, [isOpen]);
 
+  const cancelMeshyGeneration = useCallback(() => {
+    const controller = meshyAbortRef.current;
+    if (!controller) return;
+    controller.abort();
+    meshyAbortRef.current = null;
+    if (!isMountedRef.current) return;
+    setIsGeneratingMesh(false);
+    setMeshyStatus("Generation cancelled.");
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) return;
+    cancelMeshyGeneration();
+  }, [cancelMeshyGeneration, isOpen]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      meshyAbortRef.current?.abort();
+      meshyAbortRef.current = null;
+    };
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
     setDraftFloorPatternId(officeSettings.decor.floorPatternId);
@@ -295,70 +313,47 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
       setMeshError("Describe the furniture you want (e.g. 'modern office chair').");
       return;
     }
-    if (!isMeshyConfigured()) {
-      setMeshError("Meshy API key not set. Add VITE_MESHY_API_KEY to your .env file.");
-      return;
-    }
+    meshyAbortRef.current?.abort();
+    const controller = new AbortController();
+    meshyAbortRef.current = controller;
     setIsGeneratingMesh(true);
     setMeshError(null);
-    setMeshyStatus("Creating preview...");
-    setMeshyProgress(null);
+    setMeshyStatus("Generating with Meshy...");
     try {
-      const { result: previewTaskId } = await createTextTo3dPreview({
+      const result = await adapter.generateMeshyAsset({
         prompt,
-        model_type: "standard",
-        ai_model: "latest",
+        stylePrompt: meshyStyle.trim() || undefined,
+        label: meshyLabel.trim() || undefined,
+        signal: controller.signal,
       });
-      setMeshyStatus("Generating 3D model…");
-      const previewTask = await pollTextTo3dTask(previewTaskId, { intervalMs: 2500 });
-      if (previewTask.status !== "SUCCEEDED") {
-        const errMsg = previewTask.task_error?.message ?? "Preview generation failed.";
-        setMeshError(errMsg);
-        return;
-      }
-      let glbUrl: string | undefined = previewTask.model_urls?.glb;
-      let finalTaskId = previewTaskId;
-      const stylePrompt = meshyStyle.trim();
-      if (stylePrompt && glbUrl) {
-        setMeshyStatus("Adding style and texture...");
-        const { result: refineTaskId } = await createTextTo3dRefine({
-          preview_task_id: previewTaskId,
-          texture_prompt: stylePrompt,
-          enable_pbr: false,
-        });
-        const refineTask = await pollTextTo3dTask(refineTaskId, { intervalMs: 2500 });
-        if (refineTask.status === "SUCCEEDED" && refineTask.model_urls?.glb) {
-          glbUrl = refineTask.model_urls.glb;
-          finalTaskId = refineTaskId;
-        }
-      }
-      if (!glbUrl) {
-        setMeshError("No GLB output from Meshy.");
-        return;
-      }
-      setMeshyStatus("Saving to Custom Library...");
-      const label =
-        meshyLabel.trim() ||
-        prompt.slice(0, 40).replace(/[^a-zA-Z0-9\s-]/g, "").trim() ||
-        "meshy-model";
-      const result = await adapter.downloadMeshAsset({ url: glbUrl, label });
+      if (!isMountedRef.current || controller.signal.aborted) return;
       if (!result.ok) {
-        setMeshError(result.error ?? "Failed to save mesh to library.");
+        if (result.error === "mesh_generation_cancelled") {
+          setMeshyStatus("Generation cancelled.");
+          return;
+        }
+        setMeshError(result.error ?? "Generation failed.");
         return;
       }
       setMeshyPrompt("");
       setMeshyStyle("");
       setMeshyLabel("");
-      setMeshyStatus(null);
-      setMeshyProgress(null);
+      setMeshyStatus("Saved to Custom Library.");
       await loadMeshAssets();
+      if (!isMountedRef.current || controller.signal.aborted) return;
       setActiveTab("custom");
     } catch (error) {
+      if (!isMountedRef.current || controller.signal.aborted) return;
       setMeshError(error instanceof Error ? error.message : "Generation failed.");
     } finally {
+      if (meshyAbortRef.current === controller) {
+        meshyAbortRef.current = null;
+      }
+      if (!isMountedRef.current) return;
       setIsGeneratingMesh(false);
-      setMeshyStatus(null);
-      setMeshyProgress(null);
+      if (!controller.signal.aborted) {
+        setMeshyStatus(null);
+      }
     }
   };
 
@@ -631,68 +626,64 @@ export function FurnitureShop({ isOpen, onOpenChange }: FurnitureShopProps) {
             Describe the furniture and style; a 3D model will be generated and added to your Custom
             Library.
           </p>
+          <p className="text-sm text-muted-foreground">
+            Requires a server-side Meshy key via{" "}
+            <code className="rounded bg-muted px-1">SHELLCORP_MESHY_API_KEY</code> or{" "}
+            <code className="rounded bg-muted px-1">MESHY_API_KEY</code>.
+          </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!isMeshyConfigured() ? (
-            <p className="text-sm text-amber-600 dark:text-amber-500">
-              Set <code className="rounded bg-muted px-1">VITE_MESHY_API_KEY</code> in your .env
-              file to enable. Get an API key at meshy.ai.
+          <div className="space-y-2">
+            <Label htmlFor="meshy-prompt">What furniture? (required)</Label>
+            <Input
+              id="meshy-prompt"
+              value={meshyPrompt}
+              onChange={(e) => setMeshyPrompt(e.target.value)}
+              placeholder="e.g. modern office chair, minimalist desk lamp"
+              maxLength={600}
+              disabled={isGeneratingMesh}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="meshy-style">Style (optional)</Label>
+            <Input
+              id="meshy-style"
+              value={meshyStyle}
+              onChange={(e) => setMeshyStyle(e.target.value)}
+              placeholder="e.g. matte white, Scandinavian wood"
+              maxLength={600}
+              disabled={isGeneratingMesh}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="meshy-label">Label in library (optional)</Label>
+            <Input
+              id="meshy-label"
+              value={meshyLabel}
+              onChange={(e) => setMeshyLabel(e.target.value)}
+              placeholder="e.g. my-chair"
+              disabled={isGeneratingMesh}
+            />
+          </div>
+          {meshyStatus && <p className="text-sm text-muted-foreground">{meshyStatus}</p>}
+          {meshError && (
+            <p className="text-sm text-destructive" role="alert">
+              {meshError}
             </p>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <Label htmlFor="meshy-prompt">What furniture? (required)</Label>
-                <Input
-                  id="meshy-prompt"
-                  value={meshyPrompt}
-                  onChange={(e) => setMeshyPrompt(e.target.value)}
-                  placeholder="e.g. modern office chair, minimalist desk lamp"
-                  maxLength={600}
-                  disabled={isGeneratingMesh}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="meshy-style">Style (optional)</Label>
-                <Input
-                  id="meshy-style"
-                  value={meshyStyle}
-                  onChange={(e) => setMeshyStyle(e.target.value)}
-                  placeholder="e.g. matte white, Scandinavian wood"
-                  maxLength={600}
-                  disabled={isGeneratingMesh}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="meshy-label">Label in library (optional)</Label>
-                <Input
-                  id="meshy-label"
-                  value={meshyLabel}
-                  onChange={(e) => setMeshyLabel(e.target.value)}
-                  placeholder="e.g. my-chair"
-                  disabled={isGeneratingMesh}
-                />
-              </div>
-              {(meshyStatus ?? meshyProgress != null) && (
-                <p className="text-sm text-muted-foreground">
-                  {meshyStatus}
-                  {meshyProgress != null ? ` ${meshyProgress}%` : ""}
-                </p>
-              )}
-              {meshError && (
-                <p className="text-sm text-destructive" role="alert">
-                  {meshError}
-                </p>
-              )}
-            </>
           )}
         </CardContent>
-        <CardFooter>
+        <CardFooter className="flex gap-2">
           <Button
             onClick={() => void handleGenerateWithMeshy()}
-            disabled={isGeneratingMesh || !isMeshyConfigured()}
+            disabled={isGeneratingMesh}
           >
             {isGeneratingMesh ? "Generating…" : "Generate & add to Custom Library"}
           </Button>
+          {isGeneratingMesh ? (
+            <Button variant="outline" onClick={cancelMeshyGeneration}>
+              Cancel
+            </Button>
+          ) : null}
         </CardFooter>
       </Card>
 

@@ -116,7 +116,7 @@ function PetMesh({
 }): JSX.Element | null {
   if (type === "dog") {
     return (
-      <group position={[-BODY_WIDTH * 0.9, -TOTAL_HEIGHT / 2 + LEG_HEIGHT, BODY_WIDTH * 0.25]}>
+      <group position={[BODY_WIDTH * 0.9, -TOTAL_HEIGHT / 2 + LEG_HEIGHT, BODY_WIDTH * 0.25]}>
         <Box args={[0.26, 0.16, 0.46]} position={[0, 0.08, 0]} castShadow>
           <meshStandardMaterial color="#8D6E63" />
         </Box>

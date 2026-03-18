@@ -43,6 +43,7 @@ const CRON_JOBS_PATH = path.join(OPENCLAW_HOME, "cron", "jobs.json");
 const MESH_EXTENSIONS = new Set([".glb", ".gltf"]);
 const MESH_PREVIEW_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 const SKILL_PACKAGE_FILE_NAMES = ["SKILL.md", "skill.md"] as const;
+const MESHY_API_BASE = "https://api.meshy.ai/openapi/v2";
 
 interface SessionUsageTotals {
   inputTokens: number;
@@ -258,6 +259,144 @@ function inferMeshExtensionFromUrl(rawUrl: string): ".glb" | ".gltf" {
   const pathname = new URL(rawUrl).pathname.toLowerCase();
   if (pathname.endsWith(".gltf")) return ".gltf";
   return ".glb";
+}
+
+function getMeshyApiKey(): string {
+  return (
+    process.env.SHELLCORP_MESHY_API_KEY?.trim() ||
+    process.env.MESHY_API_KEY?.trim() ||
+    ""
+  );
+}
+
+type MeshyTaskStatus = "PENDING" | "IN_PROGRESS" | "SUCCEEDED" | "FAILED";
+
+type MeshyTaskResponse = {
+  status: MeshyTaskStatus;
+  progress?: number;
+  model_urls?: {
+    glb?: string;
+  };
+  task_error?: {
+    message?: string;
+  };
+};
+
+async function meshyFetch<T>(
+  pathName: string,
+  options: RequestInit & { body?: JsonObject } = {},
+  signal?: AbortSignal,
+): Promise<T> {
+  const apiKey = getMeshyApiKey();
+  if (!apiKey) {
+    throw new Error("meshy_api_key_missing");
+  }
+  const { body, ...rest } = options;
+  const response = await fetch(`${MESHY_API_BASE}${pathName}`, {
+    ...rest,
+    signal,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      ...(rest.headers ?? {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let message = `meshy_request_failed:${response.status}`;
+    try {
+      const payload = JSON.parse(text) as { message?: string; error?: string };
+      message = payload.message ?? payload.error ?? message;
+    } catch {
+      if (text.trim()) {
+        message = text.trim().slice(0, 200);
+      }
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as T;
+}
+
+async function waitWithAbort(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    throw new Error("mesh_generation_cancelled");
+  }
+  await new Promise<void>((resolve, reject) => {
+    const timeoutId = setTimeout(resolve, delayMs);
+    if (!signal) return;
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timeoutId);
+        reject(new Error("mesh_generation_cancelled"));
+      },
+      { once: true },
+    );
+  });
+}
+
+async function createMeshyPreviewTask(prompt: string, signal?: AbortSignal): Promise<string> {
+  const payload = await meshyFetch<{ result?: string }>(
+    "/text-to-3d",
+    {
+      method: "POST",
+      body: {
+        mode: "preview",
+        prompt: prompt.slice(0, 600),
+        model_type: "standard",
+        ai_model: "latest",
+      },
+    },
+    signal,
+  );
+  if (!payload.result) {
+    throw new Error("meshy_preview_task_missing");
+  }
+  return payload.result;
+}
+
+async function createMeshyRefineTask(
+  previewTaskId: string,
+  stylePrompt: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const payload = await meshyFetch<{ result?: string }>(
+    "/text-to-3d",
+    {
+      method: "POST",
+      body: {
+        mode: "refine",
+        preview_task_id: previewTaskId,
+        texture_prompt: stylePrompt.slice(0, 600),
+        enable_pbr: false,
+      },
+    },
+    signal,
+  );
+  if (!payload.result) {
+    throw new Error("meshy_refine_task_missing");
+  }
+  return payload.result;
+}
+
+async function getMeshyTask(taskId: string, signal?: AbortSignal): Promise<MeshyTaskResponse> {
+  return meshyFetch<MeshyTaskResponse>(
+    `/text-to-3d/${encodeURIComponent(taskId)}`,
+    { method: "GET" },
+    signal,
+  );
+}
+
+async function pollMeshyTask(taskId: string, signal?: AbortSignal): Promise<MeshyTaskResponse> {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const task = await getMeshyTask(taskId, signal);
+    if (task.status === "SUCCEEDED" || task.status === "FAILED") {
+      return task;
+    }
+    await waitWithAbort(2500, signal);
+  }
+  throw new Error("meshy_task_timed_out");
 }
 
 function normalizeAgentsFromConfig(config: JsonObject): JsonObject[] {
@@ -1655,6 +1794,116 @@ function shellcorpStateBridge() {
             },
           });
           return;
+        }
+
+        if (method === "POST" && pathname === "/openclaw/mesh-assets/generate-meshy") {
+          const body = (await readBody(req)) as JsonObject;
+          const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+          const stylePrompt = typeof body.stylePrompt === "string" ? body.stylePrompt.trim() : "";
+          const requestedLabel = typeof body.label === "string" ? body.label.trim() : "";
+          if (!prompt) {
+            writeJson(res, 400, { ok: false, error: "meshy_prompt_required" });
+            return;
+          }
+          if (!getMeshyApiKey()) {
+            writeJson(res, 503, { ok: false, error: "meshy_api_key_missing" });
+            return;
+          }
+
+          const requestAbortController = new AbortController();
+          req.on("close", () => {
+            requestAbortController.abort();
+          });
+
+          try {
+            const previewTaskId = await createMeshyPreviewTask(
+              prompt,
+              requestAbortController.signal,
+            );
+            const previewTask = await pollMeshyTask(
+              previewTaskId,
+              requestAbortController.signal,
+            );
+            if (previewTask.status !== "SUCCEEDED") {
+              writeJson(res, 502, {
+                ok: false,
+                error: previewTask.task_error?.message ?? "meshy_preview_failed",
+              });
+              return;
+            }
+
+            let modelUrl = previewTask.model_urls?.glb?.trim() ?? "";
+            if (stylePrompt && modelUrl) {
+              const refineTaskId = await createMeshyRefineTask(
+                previewTaskId,
+                stylePrompt,
+                requestAbortController.signal,
+              );
+              const refineTask = await pollMeshyTask(
+                refineTaskId,
+                requestAbortController.signal,
+              );
+              if (refineTask.status === "SUCCEEDED" && refineTask.model_urls?.glb) {
+                modelUrl = refineTask.model_urls.glb.trim();
+              }
+            }
+
+            if (!modelUrl) {
+              writeJson(res, 502, { ok: false, error: "meshy_glb_missing" });
+              return;
+            }
+
+            const settings = await readOfficeSettings();
+            const meshAssetDir = settings.meshAssetDir ?? DEFAULT_MESH_ASSET_DIR;
+            await mkdir(meshAssetDir, { recursive: true });
+            const label =
+              requestedLabel ||
+              prompt.slice(0, 40).replace(/[^a-zA-Z0-9\s-]/g, "").trim() ||
+              "meshy-model";
+            const ext = inferMeshExtensionFromUrl(modelUrl);
+            const desiredName = `${sanitizeLabelToFileBase(label)}${ext}`;
+            const targetPath = await toUniqueFilePath(meshAssetDir, desiredName);
+
+            const downloadResponse = await fetch(modelUrl, {
+              signal: requestAbortController.signal,
+            });
+            if (!downloadResponse.ok) {
+              writeJson(res, 502, {
+                ok: false,
+                error: `mesh_download_failed:${downloadResponse.status}`,
+              });
+              return;
+            }
+            const buffer = Buffer.from(await downloadResponse.arrayBuffer());
+            await writeFile(targetPath, buffer);
+            const fileName = path.basename(targetPath);
+            const fileStat = await stat(targetPath);
+
+            writeJson(res, 200, {
+              ok: true,
+              asset: {
+                assetId: fileName,
+                label: path.basename(fileName, path.extname(fileName)),
+                localPath: targetPath,
+                publicPath: asMeshPublicPath(fileName),
+                fileName,
+                fileSizeBytes: fileStat.size,
+                sourceType: "local",
+                validated: true,
+                addedAt: fileStat.mtimeMs,
+              } satisfies JsonObject,
+            });
+            return;
+          } catch (error) {
+            if (requestAbortController.signal.aborted) {
+              return;
+            }
+            writeJson(res, 502, {
+              ok: false,
+              error: error instanceof Error ? error.message : "mesh_generation_failed",
+            });
+            return;
+          }
         }
 
         const meshAssetMatch = pathname.match(/^\/openclaw\/assets\/meshes\/([^/]+)$/);

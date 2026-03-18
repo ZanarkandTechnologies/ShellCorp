@@ -36,6 +36,7 @@ describe("manage agent config draft helpers", () => {
 
     const draft = resolveAgentConfigDraft(currentConfig, "agent-alpha");
     expect(draft).toEqual({
+      ...EMPTY_AGENT_CONFIG_DRAFT,
       primaryModel: "gpt-5",
       fallbackModels: "gpt-4.1",
       toolsProfile: "default",
@@ -52,6 +53,7 @@ describe("manage agent config draft helpers", () => {
     });
 
     expect(resolveAgentConfigDraft(nextConfig, "agent-alpha")).toEqual({
+      ...EMPTY_AGENT_CONFIG_DRAFT,
       primaryModel: "gpt-5",
       fallbackModels: "gpt-4.1, claude-sonnet",
       toolsProfile: "default",

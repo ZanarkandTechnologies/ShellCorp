@@ -158,10 +158,10 @@ export function OfficeRoomShell(props: {
 
       {wallSegments.map((segment) => {
         const isFront =
-          segment.id.endsWith(":north") && frontWalls.frontNorth ||
-          segment.id.endsWith(":south") && frontWalls.frontSouth ||
-          segment.id.endsWith(":west") && frontWalls.frontWest ||
-          segment.id.endsWith(":east") && frontWalls.frontEast;
+          (segment.id.endsWith(":north") && frontWalls.frontNorth) ||
+          (segment.id.endsWith(":south") && frontWalls.frontSouth) ||
+          (segment.id.endsWith(":west") && frontWalls.frontWest) ||
+          (segment.id.endsWith(":east") && frontWalls.frontEast);
         const opacity = isFront && isFixed25 ? frontWallOpacity : baseWallOpacity;
         return (
           <Box

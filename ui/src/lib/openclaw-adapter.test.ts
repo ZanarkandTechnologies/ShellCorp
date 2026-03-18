@@ -418,6 +418,50 @@ describe("office object mutations", () => {
   });
 });
 
+describe("meshy generation", () => {
+  it("posts generation requests to the state bridge", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        asset: {
+          assetId: "chair.glb",
+          label: "chair",
+          localPath: "/tmp/chair.glb",
+          publicPath: "/openclaw/assets/meshes/chair.glb",
+          fileName: "chair.glb",
+          fileSizeBytes: 123,
+          sourceType: "local",
+          validated: true,
+          addedAt: 123,
+        },
+      }),
+    } as Response);
+
+    const adapter = new OpenClawAdapter("http://127.0.0.1:8787", "http://127.0.0.1:8787");
+    const result = await adapter.generateMeshyAsset({
+      prompt: "modern office chair",
+      stylePrompt: "matte white",
+      label: "chair",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/openclaw/mesh-assets/generate-meshy",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          prompt: "modern office chair",
+          stylePrompt: "matte white",
+          label: "chair",
+        }),
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.asset?.label).toBe("chair");
+  });
+});
+
 describe("agent files fallback", () => {
   it("falls back to state bridge when gateway file list is shallow", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({

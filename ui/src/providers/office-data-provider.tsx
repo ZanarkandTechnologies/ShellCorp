@@ -82,8 +82,33 @@ interface OfficeDataContextType {
 
 const OfficeDataContext = createContext<OfficeDataContextType | undefined>(undefined);
 const CLUSTER_MARGIN = 2;
+type EmployeeAppearance = NonNullable<EmployeeData["appearance"]>;
 
 const demoCompany: Company = { _id: "company-demo", name: "Shell Company" };
+
+function isAppearanceClothesStyle(
+  value: unknown,
+): value is NonNullable<EmployeeAppearance["clothesStyle"]> {
+  return (
+    value === "default" ||
+    value === "dj" ||
+    value === "professional" ||
+    value === "techBro"
+  );
+}
+
+function isAppearancePetType(
+  value: unknown,
+): value is NonNullable<EmployeeAppearance["petType"]> {
+  return (
+    value === "none" ||
+    value === "dog" ||
+    value === "cat" ||
+    value === "goldfish" ||
+    value === "rabbit" ||
+    value === "lobster"
+  );
+}
 
 function clampClusterPositionForLayout(
   position: [number, number, number],
@@ -309,9 +334,9 @@ function toOfficeData(
   const appearanceByAgentId = new Map<
     string,
     {
-      clothesStyle?: "default" | "dj" | "professional" | "techBro";
+      clothesStyle?: EmployeeAppearance["clothesStyle"];
       hairColor?: string;
-      petType?: "none" | "dog" | "cat" | "goldfish" | "rabbit" | "lobster";
+      petType?: EmployeeAppearance["petType"];
     }
   >();
 
@@ -321,10 +346,11 @@ function toOfficeData(
     for (const [agentId, value] of Object.entries(appearancesNode)) {
       if (!value || typeof value !== "object") continue;
       const row = value as Record<string, unknown>;
-      const clothesStyle =
-        typeof row.clothesStyle === "string" ? (row.clothesStyle as string) : undefined;
+      const clothesStyle = isAppearanceClothesStyle(row.clothesStyle)
+        ? row.clothesStyle
+        : undefined;
       const hairColor = typeof row.hairColor === "string" ? (row.hairColor as string) : undefined;
-      const petType = typeof row.petType === "string" ? (row.petType as string) : undefined;
+      const petType = isAppearancePetType(row.petType) ? row.petType : undefined;
       appearanceByAgentId.set(agentId, { clothesStyle, hairColor, petType });
     }
   }
@@ -609,7 +635,7 @@ function toOfficeData(
                 : liveStatus?.state === "planning" || liveStatus?.state === "executing"
                   ? "info"
                   : liveStatus?.state === "no_work"
-      ? "info"
+                    ? "info"
                     : undefined;
 
     const appearance = appearanceByAgentId.get(agent.agentId);
