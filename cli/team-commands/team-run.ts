@@ -16,12 +16,12 @@
  * MEMORY REFERENCES:
  * - MEM-0196
  * - MEM-0200
+ * - MEM-0215
  */
 import type { Command } from "commander";
 import { ensureOpenclawHeartbeatScaffold } from "./_convex.js";
 import { buildTeamSnapshot } from "./team-config.js";
 import {
-  appendTeamEventLog,
   ensureCommandPermission,
   ensureHeartbeatProfile,
   formatOutput,
@@ -90,20 +90,6 @@ export function registerTeamRun(team: Command, store: SidecarStore): void {
           store,
           agentIds: teamAgents.map((agent) => agent.agentId),
           cadenceMinutes: opts.cadenceMinutes,
-        });
-        await appendTeamEventLog({
-          teamId: opts.teamId.trim(),
-          projectId,
-          kind: "heartbeat_config_updated",
-          label: "team_run_live",
-          detail: `Updated live heartbeat cadence to ${opts.cadenceMinutes}m`,
-          data: {
-            heartbeatProfileId: profileId,
-            cadenceMinutes: opts.cadenceMinutes,
-            goal: nextGoal,
-            updatedOpenclawAgents,
-            agentIds: teamAgents.map((agent) => agent.agentId),
-          },
         });
         const snapshot = await buildTeamSnapshot(store, opts.teamId.trim());
         formatOutput(

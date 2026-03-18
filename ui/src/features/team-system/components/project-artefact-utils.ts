@@ -1,5 +1,7 @@
 import type { ProjectArtefactEntry } from "../../../lib/openclaw-types";
 
+export const MAX_PROJECT_ARTEFACT_INDEX_FILES = 400;
+
 export function createFileKey(file: Pick<ProjectArtefactEntry, "agentId" | "name">): string {
   return `${file.agentId}::${file.name}`;
 }
@@ -32,6 +34,12 @@ export interface ExplorerFolderNode {
   depth: number;
   files: ProjectArtefactEntry[];
   children: ExplorerFolderNode[];
+}
+
+export interface ProjectArtefactIndexCandidate {
+  files: ProjectArtefactEntry[];
+  totalScopedCount: number;
+  truncated: boolean;
 }
 
 function normalizePath(path: string): string {
@@ -102,7 +110,7 @@ export function deriveProjectScopeRoots(
   if (!normalizedProjectId) return [];
   roots.add(normalizeRootCandidate(`projects/${normalizedProjectId}`));
 
-  if (trackingContext && trackingContext.includes("/")) {
+  if (trackingContext?.includes("/")) {
     roots.add(normalizeRootCandidate(trackingContext));
   }
   for (const hint of taskHintPaths) {
@@ -131,6 +139,21 @@ export function isProjectScopedArtefact(
     normalizedPath.includes(`/${normalizedProjectId}/`) ||
     normalizedPath.startsWith(`${normalizedProjectId}/`)
   );
+}
+
+export function selectProjectArtefactsForIndex(
+  files: ProjectArtefactEntry[],
+  projectId: string,
+  scopeRoots: string[],
+  limit: number = MAX_PROJECT_ARTEFACT_INDEX_FILES,
+): ProjectArtefactIndexCandidate {
+  const scoped = files.filter((file) => isProjectScopedArtefact(file, projectId, scopeRoots));
+  const boundedLimit = Math.max(limit, 1);
+  return {
+    files: scoped.slice(0, boundedLimit),
+    totalScopedCount: scoped.length,
+    truncated: scoped.length > boundedLimit,
+  };
 }
 
 export function inferArtefactFileKind(fileName: string): ArtefactFileKind {

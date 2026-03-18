@@ -32,6 +32,7 @@
     "ui": "npm run --workspace @shellcorp/ui dev --",
     "ui:build": "npm run --workspace @shellcorp/ui build --",
     "mesh:previews": "tsx scripts/mesh-preview-scan.ts",
+    "skills:sync:openclaw": "tsx scripts/sync-openclaw-skills.ts",
     "office:skill-smoke": "bash scripts/office-skill-smoke.sh",
     "test": "vitest",
     "test:once": "vitest run",

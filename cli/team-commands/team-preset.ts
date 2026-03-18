@@ -357,7 +357,7 @@ export async function applyDevTeamPreset(
       githubUrl: "",
       status: "active" as const,
       goal,
-      kpis: ["feature-throughput", "proposal-acceptance", "demo-readiness"],
+      kpis: ["feature-throughput", "review-throughput", "demo-readiness"],
       accountEvents: [],
       ledger: [],
       experiments: [],

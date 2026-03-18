@@ -86,7 +86,6 @@ npm run shell -- team monitor --team-id team-proj-shellcorp-dev-team --json
 Canonical files to inspect during a live run:
 
 - `~/.openclaw/openclaw.json`
-- `~/.openclaw/projects/<projectId>/logs/events.jsonl`
 - `~/.openclaw/projects/<projectId>/outputs/`
 - `~/.openclaw/workspace-<agentId>/HEARTBEAT.md`
 

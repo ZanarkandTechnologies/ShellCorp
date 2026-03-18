@@ -99,4 +99,46 @@ export default defineSchema({
     .index("by_project_occurred_at", ["projectId", "occurredAt"])
     .index("by_project_task_occurred_at", ["projectId", "taskId", "occurredAt"])
     .index("by_project_step_key", ["projectId", "stepKey"]),
+
+  teamMemoryEntries: defineTable({
+    teamId: v.optional(v.string()),
+    projectId: v.string(),
+    taskId: v.optional(v.string()),
+    agentId: v.optional(v.string()),
+    authorType: v.union(v.literal("agent"), v.literal("operator"), v.literal("system")),
+    kind: v.union(
+      v.literal("note"),
+      v.literal("decision"),
+      v.literal("handoff"),
+      v.literal("result"),
+      v.literal("risk"),
+      v.literal("summary"),
+    ),
+    body: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_project_created_at", ["projectId", "createdAt"])
+    .index("by_team_created_at", ["teamId", "createdAt"])
+    .index("by_project_task_created_at", ["projectId", "taskId", "createdAt"]),
+
+  projectArtefactIndex: defineTable({
+    teamId: v.optional(v.string()),
+    projectId: v.string(),
+    agentId: v.string(),
+    workspace: v.string(),
+    path: v.string(),
+    name: v.string(),
+    kind: v.string(),
+    sizeBytes: v.optional(v.number()),
+    updatedAtMs: v.optional(v.number()),
+    indexedAtMs: v.number(),
+    lastSeenAtMs: v.number(),
+    status: v.union(v.literal("present"), v.literal("missing")),
+    isPreviewable: v.boolean(),
+    taskId: v.optional(v.string()),
+    truncated: v.optional(v.boolean()),
+  })
+    .index("by_project_indexed_at", ["projectId", "indexedAtMs"])
+    .index("by_project_agent_path", ["projectId", "agentId", "path"])
+    .index("by_project_status_indexed_at", ["projectId", "status", "indexedAtMs"]),
 });

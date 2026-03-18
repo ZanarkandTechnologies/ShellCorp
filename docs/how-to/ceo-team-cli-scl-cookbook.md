@@ -120,42 +120,46 @@ Command:
 npm run shell -- doctor team-data
 ```
 
-### 7) Create a founder-review team proposal
+### 7) Create a planning task and move it into review
 
 Intent:
 
-`Research a new business idea, write a proposal packet, and send it to founder review.`
+`Research a new business idea, write the plan into task memory, and send the task to human review.`
 
 Command:
 
 ```bash
-npm run shell -- team proposal create --json-input '{
-  "businessType":"affiliate_marketing",
-  "requestedBy":"founder",
-  "sourceAgentId":"main",
-  "ideaBrief":{
-    "focus":"affiliate content engine",
-    "targetCustomer":"home office shoppers",
-    "primaryGoal":"ship weekly revenue-generating content",
-    "constraints":"keep spend low and use proven channels"
-  },
-  "researchSummary":"Creator-led affiliate teams usually need a planning owner, an execution owner, clear acquisition channels, and measurable link tracking.",
-  "proposalSummary":"Create a lightweight affiliate team with clear KPI ownership and first-week board items."
-}'
+npm run shell -- team board task add \
+  --team-id team-proj-alpha \
+  --title "Plan affiliate content engine launch" \
+  --status todo
+
+npm run shell -- team board task memory append \
+  --team-id team-proj-alpha \
+  --task-id <task-id> \
+  --text $'# Goal\nLaunch an affiliate content engine.\n\n# Plan\n- Gather channel benchmarks\n- Define first KPI set\n- Draft first 3 tasks'
+
+npm run shell -- team board task move \
+  --team-id team-proj-alpha \
+  --task-id <task-id> \
+  --status review
 ```
 
-### 8) Review and execute an approved proposal
+### 8) Claim approved work and continue from the same task
 
 Intent:
 
-`Check founder decision status, then create the team from the approved proposal.`
+`After human review, claim the task and keep working from the same task memory.`
 
 Command:
 
 ```bash
-npm run shell -- team proposal list --json
-npm run shell -- team proposal approve --proposal-id proposal-affiliate-content-engine-team-123 --note "Looks good"
-npm run shell -- team proposal execute --proposal-id proposal-affiliate-content-engine-team-123 --json
+npm run shell -- team board task mine --team-id team-proj-alpha --agent-id main --json
+npm run shell -- team board task claim --team-id team-proj-alpha --task-id <task-id> --agent-id main
+npm run shell -- team board task memory append \
+  --team-id team-proj-alpha \
+  --task-id <task-id> \
+  --text $'# Context\n- Founder approved TikTok-first launch\n\n# Next Step\nCreate first execution tickets'
 ```
 
 ## Machine-Readable Mode

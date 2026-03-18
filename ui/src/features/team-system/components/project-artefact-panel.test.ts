@@ -7,6 +7,7 @@ import {
   findFileByPath,
   isHeartbeatArtefact,
   isProjectScopedArtefact,
+  selectProjectArtefactsForIndex,
 } from "./project-artefact-utils";
 
 const SAMPLE_FILES: ProjectArtefactEntry[] = [
@@ -81,5 +82,33 @@ describe("project artefact panel helpers", () => {
     };
     expect(isProjectScopedArtefact(projectFile, "proj-1", roots)).toBe(true);
     expect(isProjectScopedArtefact(heartbeatFile, "proj-1", roots)).toBe(false);
+  });
+
+  it("caps indexed artefacts to a bounded project-scoped slice", () => {
+    const roots = deriveProjectScopeRoots("proj-1", ["projects/proj-1/brief.md"]);
+    const files = [
+      ...SAMPLE_FILES,
+      {
+        ...SAMPLE_FILES[0],
+        path: "/tmp/a/projects/proj-1/out/02.txt",
+        name: "02.txt",
+      },
+      {
+        ...SAMPLE_FILES[0],
+        path: "/tmp/a/projects/proj-1/out/03.txt",
+        name: "03.txt",
+      },
+      {
+        ...SAMPLE_FILES[0],
+        path: "/tmp/a/memory/note.md",
+        name: "note.md",
+      },
+    ];
+
+    const selected = selectProjectArtefactsForIndex(files, "proj-1", roots, 3);
+    expect(selected.files).toHaveLength(3);
+    expect(selected.totalScopedCount).toBe(4);
+    expect(selected.truncated).toBe(true);
+    expect(selected.files.every((file) => file.path.includes("/projects/proj-1/"))).toBe(true);
   });
 });

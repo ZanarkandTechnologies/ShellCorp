@@ -93,7 +93,7 @@ The recommended live loop is:
 2. `agent config` to tune role skills or per-agent heartbeat details
 3. `team run live --cadence-minutes 1` to retune the actual OpenClaw heartbeat cadence
 4. `team monitor` and `agent monitor` to inspect runtime state
-5. review `~/.openclaw/projects/<projectId>/logs/events.jsonl` for the canonical event stream
+5. review the Team Timeline or `team monitor` output for the canonical event stream
 
 This keeps heartbeat-driven work inspectable and easy to test without forcing every team through a large preset or a hidden orchestration layer.
 
@@ -128,11 +128,9 @@ At a high level, yes:
 
 But the important detail is that ShellCorp makes this explicit and inspectable. The agents are not running as an undocumented swarm. They have named workspaces, role files, heartbeat runbooks, session history, and a visible operator surface.
 
-That operator surface now centers on one append-only per-team log:
+That operator surface now centers on the Convex-backed team timeline surfaced through Team Timeline and `team monitor`.
 
-- `~/.openclaw/projects/<projectId>/logs/events.jsonl`
-
-Task lifecycle updates, explicit status reports, activity logs, and heartbeat cadence changes are all appended there so the UI can render a single timeline with richer cards layered on top later.
+Task lifecycle updates, explicit status reports, activity logs, and heartbeat cadence changes should flow into that one realtime stream so the UI and CLI render the same operational view.
 
 ## Related Docs
 

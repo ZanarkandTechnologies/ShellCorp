@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ChevronRight,
@@ -11,25 +10,24 @@ import {
   FileVideo,
   Folder,
   FolderOpen,
+  RefreshCw,
   Search,
   X,
 } from "lucide-react";
+import { type ReactElement, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { ProjectArtefactIndexResult } from "@/lib/openclaw-types";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
 import {
   buildExplorerTree,
   createFileKey,
-  deriveProjectScopeRoots,
+  type ExplorerFolderNode,
   findFileByPath,
   inferArtefactFileKind,
-  isHeartbeatArtefact,
-  isProjectScopedArtefact,
-  type ExplorerFolderNode,
 } from "./project-artefact-utils";
+import { useTeamPanelArtefactState } from "./use-team-panel-artefacts";
 
 /**
  * PROJECT ARTEFACT PANEL
@@ -37,18 +35,18 @@ import {
  * Read-only project-scoped artefact browser for generated agent files.
  *
  * KEY CONCEPTS:
- * - Aggregates files from project-assigned agents via OpenClaw gateway methods
+ * - Renders a cached Convex index for fast artefact browsing.
+ * - Refresh scans project-assigned agent workspaces through the existing OpenClaw gateway.
  * - Supports path/name filtering and on-demand file preview
- * - Keeps partial failures visible without blocking successful agent file lists
+ * - Keeps workspace files canonical while Convex stores metadata only
  *
  * USAGE:
- * - Render inside Team Panel Projects tab
+ * - Render inside Team Panel Artefacts tab
  * - Pass project id/name, scoped agent ids, and optional task path hints
  *
  * MEMORY REFERENCES:
- * - MEM-0100
- * - MEM-0109
- * - MEM-0133
+ * - MEM-0136
+ * - MEM-0214
  */
 
 type TaskArtefactHint = {
@@ -60,10 +58,11 @@ type TaskArtefactHint = {
 interface ProjectArtefactPanelProps {
   projectId: string;
   projectName: string;
+  teamId?: string | null;
   agentIds: string[];
   taskHints: TaskArtefactHint[];
   trackingContext?: string;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 function formatFileTimestamp(ts?: number): string {
@@ -78,7 +77,7 @@ function formatFileSize(size?: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function iconForFile(fileName: string): JSX.Element {
+function iconForFile(fileName: string): ReactElement {
   const kind = inferArtefactFileKind(fileName);
   if (kind === "image") return <FileImage className="h-3.5 w-3.5 text-muted-foreground" />;
   if (kind === "video") return <FileVideo className="h-3.5 w-3.5 text-muted-foreground" />;
@@ -100,84 +99,60 @@ function flattenTree(nodes: ExplorerFolderNode[]): ExplorerFolderNode[] {
 export function ProjectArtefactPanel({
   projectId,
   projectName,
+  teamId,
   agentIds,
   taskHints,
   trackingContext,
   onBack,
-}: ProjectArtefactPanelProps): JSX.Element {
+}: ProjectArtefactPanelProps): ReactElement {
   const adapter = useOpenClawAdapter();
-  const [loading, setLoading] = useState(false);
-  const [errorText, setErrorText] = useState("");
-  const [index, setIndex] = useState<ProjectArtefactIndexResult | null>(null);
   const [query, setQuery] = useState("");
   const [activeFileKey, setActiveFileKey] = useState<string | null>(null);
   const [activeFileContent, setActiveFileContent] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [selectedHintPath, setSelectedHintPath] = useState("");
-  const [hideHeartbeatFiles, setHideHeartbeatFiles] = useState(true);
   const [selectedFolderKey, setSelectedFolderKey] = useState<string | null>(null);
   const [expandedFolderKeys, setExpandedFolderKeys] = useState<Set<string>>(new Set());
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load(): Promise<void> {
-      setLoading(true);
-      setErrorText("");
-      setPreviewError("");
-      setSelectedHintPath("");
-      try {
-        const result = await adapter.listProjectArtefacts(projectId, agentIds);
-        if (cancelled) return;
-        setIndex(result);
-        setActiveFileKey(null);
-        setPreviewOpen(false);
-        const roots = buildExplorerTree(result.files);
-        if (roots[0]) {
-          setSelectedFolderKey(roots[0].key);
-          setExpandedFolderKeys(new Set(roots.map((root) => root.key)));
-        } else {
-          setSelectedFolderKey(null);
-          setExpandedFolderKeys(new Set());
-        }
-      } catch (error) {
-        if (cancelled) return;
-        setIndex(null);
-        setActiveFileKey(null);
-        setSelectedFolderKey(null);
-        setErrorText(error instanceof Error ? error.message : "project_artefacts_load_failed");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [adapter, agentIds, projectId]);
+  const {
+    convexEnabled,
+    loading,
+    files,
+    indexedAtMs,
+    truncated,
+    errorText,
+    refreshState,
+    refreshArtefacts,
+  } = useTeamPanelArtefactState({
+    projectId,
+    teamId,
+    agentIds,
+    taskHints,
+    trackingContext,
+  });
 
-  const taskHintPaths = useMemo(
-    () =>
-      taskHints
-        .map((hint) => hint.artefactPath ?? "")
-        .map((path) => path.trim())
-        .filter(Boolean),
-    [taskHints],
-  );
-  const scopeRoots = useMemo(
-    () => deriveProjectScopeRoots(projectId, taskHintPaths, trackingContext),
-    [projectId, taskHintPaths, trackingContext],
-  );
-  const files = useMemo(() => {
-    const raw = index?.files ?? [];
-    const projectScoped = raw.filter((file) =>
-      isProjectScopedArtefact(file, projectId, scopeRoots),
-    );
-    return hideHeartbeatFiles
-      ? projectScoped.filter((file) => !isHeartbeatArtefact(file))
-      : projectScoped;
-  }, [hideHeartbeatFiles, index?.files, projectId, scopeRoots]);
+  useEffect(() => {
+    if (!files.length) {
+      setSelectedFolderKey(null);
+      setExpandedFolderKeys(new Set());
+      return;
+    }
+    const roots = buildExplorerTree(files);
+    if (roots[0] && !selectedFolderKey) {
+      setSelectedFolderKey(roots[0].key);
+      setExpandedFolderKeys(new Set(roots.map((root) => root.key)));
+    }
+  }, [files, selectedFolderKey]);
+
+  useEffect(() => {
+    if (convexEnabled && indexedAtMs) return;
+    if (convexEnabled) return;
+    if (files.length > 0) return;
+    void refreshArtefacts();
+  }, [convexEnabled, files.length, indexedAtMs, refreshArtefacts]);
+
   const filteredFiles = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return files;
@@ -186,6 +161,7 @@ export function ProjectArtefactPanel({
         file.path.toLowerCase().includes(needle) || file.name.toLowerCase().includes(needle),
     );
   }, [files, query]);
+  const recentFiles = useMemo(() => filteredFiles.slice(0, 12), [filteredFiles]);
   const explorerRoots = useMemo(() => buildExplorerTree(filteredFiles), [filteredFiles]);
   const flattenedTree = useMemo(() => flattenTree(explorerRoots), [explorerRoots]);
   const folderByKey = useMemo(() => {
@@ -260,7 +236,9 @@ export function ProjectArtefactPanel({
       setPreviewLoading(true);
       setPreviewError("");
       try {
-        const result = await adapter.getAgentFile(activeFile.agentId, activeFile.name);
+        const file = activeFile;
+        if (!file) return;
+        const result = await adapter.getAgentFile(file.agentId, file.name);
         if (cancelled) return;
         setActiveFileContent(result.file.content ?? "");
         setPreviewOpen(true);
@@ -281,7 +259,6 @@ export function ProjectArtefactPanel({
 
   function handleHintClick(pathHint: string): void {
     setSelectedHintPath(pathHint);
-    if (!index) return;
     const matched = findFileByPath(filteredFiles, pathHint);
     if (matched) {
       setQuery("");
@@ -316,14 +293,23 @@ export function ProjectArtefactPanel({
       <div className="border-b border-border/60 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Button size="sm" variant="ghost" className="h-8 px-2" onClick={onBack}>
-            <ArrowLeft className="mr-1.5 h-4 w-4" />
-            Back
+            {onBack ? (
+              <>
+                <ArrowLeft className="mr-1.5 h-4 w-4" />
+                Back
+              </>
+            ) : (
+              <span className="text-muted-foreground">Artefacts</span>
+            )}
           </Button>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{projectName}</span>
             <span>/</span>
             <Badge variant="outline">{projectId}</Badge>
             <Badge variant="secondary">{agentIds.length} agents</Badge>
+            {indexedAtMs ? (
+              <Badge variant="outline">Indexed {formatFileTimestamp(indexedAtMs)}</Badge>
+            ) : null}
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -338,11 +324,15 @@ export function ProjectArtefactPanel({
           </div>
           <Button
             size="sm"
-            variant={hideHeartbeatFiles ? "secondary" : "outline"}
+            variant="outline"
             className="h-8"
-            onClick={() => setHideHeartbeatFiles((current) => !current)}
+            onClick={() => void refreshArtefacts()}
+            disabled={refreshState.pending || agentIds.length === 0}
           >
-            {hideHeartbeatFiles ? "Artefacts Only" : "Show All"}
+            <RefreshCw
+              className={`mr-1.5 h-3.5 w-3.5 ${refreshState.pending ? "animate-spin" : ""}`}
+            />
+            Refresh Artefacts
           </Button>
           <Button
             size="sm"
@@ -354,6 +344,19 @@ export function ProjectArtefactPanel({
             Clear
           </Button>
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>Cached in Convex, previewed from live workspace files.</span>
+          {truncated ? (
+            <Badge variant="outline">Refresh capped to the first 400 artefacts</Badge>
+          ) : null}
+          {!convexEnabled ? <Badge variant="outline">Convex disabled</Badge> : null}
+        </div>
+        {refreshState.error ? (
+          <p className="mt-2 text-sm text-destructive">{refreshState.error}</p>
+        ) : null}
+        {refreshState.ok ? (
+          <p className="mt-2 text-sm text-emerald-600">{refreshState.ok}</p>
+        ) : null}
         {hintRows.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {hintRows.slice(0, 8).map((hint) => (
@@ -383,6 +386,32 @@ export function ProjectArtefactPanel({
               <div className="w-64 shrink-0 border-r border-border/60">
                 <ScrollArea className="h-full">
                   <div className="p-2">
+                    <div className="mb-3 border-b border-border/60 pb-3">
+                      <p className="px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Recent
+                      </p>
+                      <div className="mt-2 space-y-1">
+                        {recentFiles.map((file) => {
+                          const key = createFileKey(file);
+                          return (
+                            <button
+                              key={`${key}:${file.path}:recent`}
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted/60"
+                              onClick={() => setActiveFileKey(key)}
+                            >
+                              {iconForFile(file.name)}
+                              <span className="min-w-0 flex-1 truncate">{file.name}</span>
+                            </button>
+                          );
+                        })}
+                        {recentFiles.length === 0 ? (
+                          <p className="px-2 py-2 text-xs text-muted-foreground">
+                            No indexed artefacts yet.
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
                     {visibleFolderRows.map((folder) => {
                       const selected = folder.key === selectedFolderKey;
                       const isExpanded = expandedFolderKeys.has(folder.key);
@@ -397,15 +426,12 @@ export function ProjectArtefactPanel({
                               : "text-muted-foreground hover:bg-muted/60"
                           }`}
                           style={{ paddingLeft: `${6 + folder.depth * 12}px` }}
-                          onClick={() => setSelectedFolderKey(folder.key)}
+                          onClick={() => {
+                            setSelectedFolderKey(folder.key);
+                            if (hasChildren) toggleFolder(folder.key);
+                          }}
                         >
-                          <span
-                            className="inline-flex h-4 w-4 items-center justify-center"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (hasChildren) toggleFolder(folder.key);
-                            }}
-                          >
+                          <span className="inline-flex h-4 w-4 items-center justify-center">
                             {hasChildren ? (
                               <ChevronRight
                                 className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
@@ -508,6 +534,7 @@ export function ProjectArtefactPanel({
                       preload="metadata"
                       src={activeVideoUrl}
                     >
+                      <track kind="captions" label="Captions unavailable" />
                       Your browser does not support video playback.
                     </video>
                   ) : null}
@@ -522,19 +549,6 @@ export function ProjectArtefactPanel({
           </>
         ) : null}
       </div>
-
-      {index?.groups.some((group) => group.error) ? (
-        <div className="border-t border-amber-400/50 bg-amber-400/10 px-3 py-2 text-xs">
-          <p className="font-medium">Partial fetch issues</p>
-          {index.groups
-            .filter((group) => group.error)
-            .map((group) => (
-              <p key={`${group.agentId}:${group.error}`}>
-                {group.agentId}: {group.error}
-              </p>
-            ))}
-        </div>
-      ) : null}
     </div>
   );
 }

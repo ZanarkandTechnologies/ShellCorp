@@ -18,47 +18,30 @@
  * MEMORY REFERENCES:
  * - MEM-0100
  * - MEM-0107
+ * - MEM-0209
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useChatActions } from "@/features/chat-system/chat-store";
-import {
-  computeBusinessReadinessIssues,
-  createBusinessBuilderDraft,
-  projectToBusinessBuilderDraft,
-} from "@/lib/business-builder";
 import { useAppStore } from "@/lib/app-store";
-import type { ProjectAccountEventModel, SessionTimelineModel } from "@/lib/openclaw-types";
-import { buildTeamAiUsageSummary } from "@/lib/session-usage";
+import { UI_Z } from "@/lib/z-index";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
-import { UI_Z } from "@/lib/z-index";
-import { isConvexEnabled } from "@/providers/convex-provider";
-import { api } from "../../../../../convex/_generated/api";
-import type { BusinessSlotKey } from "./business-flow/business-skill-library";
 import { LedgerTabPanel } from "./business-flow/ledger-tab-panel";
-import { OverviewTab } from "./overview-tab";
-import { KanbanTab } from "./kanban-tab";
-import { ProjectsTab } from "./projects-tab";
-import { CommunicationsTab } from "./communications-tab";
-import { TimelineTab } from "./timeline-tab";
 import { BusinessTab } from "./business-tab";
-import {
-  extractArtefactPath,
-  deriveProjectId,
-  type TabKey,
-  type CommunicationsFilter,
-  type PanelTask,
-  type ActivityRow,
-  type CommunicationRow,
-  type AgentCandidate,
-  type AgentPresenceRow,
-  deriveAgentPresenceRows,
-} from "./team-panel-types";
+import { KanbanTab } from "./kanban-tab";
+import { OverviewTab } from "./overview-tab";
+import { ProjectsTab } from "./projects-tab";
+import { TeamMemoryTab } from "./team-memory-tab";
+import { deriveProjectId, type TabKey } from "./team-panel-types";
+import { TimelineTab } from "./timeline-tab";
+import { useTeamPanelBoardState } from "./use-team-panel-board";
+import { useTeamPanelBusinessState } from "./use-team-panel-business";
+import { useTeamPanelMemoryState } from "./use-team-panel-memory";
+import { useTeamPanelRuntimeState } from "./use-team-panel-runtime";
 
 interface TeamPanelProps {
   teamId: string | null;
@@ -86,35 +69,6 @@ export function TeamPanel({
   const setSelectedAgentId = useAppStore((state) => state.setSelectedAgentId);
 
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
-  const [communicationsFilter, setCommunicationsFilter] = useState<CommunicationsFilter>("all");
-  const [boardActionState, setBoardActionState] = useState<{
-    pending: boolean;
-    error?: string;
-    ok?: string;
-  }>({ pending: false });
-  const [builderDraft, setBuilderDraft] = useState(() => createBusinessBuilderDraft("none"));
-  const [builderSaveState, setBuilderSaveState] = useState<{
-    pending: boolean;
-    error?: string;
-    ok?: string;
-  }>({ pending: false });
-  const [selectedBusinessSlot, setSelectedBusinessSlot] = useState<BusinessSlotKey>("measure");
-  const [ledgerActionState, setLedgerActionState] = useState<{
-    pending: boolean;
-    error?: string;
-    ok?: string;
-  }>({ pending: false });
-  const [trackingContext, setTrackingContext] = useState("");
-  const [agentConfiguredSkills, setAgentConfiguredSkills] = useState<Record<string, string[]>>({});
-  const [teamUsageRows, setTeamUsageRows] = useState<
-    Array<{
-      agentId: string;
-      occurredAt?: number;
-      usageSummary?: SessionTimelineModel["usageSummary"];
-    }>
-  >([]);
-  const [teamUsageError, setTeamUsageError] = useState<string | null>(null);
-  const lastBuilderProjectIdRef = useRef<string | null>(null);
 
   const team = useMemo(() => {
     if (!teamId || globalMode) return null;
@@ -148,164 +102,73 @@ export function TeamPanel({
     return teamEmployees;
   }, [employees, globalMode, project?.id, teamEmployees]);
 
-  const convexEnabled = isConvexEnabled();
-  // Closed panels should not keep the board/activity subscriptions hot.
   const activeProjectId = isOpen ? project?.id : undefined;
   const teamScopeId = useMemo(() => {
     if (globalMode) return project?.id ? `team-${project.id}`.toLowerCase() : null;
     return teamId ? teamId.trim().toLowerCase() : null;
   }, [globalMode, project?.id, teamId]);
 
-  const boardCommand = useMutation(api.board.boardCommand);
-  const convexBoard = useQuery(
-    api.board.getProjectBoard,
-    convexEnabled && activeProjectId ? { projectId: activeProjectId } : "skip",
-  );
-  const convexActivity = useQuery(
-    api.board.getProjectActivity,
-    convexEnabled && activeProjectId
-      ? { projectId: activeProjectId, teamId: teamScopeId ?? undefined, limit: 60 }
-      : "skip",
-  );
-
-  const projectTasks = useMemo((): PanelTask[] => {
-    if (convexEnabled && convexBoard?.tasks) {
-      return convexBoard.tasks.map((task) => ({
-        id: task.taskId,
-        title: task.title,
-        status: task.status as PanelTask["status"],
-        ownerAgentId: task.ownerAgentId,
-        priority: (task.priority as PanelTask["priority"]) ?? "medium",
-        provider: (task.provider as PanelTask["provider"]) ?? "internal",
-        providerUrl: task.providerUrl,
-        artefactPath: extractArtefactPath(task),
-        syncState: (task.syncState as PanelTask["syncState"]) ?? "healthy",
-        syncError: task.syncError,
-        notes: task.notes,
-        taskType: task.taskType as PanelTask["taskType"],
-        approvalState: task.approvalState as PanelTask["approvalState"],
-        linkedSessionKey: task.linkedSessionKey,
-        createdTeamId: task.createdTeamId,
-        createdProjectId: task.createdProjectId,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt,
-        dueAt: task.dueAt,
-      }));
-    }
-    if (!companyModel) return [];
-    if (globalMode && !project) return companyModel.tasks as PanelTask[];
-    if (!project?.id) return [];
-    return companyModel.tasks
-      .filter((t) => t.projectId === project.id)
-      .map((t) => ({
-        id: t.id,
-        title: t.title,
-        status: t.status as PanelTask["status"],
-        ownerAgentId: t.ownerAgentId,
-        priority: (t.priority as PanelTask["priority"]) ?? "medium",
-        provider: (t.provider as PanelTask["provider"]) ?? "internal",
-        providerUrl: t.providerUrl,
-        artefactPath: extractArtefactPath(t),
-        syncState: (t.syncState as PanelTask["syncState"]) ?? "healthy",
-        syncError: t.syncError,
-      }));
-  }, [companyModel, convexBoard?.tasks, convexEnabled, globalMode, project]);
-
-  const activityRows = useMemo((): ActivityRow[] => {
-    if (!Array.isArray(convexActivity)) return [];
-    return convexActivity as ActivityRow[];
-  }, [convexActivity]);
-
-  const communicationRows = useMemo((): CommunicationRow[] => {
-    if (convexEnabled) {
-      return activityRows.map((row) => ({
-        id: row._id,
-        agentId: row.agentId,
-        activityType: row.activityType,
-        label: row.label,
-        detail: row.detail,
-        occurredAt: row.occurredAt,
-        taskId: row.taskId,
-      }));
-    }
-    return projectTasks.slice(0, 60).map((task) => ({
-      id: task.id,
-      agentId: task.ownerAgentId ?? "unassigned",
-      activityType:
-        task.status === "blocked"
-          ? "blocked"
-          : task.status === "in_progress"
-            ? "executing"
-            : "planning",
-      label: task.title,
-      detail: `Priority ${task.priority}`,
-      occurredAt: Date.now(),
-      taskId: task.id,
-    }));
-  }, [activityRows, convexEnabled, projectTasks]);
-
-  const filteredCommunicationRows = useMemo((): CommunicationRow[] => {
-    if (communicationsFilter === "all") return communicationRows;
-    return communicationRows.filter((row) => row.activityType === communicationsFilter);
-  }, [communicationRows, communicationsFilter]);
-
   const visibleRoster = useMemo(
     () => (globalMode ? usageEmployees : teamEmployees),
     [globalMode, teamEmployees, usageEmployees],
   );
-  const presenceRows = useMemo(
-    (): AgentPresenceRow[] =>
-      deriveAgentPresenceRows({
-        employees: visibleRoster,
-        projectTasks,
-        communicationRows,
-      }),
-    [communicationRows, projectTasks, visibleRoster],
-  );
 
-  const activityFeedCandidates = useMemo((): AgentCandidate[] => {
-    const roster = globalMode ? employees : teamEmployees;
-    return roster
-      .map((emp) => {
-        const raw = String(emp._id ?? "");
-        const agentId = raw.startsWith("employee-") ? raw.slice("employee-".length) : raw;
-        return { agentId: agentId.trim(), name: emp.name };
-      })
-      .filter((e) => e.agentId.length > 0);
-  }, [employees, globalMode, teamEmployees]);
+  const { convexEnabled, projectTasks, communicationRows, boardActionState, handleBoardCommand } =
+    useTeamPanelBoardState({
+      companyModel,
+      globalMode,
+      project,
+      activeProjectId,
+      teamScopeId,
+    });
 
-  const ownerLabelById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const emp of globalMode ? employees : teamEmployees) {
-      map.set(emp._id, emp.name);
-      if (emp._id.startsWith("employee-")) {
-        map.set(emp._id.replace(/^employee-/, ""), emp.name);
-      }
-    }
-    return map;
-  }, [employees, globalMode, teamEmployees]);
+  const { memoryRows, composeState, appendOperatorNote } = useTeamPanelMemoryState({
+    activeProjectId,
+    teamScopeId,
+  });
 
-  const businessSkillRows = useMemo(
-    () =>
-      teamEmployees
-        .filter(
-          (employee) =>
-            employee.builtInRole === "biz_pm" || employee.builtInRole === "biz_executor",
-        )
-        .map((employee) => {
-          const rawId = String(employee._id ?? "");
-          const agentId = rawId.startsWith("employee-") ? rawId.replace(/^employee-/, "") : rawId;
-          return {
-            agentId,
-            name: employee.name,
-            role: employee.builtInRole,
-            statusText: employee.statusMessage ?? "Idle",
-            heartbeatState: employee.heartbeatState,
-            equippedSkills: agentConfiguredSkills[agentId] ?? [],
-          };
-        }),
-    [agentConfiguredSkills, teamEmployees],
-  );
+  const {
+    ownerLabelById,
+    activityFeedCandidates,
+    businessSkillRows,
+    presenceRows,
+    teamAiUsageSummary,
+    teamUsageError,
+  } = useTeamPanelRuntimeState({
+    adapter,
+    isOpen,
+    employees,
+    teamEmployees,
+    visibleRoster,
+    usageEmployees,
+    globalMode,
+    communicationRows,
+    projectTasks,
+  });
+
+  const {
+    builderDraft,
+    selectedBusinessSlot,
+    setSelectedBusinessSlot,
+    trackingContext,
+    setTrackingContext,
+    builderSaveState,
+    ledgerActionState,
+    readinessIssues,
+    activeExperimentCount,
+    hasBusinessConfig,
+    accountEvents,
+    teamAccount,
+    toggleCapabilitySkill,
+    handleSaveBusinessBuilder,
+    handleRecordAccountEvent,
+  } = useTeamPanelBusinessState({
+    adapter,
+    refresh,
+    project,
+    team,
+    globalMode,
+  });
 
   const projectTaskCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -331,59 +194,7 @@ export function TeamPanel({
     [],
   );
 
-  const hasBusinessConfig = Boolean(project?.businessConfig);
   const allProjects = globalMode ? (companyModel?.projects ?? []) : project ? [project] : [];
-
-  const activeExperimentCount = useMemo(
-    () => (project?.experiments ?? []).filter((e) => e.status === "running").length,
-    [project?.experiments],
-  );
-
-  const readinessIssues = useMemo(
-    () =>
-      team?.businessReadiness?.issues && team.businessReadiness.issues.length > 0
-        ? team.businessReadiness.issues.map((issue, idx) => ({
-            code: `team-${idx}`,
-            message: issue,
-          }))
-        : computeBusinessReadinessIssues(builderDraft),
-    [builderDraft, team?.businessReadiness?.issues],
-  );
-
-  const accountEvents = useMemo<ProjectAccountEventModel[]>(() => {
-    if (project?.accountEvents?.length) return project.accountEvents;
-    const ledgerRows = [...(project?.ledger ?? [])].sort(
-      (a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp),
-    );
-    let running = 0;
-    return ledgerRows.map((entry) => {
-      running += entry.type === "revenue" ? entry.amount : -entry.amount;
-      return {
-        id: `ledger-derived-${entry.id}`,
-        projectId: entry.projectId,
-        accountId: `${entry.projectId}:account`,
-        timestamp: entry.timestamp,
-        type: (entry.type === "revenue" ? "credit" : "debit") as "credit" | "debit",
-        amountCents: entry.amount,
-        source: entry.source,
-        note: entry.description,
-        balanceAfterCents: running,
-      };
-    });
-  }, [project?.accountEvents, project?.ledger]);
-
-  const teamAccount = useMemo(() => {
-    if (project?.account) return project.account;
-    const latest = accountEvents[accountEvents.length - 1];
-    return {
-      id: `${project?.id ?? "project"}:account`,
-      projectId: project?.id ?? "project",
-      currency: "USD",
-      balanceCents: latest?.balanceAfterCents ?? 0,
-      updatedAt: latest?.timestamp ?? new Date().toISOString(),
-    };
-  }, [accountEvents, project?.account, project?.id]);
-  const teamAiUsageSummary = useMemo(() => buildTeamAiUsageSummary(teamUsageRows), [teamUsageRows]);
 
   const panelTitle = globalMode ? "All Teams" : (team?.name ?? "Team");
 
@@ -393,226 +204,11 @@ export function TeamPanel({
   }, [initialTab, isOpen]);
 
   useEffect(() => {
-    const nextProjectId = project?.id ?? null;
-    if (lastBuilderProjectIdRef.current === nextProjectId) return;
-    lastBuilderProjectIdRef.current = nextProjectId;
-    setBuilderDraft(projectToBusinessBuilderDraft(project));
-    setBuilderSaveState({ pending: false });
-    setTrackingContext(project?.trackingContext ?? "");
-    setSelectedBusinessSlot("measure");
-    setLedgerActionState({ pending: false });
-  }, [project]);
-
-  useEffect(() => {
     if (!isOpen || !globalMode || selectedProjectId || !companyModel?.projects?.length) return;
     setSelectedProjectId(companyModel.projects[0].id);
   }, [companyModel?.projects, globalMode, isOpen, selectedProjectId, setSelectedProjectId]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    setCommunicationsFilter("all");
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    async function loadAgentConfiguredSkills(): Promise<void> {
-      try {
-        const snapshot = await adapter.getConfigSnapshot();
-        if (cancelled) return;
-        const config = snapshot.config;
-        const agentsNode =
-          config.agents && typeof config.agents === "object"
-            ? (config.agents as Record<string, unknown>)
-            : {};
-        const list = Array.isArray(agentsNode.list) ? agentsNode.list : [];
-        const next: Record<string, string[]> = {};
-        for (const entry of list) {
-          if (!entry || typeof entry !== "object") continue;
-          const row = entry as Record<string, unknown>;
-          const id = typeof row.id === "string" ? row.id.trim() : "";
-          if (!id) continue;
-          const skills = Array.isArray(row.skills)
-            ? row.skills.filter((item): item is string => typeof item === "string")
-            : [];
-          next[id] = skills;
-        }
-        setAgentConfiguredSkills(next);
-      } catch {
-        if (!cancelled) setAgentConfiguredSkills({});
-      }
-    }
-    void loadAgentConfiguredSkills();
-    return () => {
-      cancelled = true;
-    };
-  }, [adapter, isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setTeamUsageRows([]);
-      setTeamUsageError(null);
-      return;
-    }
-    const agentIds = usageEmployees
-      .map((employee) => {
-        const rawId = String(employee._id ?? "");
-        return rawId.startsWith("employee-") ? rawId.replace(/^employee-/, "") : rawId;
-      })
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
-    if (agentIds.length === 0) {
-      setTeamUsageRows([]);
-      setTeamUsageError(null);
-      return;
-    }
-    let cancelled = false;
-    async function loadTeamUsageRows(): Promise<void> {
-      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      let failedAgentCount = 0;
-      const rows = await Promise.all(
-        agentIds.map(async (agentId) => {
-          try {
-            const sessions = await adapter.listSessions(agentId);
-            const recentSessions = sessions
-              .filter((session) => (session.updatedAt ?? 0) >= weekAgo)
-              .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-            const timelines = await Promise.all(
-              recentSessions.map(async (session) => {
-                const timeline = await adapter.getSessionTimeline(agentId, session.sessionKey, 120);
-                return {
-                  agentId,
-                  occurredAt: timeline.usageSummary?.lastResponse?.timestamp ?? session.updatedAt,
-                  usageSummary: timeline.usageSummary,
-                };
-              }),
-            );
-            return timelines.filter((timeline) => timeline.usageSummary);
-          } catch {
-            failedAgentCount += 1;
-            return [];
-          }
-        }),
-      );
-      if (!cancelled) {
-        setTeamUsageRows(rows.flat());
-        setTeamUsageError(
-          failedAgentCount > 0 ? `usage unavailable for ${failedAgentCount} agent(s)` : null,
-        );
-      }
-    }
-    void loadTeamUsageRows();
-    return () => {
-      cancelled = true;
-    };
-  }, [adapter, isOpen, usageEmployees]);
-
   if (!globalMode && !team) return null;
-
-  function toggleCapabilitySkill(slot: BusinessSlotKey, skillId: string): void {
-    setBuilderDraft((current) => {
-      const existing = current.capabilitySkills[slot]
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const nextSet = new Set(existing);
-      if (nextSet.has(skillId)) nextSet.delete(skillId);
-      else nextSet.add(skillId);
-      return {
-        ...current,
-        capabilitySkills: { ...current.capabilitySkills, [slot]: [...nextSet].join(", ") },
-      };
-    });
-  }
-
-  async function handleSaveBusinessBuilder(): Promise<void> {
-    if (!project?.id) return;
-    setBuilderSaveState({ pending: true });
-    const saved = await adapter.saveBusinessBuilderConfig({
-      projectId: project.id,
-      businessType: builderDraft.businessType === "none" ? "custom" : builderDraft.businessType,
-      capabilitySkills: builderDraft.capabilitySkills,
-      resources: builderDraft.resources,
-      trackingContext,
-      source: "ui.team_panel.builder",
-    });
-    if (!saved.ok) {
-      setBuilderSaveState({ pending: false, error: saved.error ?? "business_builder_save_failed" });
-      return;
-    }
-    const targetTeamId = globalMode ? `team-${project.id}` : String(team?._id ?? "");
-    if (targetTeamId) {
-      const sync = await adapter.syncTeamBusinessSkillsToAgents({
-        teamId: targetTeamId,
-        mode: "replace_minimum",
-      });
-      if (!sync.ok) {
-        await refresh();
-        setBuilderSaveState({
-          pending: false,
-          error: `business_saved_but_skill_sync_failed:${sync.error ?? "unknown_error"}`,
-        });
-        return;
-      }
-      await refresh();
-      setBuilderSaveState({
-        pending: false,
-        ok: `Saved. Equipped skills synced for ${sync.touchedAgents.length} agent(s).`,
-      });
-      return;
-    }
-    await refresh();
-    setBuilderSaveState({ pending: false, ok: "Saved." });
-  }
-
-  async function handleBoardCommand(
-    command: string,
-    payload: Record<string, unknown>,
-    successMessage: string,
-  ): Promise<void> {
-    if (!convexEnabled || !boardCommand || !project?.id) return;
-    setBoardActionState({ pending: true });
-    try {
-      await boardCommand({
-        projectId: project.id,
-        command,
-        actorType: "operator",
-        actorAgentId: "operator-ui",
-        ...payload,
-      });
-      setBoardActionState({ pending: false, ok: successMessage });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "board_command_failed";
-      setBoardActionState({ pending: false, error: message });
-    }
-  }
-
-  async function handleRecordAccountEvent(input: {
-    type: "credit" | "debit";
-    amountCents: number;
-    source: string;
-    note?: string;
-  }): Promise<void> {
-    if (!project?.id) return;
-    setLedgerActionState({ pending: true });
-    const result = await adapter.recordProjectAccountEvent({
-      projectId: project.id,
-      type: input.type,
-      amountCents: input.amountCents,
-      source: input.source,
-      note: input.note,
-      currency: teamAccount.currency,
-    });
-    if (!result.ok) {
-      setLedgerActionState({ pending: false, error: result.error ?? "ledger_update_failed" });
-      return;
-    }
-    await refresh();
-    setLedgerActionState({
-      pending: false,
-      ok: input.type === "credit" ? "Funding recorded." : "Spend recorded.",
-    });
-  }
 
   function handleOpenAgentSession(agentId: string): void {
     setSelectedAgentId(agentId);
@@ -647,8 +243,8 @@ export function TeamPanel({
           <TabsList className="mt-4 w-fit">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="kanban">Kanban</TabsTrigger>
-            <TabsTrigger value="projects">Projects</TabsTrigger>
-            <TabsTrigger value="communications">Activity</TabsTrigger>
+            <TabsTrigger value="projects">Artefacts</TabsTrigger>
+            <TabsTrigger value="memory">Memory</TabsTrigger>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="business">Business</TabsTrigger>
             <TabsTrigger value="ledger">Ledger</TabsTrigger>
@@ -692,22 +288,24 @@ export function TeamPanel({
           <TabsContent value="projects" className="mt-4 min-h-0 flex-1 overflow-hidden">
             <ProjectsTab
               allProjects={allProjects}
+              teamId={teamScopeId}
               activeProjectId={project?.id}
               projectTaskCounts={projectTaskCounts}
               companyModel={companyModel}
               globalMode={globalMode}
-              selectedProjectId={selectedProjectId}
               setSelectedProjectId={setSelectedProjectId}
               currencyFormatter={currencyFormatter}
             />
           </TabsContent>
 
-          <TabsContent value="communications" className="mt-4 min-h-0 flex-1 overflow-hidden">
-            <CommunicationsTab
+          <TabsContent value="memory" className="mt-4 min-h-0 flex-1 overflow-hidden">
+            <TeamMemoryTab
+              projectId={project?.id ?? null}
               teamId={teamScopeId}
-              communicationsFilter={communicationsFilter}
-              setCommunicationsFilter={setCommunicationsFilter}
-              filteredRows={filteredCommunicationRows}
+              convexEnabled={convexEnabled}
+              memoryRows={memoryRows}
+              composeState={composeState}
+              onAppendOperatorNote={appendOperatorNote}
             />
           </TabsContent>
 

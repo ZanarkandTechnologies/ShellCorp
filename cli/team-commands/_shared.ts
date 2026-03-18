@@ -13,10 +13,11 @@
  * - MEM-0104
  * - MEM-0183
  * - MEM-0199
+ * - MEM-0215
  */
 
 import { execFile } from "node:child_process";
-import { access, appendFile, cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type {
@@ -52,7 +53,7 @@ export type CapabilityCategory = "measure" | "execute" | "distribute";
 export type BusinessEquipMode = "replace_minimum" | "append_only";
 export type ResourceKind = ResourceType;
 export type ResourceEventKind = "refresh" | "consumption" | "adjustment";
-export type BoardTaskStatus = "todo" | "in_progress" | "blocked" | "done";
+export type BoardTaskStatus = "todo" | "in_progress" | "review" | "blocked" | "done";
 export type BoardTaskPriority = "low" | "medium" | "high";
 export type BoardActivityType =
   | "planning"
@@ -74,35 +75,9 @@ export type StatusReportState =
   | "blocked"
   | "done";
 export type ConfigEntry = [string, string];
+export type ShellName = "bash" | "zsh" | "fish";
 
 export type OpenclawAgentEntry = Record<string, unknown> & { id: string };
-export type TeamEventKind =
-  | "heartbeat_config_updated"
-  | "task_added"
-  | "task_moved"
-  | "task_updated"
-  | "task_deleted"
-  | "task_assigned"
-  | "task_blocked"
-  | "task_done"
-  | "task_reopened"
-  | "task_reprioritized"
-  | "status_reported"
-  | "activity_logged";
-
-export type TeamEventRecord = {
-  id: string;
-  ts: string;
-  kind: TeamEventKind;
-  teamId: string;
-  projectId: string;
-  agentId?: string;
-  taskId?: string;
-  label?: string;
-  detail?: string;
-  data?: Record<string, unknown>;
-};
-
 export interface TeamSummary {
   teamId: string;
   projectId: string;
@@ -112,6 +87,15 @@ export interface TeamSummary {
   kpis: string[];
   businessType?: string;
 }
+
+export type ResolvedCliActorContext = {
+  actorKind: "agent" | "operator";
+  actorRole: string;
+  agentId?: string;
+  teamId?: string;
+  projectId?: string;
+  companyAgent?: CompanyAgentModel;
+};
 
 export type TeamPermission =
   | "team.read"
@@ -186,6 +170,40 @@ export function readActorRole(): string {
     /\s+/g,
     "_",
   );
+}
+
+export function readActorAgentId(): string | undefined {
+  const direct = process.env.SHELLCORP_AGENT_ID?.trim();
+  if (direct) return direct;
+  const legacy = process.env.SHELLCORP_ACTOR_AGENT_ID?.trim();
+  return legacy || undefined;
+}
+
+export function readActorTeamId(): string | undefined {
+  const teamId = process.env.SHELLCORP_TEAM_ID?.trim();
+  return teamId || undefined;
+}
+
+export function readActorProjectId(): string | undefined {
+  const projectId = process.env.SHELLCORP_PROJECT_ID?.trim();
+  return projectId || undefined;
+}
+
+export function renderShellExports(
+  entries: Array<[string, string]>,
+  shell: ShellName = "bash",
+): string {
+  if (shell === "fish") {
+    return entries.map(([key, value]) => `set -gx ${key} ${JSON.stringify(value)};`).join("\n");
+  }
+  return entries.map(([key, value]) => `export ${key}=${JSON.stringify(value)}`).join("\n");
+}
+
+export function renderShellUnsets(keys: string[], shell: ShellName = "bash"): string {
+  if (shell === "fish") {
+    return keys.map((key) => `set -e ${key};`).join("\n");
+  }
+  return keys.map((key) => `unset ${key}`).join("\n");
 }
 
 export function resolveAllowedPermissions(): Set<TeamPermission> | "all" {
@@ -371,7 +389,15 @@ export function parseRoleSlotRole(raw: string): Exclude<AgentRole, "ceo"> {
 }
 
 export function parseBoardTaskStatus(raw: string): BoardTaskStatus {
-  if (raw === "todo" || raw === "in_progress" || raw === "blocked" || raw === "done") return raw;
+  if (
+    raw === "todo" ||
+    raw === "in_progress" ||
+    raw === "review" ||
+    raw === "blocked" ||
+    raw === "done"
+  ) {
+    return raw;
+  }
   throw new Error(`invalid_board_status:${raw}`);
 }
 
@@ -500,6 +526,61 @@ export function resolveTeamIdForAgent(company: CompanyModel, agentId: string): s
   const project = company.projects.find((entry) => entry.id === projectId);
   if (!project) throw new Error(`agent_project_not_found:${agentId}:${projectId}`);
   return teamIdFromProjectId(projectId);
+}
+
+export function resolveCliActorContext(opts: {
+  company: CompanyModel;
+  explicitAgentId?: string;
+  explicitTeamId?: string;
+  allowOperator?: boolean;
+}): ResolvedCliActorContext {
+  const explicitAgentId = opts.explicitAgentId?.trim() || undefined;
+  const explicitTeamId = opts.explicitTeamId?.trim() || undefined;
+  const envAgentId = readActorAgentId();
+  const envTeamId = readActorTeamId();
+  const envProjectId = readActorProjectId();
+  const agentId = explicitAgentId || envAgentId;
+  const requestedTeamId = explicitTeamId || envTeamId;
+
+  if (agentId) {
+    const companyAgent = opts.company.agents.find((entry) => entry.agentId === agentId);
+    if (!companyAgent) throw new Error(`agent_not_found:${agentId}`);
+    const projectId = companyAgent.projectId?.trim();
+    if (!projectId) throw new Error(`agent_missing_project:${agentId}`);
+    const teamId = resolveTeamIdForAgent(opts.company, agentId);
+    if (requestedTeamId && requestedTeamId !== teamId) {
+      throw new Error(`actor_team_conflict:${agentId}:${teamId}:${requestedTeamId}`);
+    }
+    if (envProjectId && envProjectId !== projectId) {
+      throw new Error(`actor_project_conflict:${agentId}:${projectId}:${envProjectId}`);
+    }
+    return {
+      actorKind: "agent",
+      actorRole: companyAgent.role,
+      agentId,
+      teamId,
+      projectId,
+      companyAgent,
+    };
+  }
+
+  if (!opts.allowOperator) {
+    throw new Error("missing_agent_identity:use_shellcorp_agent_login_or_--agent-id");
+  }
+
+  if (!requestedTeamId) {
+    throw new Error("missing_team_id:use_--team-id_or_SHELLCORP_TEAM_ID");
+  }
+  const { projectId } = resolveProjectOrFail(opts.company, requestedTeamId);
+  if (envProjectId && envProjectId !== projectId) {
+    throw new Error(`actor_project_conflict:operator:${projectId}:${envProjectId}`);
+  }
+  return {
+    actorKind: "operator",
+    actorRole: readActorRole(),
+    teamId: requestedTeamId,
+    projectId,
+  };
 }
 
 export function resolveStatusActivityType(rawState: string): BoardActivityType {
@@ -1172,9 +1253,20 @@ export async function deregisterOpenclawAgents(opts: {
   agentIds: string[];
 }): Promise<void> {
   if (opts.agentIds.length === 0) return;
+  const stateRoot = resolveOpenclawStateRoot();
   const config = await opts.store.readOpenclawConfig();
   const agentsNode = asRecord(config.agents);
   const currentList = Array.isArray(agentsNode.list) ? [...agentsNode.list] : [];
+  const configuredWorkspaceByAgentId = new Map<string, string>();
+  for (const entry of currentList) {
+    const row = asRecord(entry);
+    const id = typeof row.id === "string" ? row.id.trim() : "";
+    if (!id) continue;
+    configuredWorkspaceByAgentId.set(
+      id,
+      tryResolveWorkspaceFromOpenclawConfig(config, stateRoot, id),
+    );
+  }
   const removeSet = new Set(opts.agentIds);
   const nextList = currentList.filter((entry) => {
     const id = asRecord(entry).id;
@@ -1185,6 +1277,21 @@ export async function deregisterOpenclawAgents(opts: {
     agents: { ...agentsNode, list: nextList },
   } as Record<string, unknown>;
   await opts.store.writeOpenclawConfig(nextConfig);
+
+  for (const agentId of opts.agentIds) {
+    const workspacePath = configuredWorkspaceByAgentId.get(agentId) ?? "";
+    const resolvedWorkspacePath = workspacePath ? path.resolve(workspacePath) : "";
+    const relativeWorkspacePath = resolvedWorkspacePath
+      ? path.relative(stateRoot, resolvedWorkspacePath)
+      : "";
+    const isManagedWorkspace =
+      relativeWorkspacePath.length > 0 &&
+      relativeWorkspacePath !== ".." &&
+      !relativeWorkspacePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relativeWorkspacePath);
+    if (!isManagedWorkspace) continue;
+    await rm(resolvedWorkspacePath, { recursive: true, force: true });
+  }
 }
 
 export function runDoctor(company: CompanyModel): string[] {
@@ -1286,56 +1393,6 @@ export function resolveProjectLogsDir(projectId: string): string {
 
 export function resolveProjectOutputsDir(projectId: string): string {
   return path.join(resolveProjectRuntimeRoot(projectId), "outputs");
-}
-
-export function resolveProjectEventsLogPath(projectId: string): string {
-  return path.join(resolveProjectLogsDir(projectId), "events.jsonl");
-}
-
-export async function appendTeamEventLog(input: {
-  teamId: string;
-  projectId: string;
-  kind: TeamEventKind;
-  agentId?: string;
-  taskId?: string;
-  label?: string;
-  detail?: string;
-  data?: Record<string, unknown>;
-}): Promise<TeamEventRecord> {
-  const record: TeamEventRecord = {
-    id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    ts: new Date().toISOString(),
-    kind: input.kind,
-    teamId: input.teamId,
-    projectId: input.projectId,
-    agentId: input.agentId?.trim() || undefined,
-    taskId: input.taskId?.trim() || undefined,
-    label: input.label?.trim() || undefined,
-    detail: input.detail?.trim() || undefined,
-    data: input.data,
-  };
-  const logPath = resolveProjectEventsLogPath(input.projectId);
-  await mkdir(path.dirname(logPath), { recursive: true });
-  await appendFile(logPath, `${JSON.stringify(record)}\n`, "utf-8");
-  return record;
-}
-
-export async function readRecentTeamEvents(
-  projectId: string,
-  limit = 20,
-): Promise<TeamEventRecord[]> {
-  const logPath = resolveProjectEventsLogPath(projectId);
-  try {
-    const raw = await readFile(logPath, "utf-8");
-    const rows = raw
-      .split("\n")
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .map((entry) => JSON.parse(entry) as TeamEventRecord);
-    return rows.slice(-limit);
-  } catch {
-    return [];
-  }
 }
 
 // Re-export node helpers used by domain modules so they can import from one place.

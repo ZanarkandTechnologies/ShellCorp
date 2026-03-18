@@ -116,7 +116,6 @@ shellcorp agent monitor --agent-id alpha-pm --json
 
 The canonical monitoring files are now:
 
-- `~/.openclaw/projects/<projectId>/logs/events.jsonl`
 - `~/.openclaw/projects/<projectId>/logs/`
 - `~/.openclaw/projects/<projectId>/outputs/`
 

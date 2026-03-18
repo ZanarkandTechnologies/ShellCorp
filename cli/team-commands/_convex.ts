@@ -6,8 +6,16 @@
  * - Heartbeat file rendering and syncing from workspace templates.
  *
  * KEY CONCEPTS:
- * - All functions are async and rely on env vars for Convex endpoint resolution.
+ * - Convex endpoint resolution prefers shell env, then persisted ShellCorp runtime config in `openclaw.json`.
  * - Heartbeat render helpers call readBoardSnapshot to fill template variables.
+ *
+ * USAGE:
+ * - postBoardCommand({ projectId, command: "task_add", title: "Draft" })
+ * - postStatusReport({ agentId: "main", state: "planning", statusText: "Reviewing", stepKey: "..." })
+ *
+ * MEMORY REFERENCES:
+ * - MEM-0212
+ * - MEM-0213
  */
 import path from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -30,11 +38,9 @@ import {
 
 // ─── Convex HTTP helpers ─────────────────────────────────────────────────────
 
-function resolveConvexSiteUrl(): string {
-  const raw =
-    process.env.SHELLCORP_CONVEX_SITE_URL?.trim() || process.env.CONVEX_SITE_URL?.trim() || "";
+function normalizeConvexSiteUrl(raw: string): string {
   if (!raw) {
-    throw new Error("missing_convex_site_url:set SHELLCORP_CONVEX_SITE_URL");
+    throw new Error("missing_convex_site_url:set SHELLCORP_CONVEX_SITE_URL or rerun shellcorp onboarding");
   }
   let parsed: URL;
   try {
@@ -46,6 +52,31 @@ function resolveConvexSiteUrl(): string {
     throw new Error(`invalid_convex_site_url_protocol:${parsed.protocol}`);
   }
   return parsed.href.replace(/\/+$/, "");
+}
+
+async function readPersistedConvexSiteUrl(): Promise<string> {
+  const stateRoot = resolveOpenclawStateRoot();
+  const openclawConfigPath = path.join(stateRoot, "openclaw.json");
+  try {
+    const raw = await readFile(openclawConfigPath, "utf-8");
+    const config = asRecord(JSON.parse(raw) as unknown);
+    const shellcorp = asRecord(config.shellcorp);
+    const convex = asRecord(shellcorp.convex);
+    return typeof convex.siteUrl === "string" ? convex.siteUrl.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+async function resolveConvexSiteUrl(): Promise<string> {
+  const envRaw =
+    process.env.SHELLCORP_CONVEX_SITE_URL?.trim() || process.env.CONVEX_SITE_URL?.trim() || "";
+  if (envRaw) return normalizeConvexSiteUrl(envRaw);
+
+  const persistedRaw = await readPersistedConvexSiteUrl();
+  if (persistedRaw) return normalizeConvexSiteUrl(persistedRaw);
+
+  throw new Error("missing_convex_site_url:set SHELLCORP_CONVEX_SITE_URL or rerun shellcorp onboarding");
 }
 
 function classifyFetchFailure(error: unknown): string {
@@ -74,7 +105,7 @@ export async function postConvexJson(
   pathname: string,
   payload: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const baseUrl = resolveConvexSiteUrl();
+  const baseUrl = await resolveConvexSiteUrl();
   const endpoint = `${baseUrl}${pathname}`;
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -154,6 +185,36 @@ export async function postBoardQuery(payload: Record<string, unknown>): Promise<
   if (!body || typeof body !== "object" || Array.isArray(body))
     throw new Error("board_query_invalid_response");
   return body.data;
+}
+
+export type TeamTimelineEventRow = {
+  sourceType?: "agent_event" | "board_event";
+  occurredAt?: number;
+  agentId?: string;
+  actorAgentId?: string;
+  eventType?: string;
+  activityType?: string;
+  label?: string;
+  detail?: string;
+  taskId?: string;
+  beatId?: string;
+  stepKey?: string;
+};
+
+export async function getRecentTeamTimeline(payload: {
+  projectId: string;
+  teamId: string;
+  limit?: number;
+  agentId?: string;
+}): Promise<TeamTimelineEventRow[]> {
+  const data = await postBoardQuery({
+    projectId: payload.projectId,
+    teamId: payload.teamId,
+    query: "timeline",
+    limit: payload.limit,
+    agentId: payload.agentId,
+  });
+  return Array.isArray(data) ? (data as TeamTimelineEventRow[]) : [];
 }
 
 export async function postStatusReport(

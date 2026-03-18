@@ -31,17 +31,19 @@ UI-first OpenClaw mapping pivot:
 - Parity migration in progress: chat/computer/manage-agent/training now route through dedicated Zanarkand-style modals with one-trigger-to-one-modal behavior.
 - Added frontend-safe OpenClaw compatibility hooks for chat context/messages so UI parity ships before full backend feature parity.
 - Restored broken office interactions: employee Chat now reliably opens ChatDialog above scene overlays, employee Tasks now routes to owner-focused Kanban, and team-cluster clicks open a dedicated Team Panel shell.
-- Added OpenClaw-backed Team Panel surface (`overview`, `kanban`, `projects`, `communications`) and wired it into office simulation modal/panel routing without reintroducing legacy backend dependencies.
+- Added OpenClaw-backed Team Panel surface (`overview`, `kanban`, `projects`, `memory`) and wired it into office simulation modal/panel routing without reintroducing legacy backend dependencies.
 - Removed the OfficeWorkspace overlay and restored panel-first navigation: top-left menu now opens standalone Team/Agent Session/Skills panels plus Settings, while in-scene actions open filtered panel contexts.
 - UI layout is now aligned with operator expectations: menu at top-left, settings only as a menu option, and logs toggle anchored at bottom-right.
 - Added employee-triggered Agent Memory Panel (`List`, `Search`, `Graph`) backed by parsed OpenClaw memory files (`MEMORY.md` + `memory/*.md`) through a new state-bridge endpoint, with visual QA spec/report artifacts under `docs/research/qa-testing/`.
 - Added phase-2 planning artifacts: founder-direction study (`ST01`), new specs (`SC06`-`SC10`), and expected visual QA ASCII baselines for Kanban Federation Panel and Agent Personalization Studio.
 - Implemented SC06 baseline: federated task contracts (`provider`, `canonicalProvider`, `syncState`, `providerUrl`), project policy/profile structures, manual resync route, provider/canonical controls in Team Kanban, and Notion profile bootstrap UI for deterministic tool metadata.
-- Reworked `SC12` again onto the shared board/session model: CEO team-generation work now prefers CEO-board tasks plus linked session/chat, founder review surfaces are filtered views over those tasks, and lightweight task metadata carries approval/result state while existing ShellCorp CLI commands remain the execution path.
+- Reworked `SC12` onto the shared board/session model and finished the proposal purge: workflow now lives on normal board tasks with markdown task memory, `review` is a real board lane, `team proposal` is gone, and per-agent boards are filtered views over one canonical team board.
 - Tightened the SC12 operator surface: the CEO Workbench task detail modal now uses a wider two-pane layout for readable task memory plus review actions, and the legacy office `Approvals` launcher has been removed so review flows only through `Human Review`.
 - Added Notion plugin gateway methods for task list/create/update/sync and profile bootstrap (`notion-shell.tasks.*`, `notion-shell.profile.bootstrap`) so external provider logic stays plugin-first.
 - Fixed office placement persistence regression: drag-release updates now resolve canonical office-object IDs across UI/persistence boundaries, re-sync local transforms after reload, and preserve last confirmed transform on save failure; added targeted tests and QA artifacts for placement persistence.
 - Added two-phase Notion comment webhook flow: temporary FastAPI payload probe (`tools/notion-webhook-probe`) for verification/capture, then OpenClaw hooks mapping + transform hot-swap (`~/.openclaw/hooks/transforms/notion.ts`) with comments-first routing.
+- Added thin agent coordination on the CLI: `agent list`, `agent search`, and `agent send` now wrap native `openclaw agent` turns and emit one shared `handoff` breadcrumb into the team timeline instead of restoring a separate communications channel.
+- Added session-scoped CLI actor identity: `agent login`, `agent logout`, and `whoami` now establish env-backed caller context (`SHELLCORP_AGENT_ID` plus derived team/project/role), top-level `status` resolves from that shared context, and conflicting manual team/project overrides fail fast.
 
 ---
 

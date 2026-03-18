@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { countSc12PendingReviewTasks, resolveSc12BoardTasks } from "./sc12-board";
+import { countReviewLaneTasks, resolveReviewBoardTasks } from "./review-board";
 
-describe("sc12 board helpers", () => {
+describe("review board helpers", () => {
   it("falls back to mock tasks after the shared board loads empty", () => {
-    const resolved = resolveSc12BoardTasks({
+    const resolved = resolveReviewBoardTasks({
       convexEnabled: true,
       hasLoaded: true,
       rows: [],
@@ -12,19 +12,19 @@ describe("sc12 board helpers", () => {
 
     expect(resolved.isMock).toBe(true);
     expect(resolved.tasks).toHaveLength(3);
-    expect(countSc12PendingReviewTasks(resolved.tasks)).toBe(2);
+    expect(countReviewLaneTasks(resolved.tasks)).toBe(2);
   });
 
   it("keeps live tasks when board data exists", () => {
-    const resolved = resolveSc12BoardTasks({
+    const resolved = resolveReviewBoardTasks({
       convexEnabled: true,
       hasLoaded: true,
       rows: [
         {
           taskId: "task-live",
           projectId: "ceo-board",
-          title: "Live proposal",
-          status: "todo",
+          title: "Live planning task",
+          status: "review",
           approvalState: "approved",
         },
       ],
@@ -34,7 +34,7 @@ describe("sc12 board helpers", () => {
     expect(resolved.tasks).toEqual([
       expect.objectContaining({
         id: "task-live",
-        title: "Live proposal",
+        title: "Live planning task",
         approvalState: "approved",
       }),
     ]);

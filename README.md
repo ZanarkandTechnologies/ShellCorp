@@ -29,7 +29,8 @@ The product is intentionally different from a static "spawn a giant company" mod
 Inside a team:
 
 - `Overview` shows compact roster cards with embedded face/avatar renders, role, live status, latest task context, and quick actions.
-- `Activity` is the board-first worklog for handoffs, blocked reasons, and execution updates tied to tickets.
+- `Memory` is the shared append-only team log for decisions, handoffs, and results, while Timeline and Kanban continue to show live execution state.
+- direct agent-to-agent coordination is allowed through the CLI when session-local context matters, but it stays thin: the message runs through native OpenClaw transport and only leaves one visible breadcrumb in the shared timeline instead of reviving team chat as a second source of truth.
 
 The main MVP loop is founder control, not artificial office scale.
 
@@ -55,9 +56,10 @@ The main MVP loop is founder control, not artificial office scale.
 - `CEO-led team formation`: create teams through a proposal and approval loop instead of hardcoding a company upfront
 - `Office UI`: run ShellCorp from a visual office with focused operator surfaces instead of a pile of raw terminals
 - `ShellCorp CLI`: onboard, manage teams, inspect office state, run doctor checks, and handle office decor from the command line
+- `Session-scoped CLI identity`: agents can soft-login per shell session so status, coordination, and board writes resolve caller identity consistently without repeating `--agent-id`
 - `Skills workbench`: inspect skills, demos, file-backed metadata, and per-agent skill configuration from one place
 - `Memory and session visibility`: inspect agent memory, session context, and current work state from OpenClaw-backed data
-- `Team presence and activity`: team overview surfaces show each member as a compact face/avatar card with role, live state, latest task, and quick actions, while the Activity tab keeps coordination tied to ticket worklogs instead of faux team chat
+- `Team presence and memory`: team overview surfaces show each member as a compact face/avatar card with role, live state, latest task, and quick actions, while the Memory tab keeps shared coordination/history in one append-only log instead of faux team chat
 - `Plugin-first integrations`: keep integrations aligned with OpenClaw's plugin model, starting with the in-repo Notion plugin
 - `Mesh and personalization path`: support agent personalization and mesh/image wrapper flows so the office can feel more alive over time
 - `Office decor and style`: customize the office once the core founder-control loop is in place
@@ -104,6 +106,8 @@ From the repo root:
 npm install
 npm link
 npm run shell -- onboarding
+eval "$(shellcorp agent login --agent-id main)"
+npm run shell -- whoami
 npm run shell -- ui
 ```
 
@@ -118,6 +122,7 @@ What `shellcorp onboarding` does:
 - shows a staged bootstrap flow so you can see each setup phase complete
 - generates `ui/.env.local` with safe `VITE_*` values
 - copies Convex URL from the repo-root `.env.local` when available
+- persists the Convex site URL into ShellCorp runtime config so the CLI can reuse it without manual exports
 - runs doctor checks and prints the next steps
 - offers to launch the UI immediately so you can continue onboarding in-app
 
@@ -219,9 +224,15 @@ Useful commands:
 - `npm run shell -- onboarding --install-cli`
 - `npm run shell -- onboarding --skip-install-cli`
 - `npm run shell -- onboarding --launch-ui`
+- `eval "$(shellcorp agent login --agent-id alpha-pm)"`
+- `npm run shell -- whoami --json`
+- `npm run shell -- agent list --json`
+- `npm run shell -- agent search --query builder --json`
+- `npm run shell -- agent send --from alpha-pm --to alpha-builder --message "Need blocker update" --task-id task-42 --json`
 - `npm run shell -- ui`
 - `npm run shell -- team run live --team-id team-proj-shellcorp-dev-team --cadence-minutes 1 --goal "Live demo loop" --json`
 - `npm run shell -- team monitor --team-id team-proj-shellcorp-dev-team --json`
+- `npm run shell -- team archive --team-id team-proj-example --deregister-openclaw`
 - `npm run shell -- office decor docs`
 - `npm run shell -- office decor list`
 - `npm run shell -- office decor pack list`
@@ -230,10 +241,12 @@ Useful commands:
 For autonomous-team MVP work, the main runtime artifacts are:
 
 - `~/.openclaw/openclaw.json`
-- `~/.openclaw/projects/<projectId>/logs/events.jsonl`
 - `~/.openclaw/projects/<projectId>/logs/`
 - `~/.openclaw/projects/<projectId>/outputs/`
 - `~/.openclaw/workspace-<agentId>/HEARTBEAT.md`
+
+Realtime shared operational memory now lives in Convex-backed team/task surfaces, while OpenClaw workspace memory remains agent-owned/private and heavier artefacts stay filesystem-backed.
+- agent-attributed CLI writes should come from a shell session that has been initialized with `shellcorp agent login`; `SHELLCORP_AGENT_ID` is the canonical caller identity and team/project scope are derived from the company model, with conflicting manual overrides failing fast.
 - `npm run shell -- office decor wall list`
 - `npm run shell -- office decor background list`
 - `npm run shell -- office decor pack apply clam-cabinet`
@@ -243,6 +256,8 @@ For autonomous-team MVP work, the main runtime artifacts are:
 - `npm run shell -- doctor team-data --json`
 - `npm run shell -- office doctor --json`
 - `npm run shell -- team list --json`
+
+When you archive a team with `--deregister-openclaw`, ShellCorp now removes that team's OpenClaw `agents.list` entries and deletes each managed agent workspace under `~/.openclaw` so retired businesses do not leave stale runtime folders behind.
 - `npm run shell -- team proposal list --json`
 - `npm run shell -- team proposal show --proposal-id <proposalId> --json`
 - `scripts/reset-demo-office.sh --profile minimal`

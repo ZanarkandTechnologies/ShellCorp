@@ -3,17 +3,18 @@
 /**
  * PROJECTS TAB
  * ============
- * Project cards grid with profit pulse, KPIs, and artefact panel drill-down.
+ * Team Panel Artefacts tab shell.
  *
  * KEY CONCEPTS:
- * - Lists all projects relevant to this team/global scope.
- * - Drills into ProjectArtefactPanel when a project is selected.
+ * - Team-scoped mode opens directly into the current project's artefacts.
+ * - Global mode keeps a lightweight scope picker for switching between projects.
+ * - Treats each project as a bounded artefact scope instead of a generic workspace browser.
  *
  * USAGE:
- * - Rendered inside TeamPanel as the "projects" TabsContent.
+ * - Rendered inside TeamPanel as the Artefacts tab content.
  */
 
-import { useMemo, useState } from "react";
+import { type ReactElement, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,31 +51,35 @@ type TaskModel = {
 
 interface ProjectsTabProps {
   allProjects: ProjectModel[];
+  teamId?: string | null;
   activeProjectId: string | null | undefined;
   projectTaskCounts: Map<string, number>;
   companyModel: { agents: AgentModel[]; tasks: TaskModel[] } | null;
   globalMode: boolean;
-  selectedProjectId: string | null;
   setSelectedProjectId: (id: string | null) => void;
   currencyFormatter: Intl.NumberFormat;
 }
 
 export function ProjectsTab({
   allProjects,
+  teamId,
   activeProjectId,
   projectTaskCounts,
   companyModel,
   globalMode,
-  selectedProjectId,
   setSelectedProjectId,
   currencyFormatter,
-}: ProjectsTabProps): JSX.Element {
+}: ProjectsTabProps): ReactElement {
   const [selectedArtefactProjectId, setSelectedArtefactProjectId] = useState<string | null>(null);
 
-  const selectedArtefactProject = useMemo(
-    () => allProjects.find((e) => e.id === selectedArtefactProjectId) ?? null,
-    [allProjects, selectedArtefactProjectId],
-  );
+  const defaultArtefactProject = useMemo(() => {
+    if (!allProjects.length) return null;
+    if (!globalMode) return allProjects[0] ?? null;
+    if (!selectedArtefactProjectId) return null;
+    return allProjects.find((e) => e.id === selectedArtefactProjectId) ?? null;
+  }, [allProjects, globalMode, selectedArtefactProjectId]);
+
+  const selectedArtefactProject = defaultArtefactProject;
 
   const selectedArtefactAgentIds = useMemo(() => {
     if (!selectedArtefactProject || !companyModel) return [];
@@ -105,10 +110,11 @@ export function ProjectsTab({
       <ProjectArtefactPanel
         projectId={selectedArtefactProject.id}
         projectName={selectedArtefactProject.name}
+        teamId={teamId}
         agentIds={selectedArtefactAgentIds}
         taskHints={selectedArtefactTaskHints}
         trackingContext={selectedArtefactProject.trackingContext}
-        onBack={() => setSelectedArtefactProjectId(null)}
+        onBack={globalMode ? () => setSelectedArtefactProjectId(null) : undefined}
       />
     );
   }
