@@ -31,11 +31,22 @@ Build Shell Company as a UI-first control center on top of OpenClaw:
 1. **State mapping layer**: map OpenClaw state directories and gateway APIs into UI view models.
 2. **Minimal office UX**: keep the office metaphor, but optimize it for a small number of meaningful surfaces instead of a crowded default company.
 3. **Plugin-first integrations**: package Notion logic as an OpenClaw plugin instead of internal gateway code.
-4. **CEO team-formation workflow**: make CEO chat, proposal persistence, board-native founder review in the CEO Workbench, and CLI-backed execution the primary product path.
+4. **CEO team-formation workflow**: make CEO chat, board-native founder review in the CEO Workbench, markdown-backed proposal/task memory, and CLI-backed execution the primary product path.
 5. **Operational surfaces**: improve memory and skill visibility for the active CEO/team workflow.
 6. **Federated work orchestration**: unify external board work (Notion/Vibe/internal) into one operator surface.
 7. **Personalized presence and decor**: let operators style the office after the core founder-control loop is working.
 8. **Roster-first team oversight**: each team surface should show who each agent is, what they are doing now, and keep team coordination anchored to ticket activity and task memory instead of chat-style team conversation.
+
+## State Shape Rule
+
+ShellCorp should only keep strong structure where routing and synchronization require it.
+
+- Kanban/task identity, ordering, ownership, approval state, and session linkage stay structured.
+- Rich task, proposal, and project working state should default to markdown text that humans and agents can rewrite directly.
+- Execution history should prefer append-only logs over mutable workflow objects.
+- Shared team/project memory should prefer append-only realtime logs with markdown bodies, while task-local working memory can stay on the task itself.
+
+This product should not invent a large proposal/config schema when a board task plus markdown body can carry the workflow.
 
 ## Core Platform Behaviors
 
@@ -44,6 +55,7 @@ Build Shell Company as a UI-first control center on top of OpenClaw:
 - Agent and session topology follows OpenClaw multi-agent bindings
 - Notion integration is shipped as an in-repo OpenClaw plugin
 - Chat actions from UI are bridged back to OpenClaw gateway APIs
+- Task and project execution memory should stay inspectable as markdown-first working state with append-only audit logs
 
 ## MVP Focus
 
@@ -54,7 +66,7 @@ Single VPS, one shared OpenClaw instance, a small number of active teams:
 - Ship the CEO-led team proposal and approval loop as the main office workflow
 - Show per-team board/activity context for newly created teams
 - Make team oversight legible at a glance with compact member presence cards that show face/avatar, live state, latest task context, and quick actions
-- Make team oversight legible through a roster-first Overview plus a board-first Activity worklog tied to ticket execution
+- Make team oversight legible through a roster-first Overview plus a shared append-only Memory log tied to ticket execution and team decisions
 - Ship Notion plugin in-repo and wired for MVP workflows
 - Ship practical Memory and Skills panels for active operators, not broad office clutter
 
@@ -73,6 +85,7 @@ After MVP baseline stabilizes, Shell Company extends from "minimal founder-contr
 - Make CEO-led team formation the primary product value
 - Keep the office small, readable, and useful by default
 - Provide reliable session and agent observability from real OpenClaw state
+- Keep CLI and sidecar state thin: structured for board mechanics, markdown-first for working content
 - Make it easy to identify each agent on a team by face/avatar, role, and current work without opening separate panels first
 - Package Notion integration as an OpenClaw extension with schema-driven config
 - Keep architecture simple: local VPS state first, no mandatory external DB
@@ -89,6 +102,7 @@ After MVP baseline stabilizes, Shell Company extends from "minimal founder-contr
 - Building a generic public multi-tenant SaaS in this MVP
 - Large connector marketplace beyond Notion in first slice
 - Replacing OpenClaw core session/routing internals
+- Building proposal-specific data models when shared board metadata plus markdown task memory is sufficient
 - Rebuilding full Notion/Vibe UX inside Shell Company
 - Shipping a large default office full of prebuilt teams just to make the UI feel busy
 - Attempting fully automatic multi-master conflict resolution in first federation slice
@@ -100,6 +114,7 @@ After MVP baseline stabilizes, Shell Company extends from "minimal founder-contr
 - In-repo plugin development model for fast iteration
 - Spec-first workflow for major scope changes
 - Security-first defaults for plugin trust and secret handling
+- Prefer markdown/file-backed working state over new structured workflow stores unless routing or sync genuinely requires schema
 - Demo defaults should bias toward a tiny office and a small number of meaningful teams
 - External-provider write ownership must remain explicit and deterministic per project
 - Sync behavior must be observable/auditable in UI with failure states surfaced to operators
@@ -111,7 +126,7 @@ After MVP baseline stabilizes, Shell Company extends from "minimal founder-contr
 - Operators can view the CEO and active teams from OpenClaw-backed data
 - Session timeline and chat bridge work for at least one real founder-to-team flow
 - Team overview surfaces show current agent presence with face/avatar, live state, and latest owned task context
-- Founders can inspect team work through a board-first Activity tab while using direct agent chat only for explicit operator intervention
+- Founders can inspect team work through a shared append-only Memory tab while using direct agent chat only for explicit operator intervention
 - Notion plugin loads and runs under OpenClaw plugin system
 - Memory and Skills panels show actionable state for the CEO and active demo teams
 - Docs/README/specs fully reflect this OpenClaw-first architecture

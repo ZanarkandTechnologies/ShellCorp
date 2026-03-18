@@ -29,7 +29,7 @@ The product is intentionally different from a static "spawn a giant company" mod
 Inside a team:
 
 - `Overview` shows compact roster cards with embedded face/avatar renders, role, live status, latest task context, and quick actions.
-- `Activity` is the board-first worklog for handoffs, blocked reasons, and execution updates tied to tickets.
+- `Memory` is the shared append-only team log for decisions, handoffs, and results, while Timeline and Kanban continue to show live execution state.
 
 The main MVP loop is founder control, not artificial office scale.
 
@@ -57,7 +57,7 @@ The main MVP loop is founder control, not artificial office scale.
 - `ShellCorp CLI`: onboard, manage teams, inspect office state, run doctor checks, and handle office decor from the command line
 - `Skills workbench`: inspect skills, demos, file-backed metadata, and per-agent skill configuration from one place
 - `Memory and session visibility`: inspect agent memory, session context, and current work state from OpenClaw-backed data
-- `Team presence and activity`: team overview surfaces show each member as a compact face/avatar card with role, live state, latest task, and quick actions, while the Activity tab keeps coordination tied to ticket worklogs instead of faux team chat
+- `Team presence and memory`: team overview surfaces show each member as a compact face/avatar card with role, live state, latest task, and quick actions, while the Memory tab keeps shared coordination/history in one append-only log instead of faux team chat
 - `Plugin-first integrations`: keep integrations aligned with OpenClaw's plugin model, starting with the in-repo Notion plugin
 - `Mesh and personalization path`: support agent personalization and mesh/image wrapper flows so the office can feel more alive over time
 - `Office decor and style`: customize the office once the core founder-control loop is in place
@@ -235,6 +235,8 @@ For autonomous-team MVP work, the main runtime artifacts are:
 - `~/.openclaw/projects/<projectId>/logs/`
 - `~/.openclaw/projects/<projectId>/outputs/`
 - `~/.openclaw/workspace-<agentId>/HEARTBEAT.md`
+
+Realtime shared operational memory now lives in Convex-backed team/task surfaces, while OpenClaw workspace memory remains agent-owned/private and heavier artefacts stay filesystem-backed.
 - `npm run shell -- office decor wall list`
 - `npm run shell -- office decor background list`
 - `npm run shell -- office decor pack apply clam-cabinet`
