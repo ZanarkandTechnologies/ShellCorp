@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Team-level operator surfaces for overview, kanban, projects, timeline, and business workflows.
+Team-level operator surfaces for overview, kanban, artefacts, timeline, and business workflows.
 
 ## Public API / Entrypoints
 

@@ -27,21 +27,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useChatActions } from "@/features/chat-system/chat-store";
 import { useAppStore } from "@/lib/app-store";
+import { UI_Z } from "@/lib/z-index";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
 import { useOpenClawAdapter } from "@/providers/openclaw-adapter-provider";
-import { UI_Z } from "@/lib/z-index";
 import { LedgerTabPanel } from "./business-flow/ledger-tab-panel";
-import { OverviewTab } from "./overview-tab";
+import { BusinessTab } from "./business-tab";
 import { KanbanTab } from "./kanban-tab";
+import { OverviewTab } from "./overview-tab";
 import { ProjectsTab } from "./projects-tab";
 import { TeamMemoryTab } from "./team-memory-tab";
+import { deriveProjectId, type TabKey } from "./team-panel-types";
 import { TimelineTab } from "./timeline-tab";
-import { BusinessTab } from "./business-tab";
 import { useTeamPanelBoardState } from "./use-team-panel-board";
 import { useTeamPanelBusinessState } from "./use-team-panel-business";
 import { useTeamPanelMemoryState } from "./use-team-panel-memory";
 import { useTeamPanelRuntimeState } from "./use-team-panel-runtime";
-import { deriveProjectId, type TabKey } from "./team-panel-types";
 
 interface TeamPanelProps {
   teamId: string | null;
@@ -113,19 +113,14 @@ export function TeamPanel({
     [globalMode, teamEmployees, usageEmployees],
   );
 
-  const {
-    convexEnabled,
-    projectTasks,
-    communicationRows,
-    boardActionState,
-    handleBoardCommand,
-  } = useTeamPanelBoardState({
-    companyModel,
-    globalMode,
-    project,
-    activeProjectId,
-    teamScopeId,
-  });
+  const { convexEnabled, projectTasks, communicationRows, boardActionState, handleBoardCommand } =
+    useTeamPanelBoardState({
+      companyModel,
+      globalMode,
+      project,
+      activeProjectId,
+      teamScopeId,
+    });
 
   const { memoryRows, composeState, appendOperatorNote } = useTeamPanelMemoryState({
     activeProjectId,
@@ -248,7 +243,7 @@ export function TeamPanel({
           <TabsList className="mt-4 w-fit">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="kanban">Kanban</TabsTrigger>
-            <TabsTrigger value="projects">Projects</TabsTrigger>
+            <TabsTrigger value="projects">Artefacts</TabsTrigger>
             <TabsTrigger value="memory">Memory</TabsTrigger>
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="business">Business</TabsTrigger>
@@ -293,11 +288,11 @@ export function TeamPanel({
           <TabsContent value="projects" className="mt-4 min-h-0 flex-1 overflow-hidden">
             <ProjectsTab
               allProjects={allProjects}
+              teamId={teamScopeId}
               activeProjectId={project?.id}
               projectTaskCounts={projectTaskCounts}
               companyModel={companyModel}
               globalMode={globalMode}
-              selectedProjectId={selectedProjectId}
               setSelectedProjectId={setSelectedProjectId}
               currencyFormatter={currencyFormatter}
             />

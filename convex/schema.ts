@@ -120,4 +120,25 @@ export default defineSchema({
     .index("by_project_created_at", ["projectId", "createdAt"])
     .index("by_team_created_at", ["teamId", "createdAt"])
     .index("by_project_task_created_at", ["projectId", "taskId", "createdAt"]),
+
+  projectArtefactIndex: defineTable({
+    teamId: v.optional(v.string()),
+    projectId: v.string(),
+    agentId: v.string(),
+    workspace: v.string(),
+    path: v.string(),
+    name: v.string(),
+    kind: v.string(),
+    sizeBytes: v.optional(v.number()),
+    updatedAtMs: v.optional(v.number()),
+    indexedAtMs: v.number(),
+    lastSeenAtMs: v.number(),
+    status: v.union(v.literal("present"), v.literal("missing")),
+    isPreviewable: v.boolean(),
+    taskId: v.optional(v.string()),
+    truncated: v.optional(v.boolean()),
+  })
+    .index("by_project_indexed_at", ["projectId", "indexedAtMs"])
+    .index("by_project_agent_path", ["projectId", "agentId", "path"])
+    .index("by_project_status_indexed_at", ["projectId", "status", "indexedAtMs"]),
 });
