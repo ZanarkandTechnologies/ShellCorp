@@ -86,6 +86,11 @@ export interface EmployeeProps {
   heartbeatBubbles?: Array<{ label: string; weight?: number }>;
   profileImageUrl?: string;
   useCompactOverlayMode?: boolean;
+  appearance?: {
+    clothesStyle?: "default" | "dj" | "professional" | "techBro";
+    hairColor?: string;
+    petType?: "none" | "dog" | "cat" | "goldfish" | "rabbit" | "lobster";
+  };
 }
 
 function AvatarShell({
@@ -95,6 +100,8 @@ function AvatarShell({
   teamId,
   useCompactOverlayMode,
   projection = false,
+  petType,
+  clothesStyle,
 }: {
   colors: AvatarPalette;
   profileImageUrl?: string;
@@ -102,6 +109,8 @@ function AvatarShell({
   teamId?: string;
   useCompactOverlayMode?: boolean;
   projection?: boolean;
+  petType?: "none" | "dog" | "cat" | "goldfish" | "rabbit" | "lobster";
+  clothesStyle?: "default" | "dj" | "professional" | "techBro";
 }) {
   const baseY = -TOTAL_HEIGHT / 2;
   const materialProps = projection ? { transparent: true, opacity: 0.48 } : {};
@@ -126,6 +135,16 @@ function AvatarShell({
       >
         <meshStandardMaterial color={projectionShirtColor} {...materialProps} />
       </Box>
+
+      {clothesStyle === "techBro" && !projection ? (
+        <Box
+          args={[BODY_WIDTH * 0.9, BODY_HEIGHT * 0.5, BODY_WIDTH * 0.35]}
+          position={[0, baseY + LEG_HEIGHT + BODY_HEIGHT * 0.85, -BODY_WIDTH * 0.42]}
+          castShadow
+        >
+          <meshStandardMaterial color={colors.shirt} />
+        </Box>
+      ) : null}
 
       {profileImageUrl && profileImageUrl.trim().length > 0 && !projection ? (
         <ProfileHead
@@ -156,8 +175,92 @@ function AvatarShell({
       <LobsterAntennae />
       <LobsterEyes />
       {!projection ? <TeamPlumbob teamId={teamId} /> : null}
+      {petType && !projection && petType !== "none" ? (
+        <OfficePetMesh petType={petType} />
+      ) : null}
     </group>
   );
+}
+
+function OfficePetMesh({
+  petType,
+}: {
+  petType: "dog" | "cat" | "goldfish" | "rabbit" | "lobster";
+}) {
+  const baseY = -TOTAL_HEIGHT / 2 + LEG_HEIGHT;
+  if (petType === "dog") {
+    return (
+      <group position={[BODY_WIDTH * 0.9, baseY, BODY_WIDTH * 0.25]}>
+        <Box args={[0.22, 0.14, 0.36]} position={[0, 0.07, 0]} castShadow>
+          <meshStandardMaterial color="#8D6E63" />
+        </Box>
+        <Box args={[0.16, 0.12, 0.18]} position={[0, 0.18, 0.12]} castShadow>
+          <meshStandardMaterial color="#5D4037" />
+        </Box>
+      </group>
+    );
+  }
+  if (petType === "cat") {
+    return (
+      <group position={[BODY_WIDTH * 0.9, baseY, BODY_WIDTH * 0.25]}>
+        <Box args={[0.22, 0.14, 0.36]} position={[0, 0.07, 0]} castShadow>
+          <meshStandardMaterial color="#B0BEC5" />
+        </Box>
+        <Box args={[0.16, 0.12, 0.18]} position={[0, 0.18, 0.12]} castShadow>
+          <meshStandardMaterial color="#78909C" />
+        </Box>
+      </group>
+    );
+  }
+  if (petType === "goldfish") {
+    return (
+      <group position={[BODY_WIDTH * 0.1, baseY + 0.12, -BODY_WIDTH * 0.9]}>
+        <Box args={[0.3, 0.2, 0.3]} position={[0, 0.1, 0]} castShadow>
+          <meshStandardMaterial color="#B3E5FC" opacity={0.85} transparent />
+        </Box>
+        <Box args={[0.1, 0.06, 0.18]} position={[0, 0.13, 0]} castShadow>
+          <meshStandardMaterial color="#FF9800" />
+        </Box>
+      </group>
+    );
+  }
+  if (petType === "rabbit") {
+    return (
+      <group position={[BODY_WIDTH * 0.9, baseY, BODY_WIDTH * 0.2]}>
+        <Box args={[0.2, 0.14, 0.32]} position={[0, 0.07, 0]} castShadow>
+          <meshStandardMaterial color="#E0E0E0" />
+        </Box>
+        <Box args={[0.12, 0.2, 0.12]} position={[-0.06, 0.22, 0.08]} castShadow>
+          <meshStandardMaterial color="#E0E0E0" />
+        </Box>
+        <Box args={[0.12, 0.2, 0.12]} position={[0.06, 0.22, 0.08]} castShadow>
+          <meshStandardMaterial color="#E0E0E0" />
+        </Box>
+        <Box args={[0.06, 0.05, 0.08]} position={[0, 0.06, -0.18]} castShadow>
+          <meshStandardMaterial color="#BDBDBD" />
+        </Box>
+      </group>
+    );
+  }
+  if (petType === "lobster") {
+    return (
+      <group position={[BODY_WIDTH * 0.85, baseY, BODY_WIDTH * 0.25]}>
+        <Box args={[0.22, 0.1, 0.4]} position={[0, 0.05, 0]} castShadow>
+          <meshStandardMaterial color="#D84315" />
+        </Box>
+        <Box args={[0.08, 0.06, 0.14]} position={[-0.1, 0.06, 0.2]} castShadow>
+          <meshStandardMaterial color="#D84315" />
+        </Box>
+        <Box args={[0.08, 0.06, 0.14]} position={[0.1, 0.06, 0.2]} castShadow>
+          <meshStandardMaterial color="#D84315" />
+        </Box>
+        <Box args={[0.06, 0.05, 0.12]} position={[0, 0.05, -0.22]} castShadow>
+          <meshStandardMaterial color="#BF360C" />
+        </Box>
+      </group>
+    );
+  }
+  return null;
 }
 
 const Employee = memo(function Employee({
@@ -185,6 +288,7 @@ const Employee = memo(function Employee({
   heartbeatState,
   heartbeatBubbles = [],
   useCompactOverlayMode = false,
+  appearance,
 }: EmployeeProps) {
   const employeeIdString = `employee-${id}`;
   const isSelected = useAppStore((state) => state.selectedObjectId === employeeIdString);
@@ -235,18 +339,48 @@ const Employee = memo(function Employee({
     [],
   );
 
-  const finalColors = useMemo(
-    () =>
-      isCEO
-        ? {
-            hair: "#FFD700",
-            skin: "#FF5722",
-            shirt: "#CC2200",
-            pants: "#8B0000",
-          }
-        : colors,
-    [isCEO, colors],
-  );
+  const finalColors = useMemo<AvatarPalette>(() => {
+    const base: AvatarPalette = isCEO
+      ? {
+          hair: "#FFD700",
+          skin: "#FF5722",
+          shirt: "#CC2200",
+          pants: "#8B0000",
+        }
+      : colors;
+
+    if (!appearance) return base;
+
+    let shirt = base.shirt;
+    let pants = base.pants;
+
+    switch (appearance.clothesStyle) {
+      case "dj":
+        shirt = "#FF4081";
+        pants = "#111111";
+        break;
+      case "professional":
+        shirt = "#ECEFF1";
+        pants = "#263238";
+        break;
+      case "techBro":
+        shirt = "#37474F";
+        pants = "#111111";
+        break;
+      case "default":
+      default:
+        shirt = "#90A4AE";
+        pants = "#1565C0";
+        break;
+    }
+
+    return {
+      hair: appearance.hairColor ?? base.hair,
+      skin: base.skin,
+      shirt,
+      pants,
+    };
+  }, [appearance, colors, isCEO]);
 
   const { currentStatus, effectiveNotificationCount } = useMemo(() => {
     if (notificationCount > 0 && notificationPriority > 0) {
@@ -511,6 +645,8 @@ const Employee = memo(function Employee({
             isSupervisor={isSupervisor}
             teamId={teamId}
             useCompactOverlayMode={useCompactOverlayMode}
+            petType={appearance?.petType}
+            clothesStyle={appearance?.clothesStyle}
           />
         </group>
 
@@ -585,7 +721,12 @@ const Employee = memo(function Employee({
             <ringGeometry args={[0.44, 0.86, 36]} />
             <meshBasicMaterial color="#67e8f9" transparent opacity={0.9} />
           </mesh>
-          <AvatarShell colors={finalColors} isSupervisor={isSupervisor} projection />
+          <AvatarShell
+            colors={finalColors}
+            isSupervisor={isSupervisor}
+            projection
+            clothesStyle={appearance?.clothesStyle}
+          />
           <EmployeeStatusBubbles
             currentStatus={projectionStatus}
             statusMessage={statusMessage}

@@ -259,6 +259,7 @@ export function SceneContents(props: OfficeSceneProps): JSX.Element {
             heartbeatBubbles={employee.heartbeatBubbles}
             profileImageUrl={employee.profileImageUrl}
             useCompactOverlayMode={useCompactSceneOverlays}
+            appearance={employee.appearance}
           />
         ))}
 

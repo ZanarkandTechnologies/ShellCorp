@@ -52,6 +52,13 @@ export function OverviewPanel(props: OverviewPanelProps): JSX.Element {
     agentsList: props.agentsList,
     usageOverview: props.usageOverview,
   });
+
+  const appearanceDraft = {
+    clothesStyle: props.draft.appearanceClothesStyle ?? "default",
+    hairColorOverride: props.draft.appearanceHairColor || null,
+    petType: props.draft.appearancePetType ?? "none",
+  };
+
   return (
     <div className="space-y-4 rounded-md border p-4">
       <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -88,45 +95,11 @@ export function OverviewPanel(props: OverviewPanelProps): JSX.Element {
             </div>
           </div>
 
-          <EmployeePreviewCard employee={props.employee} displayName={display.displayName} />
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-md border bg-muted/20 p-3 text-sm">
-              <p className="text-muted-foreground">Agent ID</p>
-              <p className="font-medium">{display.agentIdLabel}</p>
-            </div>
-            <div className="rounded-md border bg-muted/20 p-3 text-sm">
-              <p className="text-muted-foreground">Scope</p>
-              <p className="font-medium">{display.scopeLabel}</p>
-            </div>
-            <div className="col-span-2 rounded-md border bg-muted/20 p-3 text-sm">
-              <p className="text-muted-foreground">Status</p>
-              <p className="font-medium">{display.statusLabel}</p>
-            </div>
-          </div>
-        </aside>
-
-        <section className="space-y-4">
-          <div className="rounded-md border bg-muted/20 p-4">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="text-sm">
-                <p className="text-muted-foreground">Identity Name</p>
-                <p className="text-lg font-semibold">{display.displayName}</p>
-              </div>
-              <div className="text-sm">
-                <p className="text-muted-foreground">Role</p>
-                <p className="text-lg font-semibold">{display.roleLabel}</p>
-              </div>
-              <div className="text-sm">
-                <p className="text-muted-foreground">Team</p>
-                <p>{display.teamLabel}</p>
-              </div>
-              <div className="text-sm">
-                <p className="text-muted-foreground">Identity Emoji</p>
-                <p>{display.emoji}</p>
-              </div>
-            </div>
-          </div>
+          <EmployeePreviewCard
+            employee={props.employee}
+            displayName={display.displayName}
+            appearanceOverrides={appearanceDraft}
+          />
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="space-y-2 rounded-md border bg-muted/20 p-4 text-sm">
@@ -154,6 +127,77 @@ export function OverviewPanel(props: OverviewPanelProps): JSX.Element {
                 }
                 placeholder="provider/model, provider/model"
               />
+            </div>
+          </div>
+        </aside>
+
+        <section className="space-y-4">
+          <div className="space-y-6 rounded-md border bg-muted/20 p-4 text-sm">
+            <p className="text-base font-medium">Appearance</p>
+            <div className="grid gap-4 md:grid-cols-3">
+              <label className="space-y-1">
+                <span className="text-muted-foreground">Clothes</span>
+                <select
+                  className="w-full rounded-md border bg-background px-2 py-2 text-sm"
+                  value={appearanceDraft.clothesStyle}
+                  onChange={(event) =>
+                    props.setDraft({
+                      ...props.draft,
+                      appearanceClothesStyle:
+                        event.target.value as AgentConfigDraft["appearanceClothesStyle"],
+                    })
+                  }
+                >
+                  <option value="default">Default</option>
+                  <option value="dj">DJ</option>
+                  <option value="professional">Professional</option>
+                  <option value="techBro">Tech bro</option>
+                </select>
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-muted-foreground">Hair</span>
+                <select
+                  className="w-full rounded-md border bg-background px-2 py-2 text-sm"
+                  value={appearanceDraft.hairColorOverride ?? "default"}
+                  onChange={(event) =>
+                    props.setDraft({
+                      ...props.draft,
+                      appearanceHairColor:
+                        event.target.value === "default" ? "" : event.target.value,
+                    })
+                  }
+                >
+                  <option value="default">Default</option>
+                  <option value="#111111">Black</option>
+                  <option value="#F5D76E">Blonde</option>
+                  <option value="#C62828">Red</option>
+                  <option value="#FF4081">Neon pink</option>
+                  <option value="#00E5FF">Neon cyan</option>
+                </select>
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-muted-foreground">Pet</span>
+                <select
+                  className="w-full rounded-md border bg-background px-2 py-2 text-sm"
+                  value={appearanceDraft.petType}
+                  onChange={(event) =>
+                    props.setDraft({
+                      ...props.draft,
+                      appearancePetType:
+                        event.target.value as AgentConfigDraft["appearancePetType"],
+                    })
+                  }
+                >
+                  <option value="none">None</option>
+                  <option value="dog">Dog</option>
+                  <option value="cat">Cat</option>
+                  <option value="goldfish">Goldfish</option>
+                  <option value="rabbit">Rabbit</option>
+                  <option value="lobster">Lobster</option>
+                </select>
+              </label>
             </div>
           </div>
 
