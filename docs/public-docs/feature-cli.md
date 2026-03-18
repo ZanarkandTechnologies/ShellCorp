@@ -70,7 +70,6 @@ The current MVP monitoring flow is:
 Canonical runtime paths:
 
 - `~/.openclaw/openclaw.json`
-- `~/.openclaw/projects/<projectId>/logs/events.jsonl`
 - `~/.openclaw/projects/<projectId>/logs/`
 - `~/.openclaw/projects/<projectId>/outputs/`
 - `~/.openclaw/workspace-<agentId>/HEARTBEAT.md`

@@ -12,14 +12,13 @@
  * MEMORY REFERENCES:
  * - MEM-0104
  * - MEM-0212
+ * - MEM-0215
  */
 import { Command } from "commander";
 import { createSidecarStore } from "../sidecar-store.js";
 import {
-  appendTeamEventLog,
   ensureCommandPermission,
   resolveCliActorContext,
-  resolveProjectOrFail,
   resolveStatusActivityType,
   runDoctor,
   optionalBeatId,
@@ -107,20 +106,6 @@ export function registerTeamCommands(program: Command): void {
           skillId: opts.skillId?.trim() || undefined,
           stepKey,
           beatId: optionalBeatId(opts.beatId),
-        });
-        await appendTeamEventLog({
-          teamId: actor.teamId,
-          projectId: actor.projectId,
-          kind: "status_reported",
-          agentId: actor.agentId,
-          label,
-          detail,
-          data: {
-            activityType,
-            stepKey,
-            taskId: opts.taskId?.trim() || undefined,
-            skillId: opts.skillId?.trim() || undefined,
-          },
         });
         formatOutput(
           opts.json ? "json" : "text",

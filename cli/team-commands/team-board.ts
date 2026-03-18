@@ -12,11 +12,11 @@
  * - MEM-0202
  * - MEM-0206
  * - MEM-0210
+ * - MEM-0215
  */
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import {
-  appendTeamEventLog,
   type SidecarStore,
   asRecord,
   ensureCommandPermission,
@@ -107,7 +107,8 @@ async function writeBoardEvent(input: {
   detail?: string;
   data?: Record<string, unknown>;
 }): Promise<void> {
-  await appendTeamEventLog(input);
+  // MEM-0215: board activity is Convex-canonical; keep the CLI flow shape without mirroring to sidecar logs.
+  void input;
 }
 
 export function registerTeamBoard(team: Command, store: SidecarStore): void {
