@@ -64,7 +64,7 @@ export default function Plant({
                         <meshStandardMaterial color={variant.foliageColor} />
                     </Sphere>
                 )}
-                {variant.shape === "wide" && (
+                {(variant.shape === "sphere" || variant.shape === "wide") && (
                     <Sphere args={[0.5, 16, 16]} position={[0, potHeight + variant.foliageY * 0.5, 0]} scale={variant.foliageScale} castShadow>
                         <meshStandardMaterial color={variant.foliageColor} />
                     </Sphere>
