@@ -33,7 +33,7 @@ This file is loaded every loop. Keep it operational and concise.
 - Project-backed team clusters must claim their first anchor through the shared open-slot placement helper in both CLI and UI creation flows, and later updates must preserve the persisted position. See `MEM-0183`.
 - The public landing page is a direct office handoff: explain the founder-control workflow there and keep entry to `/office` one click, with no invite/password gate. See `MEM-0193`.
 - ShellCorp remains hybrid-state for the current local/VPS shape: Convex is for realtime operational state, while `~/.openclaw` sidecars stay canonical for runtime config and structural office state. See `MEM-0194`.
-
+- Global office launchers should stay registry-driven so speed-dial items, shortcuts, command-palette entries, and QA helper ids do not drift. See `MEM-0220`.
 
 ## Verifying outputs
 

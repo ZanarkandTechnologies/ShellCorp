@@ -1,5 +1,7 @@
 # Shell Company MVP Progress
 
+Legacy reference document. The active planning and execution board now lives under `tickets/*`; do not use this file as the primary workflow surface for new work.
+
 **Status**: in_progress  
 **Date**: 2026-02-26
 

@@ -4,14 +4,26 @@ Copy and paste this into a new session to start a build pass.
 
 ---
 
-0a. Study `@docs/prd.md`.  
-0b. Study `@docs/specs/*`.  
-0c. Study `@docs/progress.md`.  
-0d. Study `@docs/MEMORY.md`.  
-0e. Search code before assuming missing implementation.
+0a. Read the active ticket in `@tickets/building/*`.
+0b. Read `@docs/MEMORY.md` and `@docs/TROUBLES.md`.
+0c. If UI is in scope, read `@docs/TASTE.md`, `@docs/how-to/qa-agent-guide.md`, and any ticket-linked runbook.
+0d. Search the code before assuming missing work.
 
-- Build mode: pick one ticket from `@docs/progress.md` (up to 3 only if truly independent).
-- Implement fully, then run backpressure commands (tests/typecheck/lint/build).
-- Update `@docs/progress.md` with what changed and why.
-- If you discover durable lessons/constraints, update `docs/HISTORY.md` and curate into `docs/MEMORY.md`.
-- Keep `AGENTS.md` operational only; status and decisions belong in docs state.
+Build rules:
+
+- complete one active ticket by default
+- validate with the project backpressure commands: tests, lint, typecheck, build
+- if the ticket changes user-visible behavior, leave ticket-scoped QA evidence under `docs/research/qa-testing/`
+- update the ticket with:
+  - what changed
+  - blockers
+  - artifact links
+  - user evidence
+- update project records when applicable:
+  - `docs/HISTORY.md`
+  - `docs/MEMORY.md`
+  - `docs/TROUBLES.md`
+- if new scope is discovered, create a linked follow-up ticket in `tickets/todo/`
+- if blocked by execution, keep the ticket in `tickets/building/`
+- if blocked by planning ambiguity, move the ticket back to `tickets/review/`
+- when implementation, QA, evidence, and human confirmation are complete, move the ticket to `tickets/done/` and update `tickets/INDEX.md`
