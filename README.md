@@ -100,6 +100,10 @@ Important:
 
 Docs: [Onboarding Wizard (CLI)](https://docs.openclaw.ai/start/wizard), [CLI Onboarding Reference](https://docs.openclaw.ai/start/wizard-cli-reference).
 
+Deployment docs:
+
+- [VPS + Tailscale Serve runbook](./docs/how-to/vps-tailscale-shellcorp.md)
+
 From the repo root:
 
 ```bash
@@ -135,6 +139,8 @@ After that:
 4. Approve the proposal in `Human Review` inside the CEO Workbench.
 5. Inspect the created team in the office and board surfaces.
 6. Use `shellcorp office decor ...` after the core founder workflow is working.
+
+If you are exposing ShellCorp from another VPS over a private tailnet, use the dedicated [VPS + Tailscale Serve runbook](./docs/how-to/vps-tailscale-shellcorp.md). It covers the required split between ShellCorp's `State Bridge URL` and the OpenClaw `Gateway URL`, plus the extra `/shellcorp/openclaw` proxy rule needed when ShellCorp lives under a path instead of `/`.
 
 ## Minimal Demo Flow
 
