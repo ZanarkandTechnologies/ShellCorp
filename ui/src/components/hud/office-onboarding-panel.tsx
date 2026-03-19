@@ -7,7 +7,7 @@
  *
  * KEY CONCEPTS:
  * - Progress follows real UI actions: CEO click, CEO chat, office shop, team workspace
- * - `/company.json` decides whether the seeded office shows onboarding at all
+ * - The live company model decides whether the office shows onboarding at all
  * - Local completion suppresses repeat prompts without mutating the seed file
  *
  * USAGE:
@@ -32,15 +32,6 @@ import {
   type OfficeOnboardingStep,
 } from "@/lib/office-onboarding";
 import { useOfficeDataContext } from "@/providers/office-data-provider";
-
-type SeedConfig = {
-  ui?: {
-    onboarding?: {
-      enabled?: boolean;
-      completed?: boolean;
-    };
-  };
-};
 
 type StepCopy = {
   eyebrow: string;
@@ -79,7 +70,7 @@ const STEP_COPY: Record<OfficeOnboardingStep, StepCopy> = {
 };
 
 export function OfficeOnboardingPanel(): React.JSX.Element | null {
-  const { employees } = useOfficeDataContext();
+  const { employees, companyModel, isLoading } = useOfficeDataContext();
   const selectedObjectId = useAppStore((state) => state.selectedObjectId);
   const isFurnitureShopOpen = useAppStore((state) => state.isFurnitureShopOpen);
   const isGlobalTeamPanelOpen = useAppStore((state) => state.isGlobalTeamPanelOpen);
@@ -90,7 +81,6 @@ export function OfficeOnboardingPanel(): React.JSX.Element | null {
   const setOfficeOnboardingStep = useAppStore((state) => state.setOfficeOnboardingStep);
   const isChatOpen = useChatStore((state) => state.isChatOpen);
   const currentEmployeeId = useChatStore((state) => state.currentEmployeeId);
-  const [isConfigReady, setIsConfigReady] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const onboardingEmployeeId = useMemo(
     () => employees.find((employee) => employee.isCEO)?._id ?? "employee-main",
@@ -102,35 +92,24 @@ export function OfficeOnboardingPanel(): React.JSX.Element | null {
   );
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadConfig(): Promise<void> {
-      try {
-        const response = await fetch("/company.json");
-        const payload = (await response.json()) as SeedConfig;
-        if (cancelled) return;
-        const shouldShow = shouldShowOfficeOnboarding(payload);
-        setConfigError(null);
-        setIsOfficeOnboardingVisible(shouldShow);
-        setOfficeOnboardingStep(shouldShow ? "click-ceo" : null);
-      } catch (error) {
-        if (!cancelled) {
-          console.warn("[office-onboarding] failed to load /company.json", error);
-          setConfigError("Onboarding config could not be loaded from /company.json.");
-          setIsOfficeOnboardingVisible(false);
-          setOfficeOnboardingStep(null);
-        }
-      } finally {
-        if (!cancelled) setIsConfigReady(true);
-      }
+    if (isLoading) return;
+    if (!companyModel) {
+      setConfigError("Onboarding config could not be loaded from the live company model.");
+      setIsOfficeOnboardingVisible(false);
+      setOfficeOnboardingStep(null);
+      return;
     }
-
-    void loadConfig();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [setIsOfficeOnboardingVisible, setOfficeOnboardingStep]);
+    const shouldShow = shouldShowOfficeOnboarding(companyModel);
+    setConfigError(null);
+    setIsOfficeOnboardingVisible(shouldShow);
+    setOfficeOnboardingStep(officeOnboardingStep ?? (shouldShow ? "click-ceo" : null));
+  }, [
+    companyModel,
+    isLoading,
+    officeOnboardingStep,
+    setIsOfficeOnboardingVisible,
+    setOfficeOnboardingStep,
+  ]);
 
   useEffect(() => {
     if (!isOfficeOnboardingVisible || officeOnboardingStep !== "click-ceo") return;
@@ -202,7 +181,7 @@ export function OfficeOnboardingPanel(): React.JSX.Element | null {
 
   const actionLabel = officeOnboardingStep === "open-team" ? "Done" : "Skip tour";
 
-  if (!isConfigReady) return null;
+  if (isLoading) return null;
 
   if (configError) {
     return (

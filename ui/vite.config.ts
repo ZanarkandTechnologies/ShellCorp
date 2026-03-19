@@ -28,6 +28,7 @@ const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || path.join(OPENC
 const REPO_ROOT = path.resolve(__dirname, "..");
 const SKILLS_ROOT = path.join(REPO_ROOT, "skills");
 const COMPANY_MODEL_PATH = path.join(OPENCLAW_HOME, "company.json");
+const COMPANY_TEMPLATE_PATH = path.resolve(__dirname, "../templates/sidecar/company.template.json");
 const OFFICE_OBJECTS_PATH = path.join(OPENCLAW_HOME, "office-objects.json");
 const OFFICE_SETTINGS_PATH = path.join(OPENCLAW_HOME, "office.json");
 const OFFICE_OBJECTS_TEMPLATE_PATH = path.resolve(
@@ -195,6 +196,17 @@ async function readOfficeSettings(): Promise<OfficeSettings> {
     cameraOrientation: "south_east",
   });
   return normalizeOfficeSettings(raw);
+}
+
+async function readCompanyModelWithSeed(): Promise<JsonObject> {
+  let company = await readJsonFile<JsonObject>(COMPANY_MODEL_PATH, {});
+  if (Object.keys(company).length > 0) return company;
+  company = await readJsonFile<JsonObject>(COMPANY_TEMPLATE_PATH, {});
+  if (Object.keys(company).length > 0) {
+    await mkdir(path.dirname(COMPANY_MODEL_PATH), { recursive: true });
+    await writeFile(COMPANY_MODEL_PATH, `${JSON.stringify(company, null, 2)}\n`, "utf-8");
+  }
+  return company;
 }
 
 function asMeshPublicPath(fileName: string): string {
@@ -1693,7 +1705,7 @@ function shellcorpStateBridge() {
         }
 
         if (method === "GET" && pathname === "/openclaw/company-model") {
-          const company = await readJsonFile<JsonObject>(COMPANY_MODEL_PATH, {});
+          const company = await readCompanyModelWithSeed();
           writeJson(res, 200, { company });
           return;
         }
@@ -2021,7 +2033,7 @@ function shellcorpStateBridge() {
           const teamId = typeof body.teamId === "string" && body.teamId.trim() ? body.teamId.trim() : `team-proj-${slug}`;
           const projectId = projectIdFromTeamId(teamId);
 
-          let company = await readJsonFile<JsonObject>(COMPANY_MODEL_PATH, {});
+          let company = await readCompanyModelWithSeed();
           if (businessType) {
             company = ensureBusinessHeartbeatProfiles(company);
           }
@@ -2159,7 +2171,7 @@ function shellcorpStateBridge() {
             return;
           }
           const projectId = projectIdFromTeamId(teamId);
-          const company = await readJsonFile<JsonObject>(COMPANY_MODEL_PATH, {});
+          const company = await readCompanyModelWithSeed();
           const projects = Array.isArray(company.projects) ? (company.projects as JsonObject[]) : [];
           const project = projects.find((entry) => String(entry.id ?? "") === projectId);
           if (!project) {
@@ -2192,7 +2204,7 @@ function shellcorpStateBridge() {
             return;
           }
           const projectId = projectIdFromTeamId(teamId);
-          const company = await readJsonFile<JsonObject>(COMPANY_MODEL_PATH, {});
+          const company = await readCompanyModelWithSeed();
           const projects = Array.isArray(company.projects) ? (company.projects as JsonObject[]) : [];
           const project = projects.find((entry) => String(entry.id ?? "").trim() === projectId);
           if (!project) {

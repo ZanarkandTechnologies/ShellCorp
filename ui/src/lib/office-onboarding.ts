@@ -6,12 +6,12 @@
  * UI-only first-run onboarding helpers for the office experience.
  *
  * KEY CONCEPTS:
- * - Public `/company.json` can enable the onboarding flow for a seeded office demo
+ * - The live company model can enable the onboarding flow for a seeded office demo
  * - Local completion is stored in browser storage so refreshes do not replay the tour
  * - Step progression is driven by real UI interactions, not a fake slideshow
  *
  * USAGE:
- * - Read `/company.json`, then call `shouldShowOfficeOnboarding`
+ * - Read the live company model, then call `shouldShowOfficeOnboarding`
  * - Persist completion with `setOfficeOnboardingCompleted`
  *
  * MEMORY REFERENCES:
