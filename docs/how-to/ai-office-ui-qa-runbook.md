@@ -79,6 +79,58 @@ Click the **Menu** button (top-left) to expand the speed-dial. Items appear in t
 
 ---
 
+## Keyboard-First QA Access
+
+The office now exposes a shared global panel registry used by the speed-dial, keyboard shortcuts, command palette, and a dev-only QA bridge.
+
+### Command Palette
+
+| Shortcut | Result |
+|----------|--------|
+| `Cmd/Ctrl+K` | Open the office command palette |
+
+The palette searches panel labels, descriptions, and keywords. Selecting an item opens the same panel through the real HUD state path.
+
+### Global Shortcuts
+
+| Shortcut | Opens |
+|----------|-------|
+| `Alt+Shift+O` | Organization |
+| `Alt+Shift+T` | Team Workspace |
+| `Alt+Shift+A` | Agent Session |
+| `Alt+Shift+S` | Global Skills |
+| `Alt+Shift+C` | CEO Chat |
+| `Alt+Shift+W` | CEO Workbench |
+| `Alt+Shift+R` | Human Review |
+| `Alt+Shift+B` | Builder Mode toggle |
+| `Alt+Shift+D` | Decoration |
+| `Alt+Shift+P` | Settings |
+
+Shortcut guardrails:
+
+- Shortcuts only fire from the office view.
+- Shortcuts do not fire while focus is inside `input`, `textarea`, `select`, or `contenteditable` elements.
+- The command palette and shortcuts call the same registry actions as the speed-dial.
+
+### Dev-Only QA Bridge
+
+In development builds only:
+
+```ts
+window.__SHELLCORP_QA__.listPanels();
+window.__SHELLCORP_QA__.openPanel("agent-session");
+window.__SHELLCORP_QA__.runCommand("builder-mode");
+```
+
+Notes:
+
+- `listPanels()` returns the supported global panel ids, labels, descriptions, and shortcut hints.
+- `openPanel(id)` only opens registry items classified as panels.
+- `runCommand(id)` also allows non-panel registry actions such as `builder-mode`.
+- Invalid ids return `false`.
+
+---
+
 ## Interaction Flows
 
 ### 1. Click on Employee
@@ -249,6 +301,7 @@ Use this table to drive browser-agent tests. Each panel lists all known entrypoi
 ## References
 
 - Office menu: `ui/src/components/hud/office-menu.tsx`
+- Office panel registry: `ui/src/components/hud/office-panel-registry.ts`
 - Employee context menu: `ui/src/features/office-system/components/employee.tsx`
 - Interactive object: `ui/src/features/office-system/components/interactive-object.tsx`
 - Team cluster: `ui/src/features/office-system/components/team-cluster.tsx`

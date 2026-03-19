@@ -15,23 +15,12 @@
  * MEMORY REFERENCES:
  * - MEM-0155
  * - MEM-0192
+ * - MEM-0220
  */
 
 import { useMemo, useCallback, useState, useEffect } from "react";
 import { useQuery } from "convex/react";
-import {
-  Menu,
-  Hammer,
-  Home,
-  MessageSquare,
-  BookOpen,
-  Settings,
-  ShoppingBag,
-  Users,
-  Activity,
-  ClipboardList,
-  BriefcaseBusiness,
-} from "lucide-react";
+import { Menu } from "lucide-react";
 import { SpeedDial, type SpeedDialItem } from "@/components/ui/speed-dial";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "@/lib/app-store";
@@ -41,6 +30,15 @@ import { OrganizationPanel } from "./organization-panel";
 import { api } from "../../../../convex/_generated/api";
 import { isConvexEnabled } from "@/providers/convex-provider";
 import { countReviewLaneTasks, resolveReviewBoardTasks } from "@/lib/review-board";
+import { OfficeCommandPalette } from "./office-command-palette";
+import {
+  OFFICE_COMMAND_PALETTE_SHORTCUT,
+  createOfficePanelActions,
+  eventMatchesShortcut,
+  isEditableEventTarget,
+  type OfficePanelAction,
+  type OfficePanelActionId,
+} from "./office-panel-registry";
 
 interface SpeedDialProps {
   className?: string;
@@ -71,6 +69,7 @@ export function OfficeMenu({ className }: SpeedDialProps) {
   const officeOnboardingStep = useAppStore((state) => state.officeOnboardingStep);
 
   const [isOrganizationOpen, setIsOrganizationOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const companyBoard = useQuery(
     api.board.getCompanyBoardTasks,
     convexEnabled ? {} : "skip",
@@ -118,130 +117,147 @@ export function OfficeMenu({ className }: SpeedDialProps) {
         ? "team-workspace"
         : null;
 
-  const speedDialItems: SpeedDialItem[] = useMemo(
-    () => [
-      {
-        id: "back-landing",
-        icon: Home,
-        label: "Back to Landing",
-        onClick: () => navigate("/"),
-        color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-      },
-      {
-        id: "organization",
-        icon: Users,
-        label: "Organization",
-        onClick: () => setIsOrganizationOpen(true),
-        color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-      },
-      {
-        id: "team-workspace",
-        icon: Users,
-        label: "Team Workspace",
-        onClick: openGlobalTeamWorkspace,
-        color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-        buttonClassName:
-          highlightedMenuActionId === "team-workspace"
-            ? "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse"
-            : undefined,
-      },
-      {
-        id: "agent-session",
-        icon: Activity,
-        label: "Agent Session",
-        onClick: () => setIsAgentSessionPanelOpen(true),
-        color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-      },
-      {
-        id: "global-skills",
-        icon: BookOpen,
-        label: "Global Skills",
-        onClick: () => {
+  const officeActions = useMemo(
+    () =>
+      createOfficePanelActions({
+        highlightedMenuActionId,
+        isAnimatingCamera,
+        isBuilderMode,
+        navigateToLanding: () => navigate("/"),
+        openAgentSession: () => setIsAgentSessionPanelOpen(true),
+        openCeoChat: () => {
+          void openEmployeeChat("employee-main", true);
+        },
+        openCeoWorkbench: (view) => {
+          setCeoWorkbenchView(view);
+          setIsCeoWorkbenchOpen(true);
+        },
+        openDecoration: () => setIsFurnitureShopOpen(true),
+        openGlobalSkills: () => {
           setSelectedSkillStudioSkillId(null);
           setSkillStudioFocusAgentId(null);
           setIsSkillsPanelOpen(true);
         },
-        color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-      },
-      {
-        id: "ceo-chat",
-        icon: MessageSquare,
-        label: "CEO Chat",
-        onClick: () => {
-          void openEmployeeChat("employee-main", true);
-        },
-        color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-      },
-      {
-        id: "ceo-workbench",
-        icon: BriefcaseBusiness,
-        label: "CEO Workbench",
-        onClick: () => {
-          setCeoWorkbenchView("board");
-          setIsCeoWorkbenchOpen(true);
-        },
-        color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-      },
-      {
-        id: "user-tasks",
-        icon: ClipboardList,
-        label: "Human Review",
-        onClick: () => {
-          setCeoWorkbenchView("review");
-          setIsCeoWorkbenchOpen(true);
-        },
-        badge: userTaskCount > 0 ? userTaskCount : undefined,
-        color:
-          userTaskCount > 0
-            ? "bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30"
-            : "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-      },
-      {
-        id: "builder-mode",
-        icon: Hammer,
-        label: "Builder Mode",
-        onClick: handleBuilderModeToggle,
-        color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-        disabled: isAnimatingCamera,
-      },
-      {
-        id: "office-shop",
-        icon: ShoppingBag,
-        label: "Decoration",
-        onClick: () => setIsFurnitureShopOpen(true),
-        color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-        buttonClassName:
-          highlightedMenuActionId === "office-shop"
-            ? "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse"
-            : undefined,
-      },
-      {
-        id: "settings",
-        icon: Settings,
-        label: "Settings",
-        onClick: () => setIsSettingsModalOpen(true),
-        color: "bg-secondary hover:bg-secondary/80 text-secondary-foreground",
-      },
-    ],
+        openGlobalTeamWorkspace,
+        openOrganization: () => setIsOrganizationOpen(true),
+        openSettings: () => setIsSettingsModalOpen(true),
+        toggleBuilderMode: handleBuilderModeToggle,
+        userTaskCount,
+      }),
     [
-      navigate,
-      openGlobalTeamWorkspace,
       highlightedMenuActionId,
+      isAnimatingCamera,
+      isBuilderMode,
+      navigate,
       setIsAgentSessionPanelOpen,
-      setIsSkillsPanelOpen,
+      openEmployeeChat,
+      setCeoWorkbenchView,
+      setIsCeoWorkbenchOpen,
+      setIsFurnitureShopOpen,
       setSelectedSkillStudioSkillId,
       setSkillStudioFocusAgentId,
-      openEmployeeChat,
-      setIsCeoWorkbenchOpen,
-      setCeoWorkbenchView,
-      userTaskCount,
-      handleBuilderModeToggle,
-      isAnimatingCamera,
-      setIsOrganizationOpen,
-      setIsFurnitureShopOpen,
+      setIsSkillsPanelOpen,
+      openGlobalTeamWorkspace,
       setIsSettingsModalOpen,
+      handleBuilderModeToggle,
+      userTaskCount,
     ],
   );
+
+  const speedDialItems: SpeedDialItem[] = useMemo(
+    () =>
+      officeActions
+        .filter((action) => action.showInMenu !== false)
+        .map((action) => ({
+          id: action.id,
+          icon: action.icon,
+          label: action.label,
+          onClick: action.perform,
+          badge: action.badge,
+          color: action.color,
+          disabled: action.disabled,
+          buttonClassName: action.buttonClassName,
+        })),
+    [officeActions],
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || isEditableEventTarget(event.target)) {
+        return;
+      }
+
+      if (eventMatchesShortcut(event, OFFICE_COMMAND_PALETTE_SHORTCUT)) {
+        event.preventDefault();
+        setIsCommandPaletteOpen((previous) => !previous);
+        return;
+      }
+
+      const matchingAction = officeActions.find(
+        (action) => action.shortcut && eventMatchesShortcut(event, action.shortcut),
+      );
+      if (!matchingAction || matchingAction.disabled) {
+        return;
+      }
+
+      event.preventDefault();
+      matchingAction.perform();
+      setIsCommandPaletteOpen(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [officeActions]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === "undefined") {
+      return;
+    }
+
+    const qaWindow = window as typeof window & {
+      __SHELLCORP_QA__?: {
+        listPanels: () => Array<{
+          description: string;
+          id: OfficePanelActionId;
+          label: string;
+          shortcut: string | null;
+        }>;
+        openPanel: (id: OfficePanelActionId) => boolean;
+        runCommand: (id: OfficePanelActionId) => boolean;
+      };
+    };
+
+    const runAction = (id: OfficePanelActionId, allowedGroups: OfficePanelAction["group"][]) => {
+      const action = officeActions.find(
+        (candidate) => candidate.id === id && allowedGroups.includes(candidate.group),
+      );
+      if (!action || action.disabled) {
+        return false;
+      }
+      action.perform();
+      setIsCommandPaletteOpen(false);
+      return true;
+    };
+
+    qaWindow.__SHELLCORP_QA__ = {
+      listPanels: () =>
+        officeActions
+          .filter((action) => action.group === "panel")
+          .map((action) => ({
+            id: action.id,
+            label: action.label,
+            description: action.description,
+            shortcut: action.shortcut?.label ?? null,
+          }))
+          .sort((left, right) => left.label.localeCompare(right.label)),
+      openPanel: (id) => runAction(id, ["panel"]),
+      runCommand: (id) => runAction(id, ["action", "navigation", "panel"]),
+    };
+
+    return () => {
+      delete qaWindow.__SHELLCORP_QA__;
+    };
+  }, [officeActions]);
 
   return (
     <>
@@ -258,6 +274,11 @@ export function OfficeMenu({ className }: SpeedDialProps) {
         }
         forceOpen={shouldGuideMenu}
         className={className}
+      />
+      <OfficeCommandPalette
+        actions={officeActions}
+        open={isCommandPaletteOpen}
+        onOpenChange={setIsCommandPaletteOpen}
       />
       <OrganizationPanel
         isOpen={isOrganizationOpen}
