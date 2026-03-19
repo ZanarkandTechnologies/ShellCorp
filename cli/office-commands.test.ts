@@ -504,4 +504,36 @@ describe("office CLI", () => {
     const objects = JSON.parse(raw) as Array<{ id: string }>;
     expect(objects.map((entry) => entry.id)).toEqual(["plant-a", "cluster-bad"]);
   });
+
+  it("treats the synthetic management cluster as valid", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    const seeded = [
+      {
+        id: "cluster-team-management",
+        identifier: "cluster-team-management",
+        meshType: "team-cluster",
+        position: [0, 0, 0],
+        metadata: { teamId: "team-management", name: "Management" },
+      },
+    ];
+    await writeFile(
+      path.join(stateDir, "office-objects.json"),
+      `${JSON.stringify(seeded, null, 2)}\n`,
+      "utf-8",
+    );
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(["office", "doctor", "--json"]);
+
+    const payloadRaw = String(logSpy.mock.calls.at(-1)?.[0] ?? "");
+    const payload = JSON.parse(payloadRaw) as {
+      ok: boolean;
+      invalidCount: number;
+      invalid: Array<{ id: string; reasons: string[] }>;
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.invalidCount).toBe(0);
+    expect(payload.invalid).toEqual([]);
+  });
 });

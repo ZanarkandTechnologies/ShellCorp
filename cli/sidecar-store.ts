@@ -235,6 +235,13 @@ export interface OfficeSettingsModel {
   cameraOrientation: "north_east" | "north_west" | "south_east" | "south_west";
 }
 
+export interface ShellcorpConfigModel {
+  convex?: {
+    siteUrl?: string;
+  };
+  [key: string]: unknown;
+}
+
 function asObject(value: unknown): JsonObject {
   return value && typeof value === "object" ? (value as JsonObject) : {};
 }
@@ -852,6 +859,7 @@ export interface SidecarStore {
   officeObjectsPath: string;
   officeSettingsPath: string;
   openclawConfigPath: string;
+  shellcorpConfigPath: string;
   readCompanyModel: () => Promise<CompanyModel>;
   writeCompanyModel: (model: CompanyModel) => Promise<void>;
   readOfficeObjects: () => Promise<OfficeObjectModel[]>;
@@ -860,6 +868,8 @@ export interface SidecarStore {
   writeOfficeSettings: (settings: OfficeSettingsModel) => Promise<void>;
   readOpenclawConfig: () => Promise<JsonObject>;
   writeOpenclawConfig: (config: JsonObject) => Promise<void>;
+  readShellcorpConfig: () => Promise<ShellcorpConfigModel>;
+  writeShellcorpConfig: (config: ShellcorpConfigModel) => Promise<void>;
   readOfficeStylePreset: () => Promise<OfficeStylePreset>;
   writeOfficeStylePreset: (preset: OfficeStylePreset) => Promise<void>;
 }
@@ -887,11 +897,13 @@ export function createSidecarStore(): SidecarStore {
   const officeObjectsPath = path.join(openclawHome, "office-objects.json");
   const officeSettingsPath = path.join(openclawHome, "office.json");
   const openclawConfigPath = path.join(openclawHome, "openclaw.json");
+  const shellcorpConfigPath = path.join(openclawHome, "shellcorp.json");
   return {
     companyPath,
     officeObjectsPath,
     officeSettingsPath,
     openclawConfigPath,
+    shellcorpConfigPath,
     readCompanyModel: async () => normalizeCompanyModel(await readJsonFile(companyPath, {})),
     writeCompanyModel: async (model) => writeJsonAtomic(companyPath, normalizeCompanyModel(model)),
     readOfficeObjects: async () =>
@@ -921,6 +933,10 @@ export function createSidecarStore(): SidecarStore {
       writeJsonAtomic(officeSettingsPath, normalizeOfficeSettings(settings)),
     readOpenclawConfig: async () => asObject(await readJsonFile(openclawConfigPath, {})),
     writeOpenclawConfig: async (config) => writeJsonAtomic(openclawConfigPath, asObject(config)),
+    readShellcorpConfig: async () =>
+      asObject(await readJsonFile(shellcorpConfigPath, {})) as ShellcorpConfigModel,
+    writeShellcorpConfig: async (config) =>
+      writeJsonAtomic(shellcorpConfigPath, asObject(config)),
     readOfficeStylePreset: async () => {
       const company = normalizeCompanyModel(await readJsonFile(companyPath, {}));
       return company.officeStylePreset ?? "default";

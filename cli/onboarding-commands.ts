@@ -7,7 +7,7 @@
  * KEY CONCEPTS:
  * - Required sidecars live in `~/.openclaw`.
  * - UI-safe env vars live in `ui/.env.local` even when backend env lives at repo root.
- * - Onboarding is idempotent and only fills missing config by default.
+ * - Onboarding is idempotent and only mutates ShellCorp-owned config by default.
  *
  * USAGE:
  * - shellcorp onboarding
@@ -51,6 +51,7 @@ import {
   type JsonObject,
   type OfficeStylePreset,
   resolveOpenclawHome,
+  type ShellcorpConfigModel,
 } from "./sidecar-store.js";
 import { runDoctor } from "./team-commands/_shared.js";
 import { startUiDevServer } from "./ui-commands.js";
@@ -141,8 +142,12 @@ type OpenclawPreflight = {
 function resolveRepoRoot(): string {
   const override = process.env.SHELLCORP_REPO_ROOT?.trim();
   if (override) return path.resolve(override);
+  // In the bundled CJS CLI, __dirname is available while import.meta.url is not.
+  const thisDir =
+    typeof __dirname === "string" && __dirname.trim()
+      ? __dirname
+      : path.dirname(fileURLToPath(import.meta.url));
   // When run via "npm run shell -- onboarding", cwd may be the cli workspace dir. Resolve repo root from this file's location.
-  const thisDir = path.dirname(fileURLToPath(import.meta.url));
   const candidateRoot = path.resolve(thisDir, "..");
   const templatesMarker = path.join(candidateRoot, "templates", "sidecar", "company.template.json");
   if (existsSync(templatesMarker)) return candidateRoot;
@@ -391,68 +396,40 @@ async function ensureJsonSidecar<T>(filePath: string, payload: T): Promise<FileS
   return "created";
 }
 
-function ensurePluginsLoadPath(config: JsonObject, pluginPath: string): JsonObject {
+function removeOnboardingManagedNotionPlugin(config: JsonObject): JsonObject {
   const repoRoot = resolveRepoRoot();
   const plugins = asObject(config.plugins);
   const load = asObject(plugins.load);
-  const paths = asArray(load.paths)
+  const entries = asObject(plugins.entries);
+  const notionPluginPath = path.join(repoRoot, "extensions", "notion");
+  const nextPaths = asArray(load.paths)
     .filter((entry): entry is string => typeof entry === "string")
     .map((entry) => entry.trim())
-    .filter(Boolean);
-  const comparablePaths = new Set(paths.map((entry) => normalizeComparablePath(entry, repoRoot)));
-  if (!comparablePaths.has(normalizeComparablePath(pluginPath, repoRoot))) {
-    paths.push(pluginPath);
-  }
+    .filter(Boolean)
+    .filter((entry) => {
+      const comparable = normalizeComparablePath(entry, repoRoot);
+      return (
+        comparable !== normalizeComparablePath("./extensions/notion", repoRoot) &&
+        comparable !== normalizeComparablePath(notionPluginPath, repoRoot)
+      );
+    });
+  const { ["notion-shell"]: _removedNotionEntry, ...remainingEntries } = entries;
   return {
     ...config,
     plugins: {
       ...plugins,
       load: {
         ...load,
-        paths,
+        paths: nextPaths,
       },
+      entries: remainingEntries,
     },
   };
 }
 
-function ensureNotionPluginEntry(config: JsonObject): JsonObject {
-  const plugins = asObject(config.plugins);
-  const entries = asObject(plugins.entries);
-  const notionEntry = asObject(entries["notion-shell"]);
-  const notionConfig = asObject(notionEntry.config);
-  const webhook = asObject(notionConfig.webhook);
-  return {
-    ...config,
-    plugins: {
-      ...plugins,
-      entries: {
-        ...entries,
-        "notion-shell": {
-          ...notionEntry,
-          enabled: notionEntry.enabled !== false,
-          config: {
-            ...notionConfig,
-            defaultAccountId:
-              typeof notionConfig.defaultAccountId === "string" &&
-              notionConfig.defaultAccountId.trim()
-                ? notionConfig.defaultAccountId
-                : "default",
-            webhook: {
-              ...webhook,
-              path:
-                typeof webhook.path === "string" && webhook.path.trim()
-                  ? webhook.path
-                  : "/plugins/notion-shell/webhook",
-              targetAgentId:
-                typeof webhook.targetAgentId === "string" && webhook.targetAgentId.trim()
-                  ? webhook.targetAgentId
-                  : "main",
-            },
-          },
-        },
-      },
-    },
-  };
+function removeInvalidOpenclawRootKeys(config: JsonObject): JsonObject {
+  const { version: _removedVersion, shellcorp: _removedShellcorp, ...remaining } = config;
+  return remaining;
 }
 
 function ensureShellcorpDefaults(config: JsonObject): JsonObject {
@@ -466,11 +443,6 @@ function ensureShellcorpDefaults(config: JsonObject): JsonObject {
   const heartbeat = asObject(defaults.heartbeat);
   return {
     ...config,
-    version: typeof config.version === "number" ? config.version : 1,
-    shellcorp: {
-      ...asObject(config.shellcorp),
-      convex: asObject(asObject(config.shellcorp).convex),
-    },
     tools: {
       ...tools,
       profile: typeof tools.profile === "string" && tools.profile.trim() ? tools.profile : "coding",
@@ -515,32 +487,34 @@ function ensureShellcorpDefaults(config: JsonObject): JsonObject {
 
 function chooseShellcorpConvexSiteUrl(inputValues: {
   rootEnv: Record<string, string>;
-  currentOpenclawConfig: JsonObject;
+  currentShellcorpConfig: ShellcorpConfigModel;
+  legacyOpenclawConfig?: JsonObject;
   opts: OnboardingOptions;
 }): string {
-  const shellcorp = asObject(inputValues.currentOpenclawConfig.shellcorp);
-  const convex = asObject(shellcorp.convex);
+  const convex = asObject(inputValues.currentShellcorpConfig.convex);
+  const legacyShellcorp = asObject(asObject(inputValues.legacyOpenclawConfig).shellcorp);
+  const legacyConvex = asObject(legacyShellcorp.convex);
   return (
     inputValues.opts.convexUrl?.trim() ||
     inputValues.rootEnv.CONVEX_SITE_URL?.trim() ||
     inputValues.rootEnv.CONVEX_URL?.trim() ||
-    (typeof convex.siteUrl === "string" ? convex.siteUrl.trim() : "")
+    (typeof convex.siteUrl === "string" ? convex.siteUrl.trim() : "") ||
+    (typeof legacyConvex.siteUrl === "string" ? legacyConvex.siteUrl.trim() : "")
   );
 }
 
-function applyShellcorpConvexSiteUrl(config: JsonObject, siteUrl: string): JsonObject {
-  const shellcorp = asObject(config.shellcorp);
-  const convex = asObject(shellcorp.convex);
+function applyShellcorpConvexSiteUrl(
+  config: ShellcorpConfigModel,
+  siteUrl: string,
+): ShellcorpConfigModel {
+  const convex = asObject(config.convex);
   const trimmedSiteUrl = siteUrl.trim();
   if (!trimmedSiteUrl) return config;
   return {
     ...config,
-    shellcorp: {
-      ...shellcorp,
-      convex: {
-        ...convex,
-        siteUrl: trimmedSiteUrl,
-      },
+    convex: {
+      ...convex,
+      siteUrl: trimmedSiteUrl,
     },
   };
 }
@@ -549,15 +523,13 @@ function chooseUiEnvValues(inputValues: {
   currentUiEnv: Record<string, string>;
   rootEnv: Record<string, string>;
   exampleUiEnv: Record<string, string>;
-  currentOpenclawConfig: JsonObject;
+  currentShellcorpConfig: ShellcorpConfigModel;
   opts: OnboardingOptions;
 }): Record<string, string> {
   const fromRootConvex =
     inputValues.rootEnv.CONVEX_URL?.trim() || inputValues.rootEnv.CONVEX_SITE_URL?.trim() || "";
-  const shellcorp = asObject(inputValues.currentOpenclawConfig.shellcorp);
-  const convex = asObject(shellcorp.convex);
-  const persistedConvex =
-    typeof convex.siteUrl === "string" ? convex.siteUrl.trim() : "";
+  const convex = asObject(inputValues.currentShellcorpConfig.convex);
+  const persistedConvex = typeof convex.siteUrl === "string" ? convex.siteUrl.trim() : "";
   return {
     VITE_GATEWAY_URL:
       inputValues.opts.gatewayUrl?.trim() ||
@@ -606,7 +578,7 @@ function buildNextSteps(inputValues: {
   }
   if (inputValues.openclawChanged) {
     steps.unshift(
-      "Review the generated OpenClaw config at `~/.openclaw/openclaw.json` if you need to customize agents or plugin auth.",
+      "Review the generated OpenClaw config at `~/.openclaw/openclaw.json` if you need to customize agents or runtime defaults.",
     );
   }
   if (!inputValues.uiEnv.VITE_GATEWAY_TOKEN?.trim()) {
@@ -623,7 +595,7 @@ export function registerOnboardingCommands(program: Command): void {
   program
     .command("onboarding")
     .description(
-      "Bootstrap first-run sidecars, plugin config, CLI alias, UI env, and doctor checks",
+      "Bootstrap first-run sidecars, OpenClaw config, CLI alias, UI env, and doctor checks",
     )
     .option("--style <preset>", "Office style preset: default|pixel|brutalist|cozy")
     .option("--gateway-url <url>", "Gateway URL for the UI")
@@ -650,8 +622,10 @@ export function registerOnboardingCommands(program: Command): void {
       const pendingApprovalsPath = path.join(store.companyPath, "..", "pending-approvals.json");
       const rootEnv = await readDotEnvFile(rootEnvPath);
       const existingOpenclaw = await store.readOpenclawConfig();
+      const existingShellcorpConfig = await store.readShellcorpConfig();
       const wasOpenclawPresent = await fileExists(store.openclawConfigPath);
       const openclawBeforeRaw = JSON.stringify(existingOpenclaw);
+      const shellcorpConfigBeforeRaw = JSON.stringify(existingShellcorpConfig);
       if (!opts.json) {
         printStepStart(1, totalSteps, "Checking OpenClaw");
       }
@@ -754,23 +728,23 @@ export function registerOnboardingCommands(program: Command): void {
       }
       let nextOpenclaw =
         Object.keys(existingOpenclaw).length === 0 ? openclawTemplate : existingOpenclaw;
+      nextOpenclaw = removeInvalidOpenclawRootKeys(nextOpenclaw);
       nextOpenclaw = ensureShellcorpDefaults(nextOpenclaw);
-      nextOpenclaw = applyShellcorpConvexSiteUrl(
-        nextOpenclaw,
+      let nextShellcorpConfig = applyShellcorpConvexSiteUrl(
+        existingShellcorpConfig,
         chooseShellcorpConvexSiteUrl({
           rootEnv,
-          currentOpenclawConfig: nextOpenclaw,
+          currentShellcorpConfig: existingShellcorpConfig,
+          legacyOpenclawConfig: existingOpenclaw,
           opts,
         }),
       );
-      nextOpenclaw = ensurePluginsLoadPath(
-        nextOpenclaw,
-        path.join(repoRoot, "extensions", "notion"),
-      );
-      nextOpenclaw = ensureNotionPluginEntry(nextOpenclaw);
+      nextOpenclaw = removeOnboardingManagedNotionPlugin(nextOpenclaw);
       const openclawBefore = openclawBeforeRaw;
       const openclawAfter = JSON.stringify(nextOpenclaw);
+      const shellcorpConfigAfter = JSON.stringify(nextShellcorpConfig);
       let openclawStatus: FileStatus = "unchanged";
+      let shellcorpConfigStatus: FileStatus = "unchanged";
       if (!wasOpenclawPresent) {
         await store.writeOpenclawConfig(nextOpenclaw);
         openclawStatus = "created";
@@ -778,11 +752,19 @@ export function registerOnboardingCommands(program: Command): void {
         await store.writeOpenclawConfig(nextOpenclaw);
         openclawStatus = "updated";
       }
+      if (Object.keys(existingShellcorpConfig).length === 0 && Object.keys(nextShellcorpConfig).length > 0) {
+        await store.writeShellcorpConfig(nextShellcorpConfig);
+        shellcorpConfigStatus = "created";
+      } else if (shellcorpConfigBeforeRaw !== shellcorpConfigAfter) {
+        await store.writeShellcorpConfig(nextShellcorpConfig);
+        shellcorpConfigStatus = "updated";
+      }
       sidecars["openclaw.json"] = openclawStatus;
+      sidecars["shellcorp.json"] = shellcorpConfigStatus;
 
       await store.writeOfficeStylePreset(selectedStyle);
       if (!opts.json) {
-        printStepDone("OpenClaw plugin wiring and office style are synced.");
+        printStepDone("OpenClaw config and office style are synced.");
         await pauseBetweenSteps(stepPausesEnabled);
       }
 
@@ -825,7 +807,7 @@ export function registerOnboardingCommands(program: Command): void {
         currentUiEnv,
         rootEnv,
         exampleUiEnv,
-        currentOpenclawConfig: nextOpenclaw,
+        currentShellcorpConfig: nextShellcorpConfig,
         opts,
       });
       await mkdir(uiRoot, { recursive: true });

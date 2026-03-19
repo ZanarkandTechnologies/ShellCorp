@@ -504,6 +504,9 @@ export function findInvalidOfficeObjects(input: {
         typeof object.metadata?.teamId === "string" ? object.metadata.teamId.trim() : "";
       if (!teamId) {
         reasons.push("missing_team_id");
+      } else if (teamId === "team-management") {
+        // MEM-0176: the CEO desk anchor persists through a synthetic management cluster.
+        // It is not backed by a normal project row and should not be treated as missing team data.
       } else if (!teamId.startsWith("team-")) {
         reasons.push("invalid_team_id_format");
       } else {

@@ -6,7 +6,7 @@
  * - Heartbeat file rendering and syncing from workspace templates.
  *
  * KEY CONCEPTS:
- * - Convex endpoint resolution prefers shell env, then persisted ShellCorp runtime config in `openclaw.json`.
+ * - Convex endpoint resolution prefers shell env, then persisted ShellCorp runtime config in `shellcorp.json`.
  * - Heartbeat render helpers call readBoardSnapshot to fill template variables.
  *
  * USAGE:
@@ -56,12 +56,11 @@ function normalizeConvexSiteUrl(raw: string): string {
 
 async function readPersistedConvexSiteUrl(): Promise<string> {
   const stateRoot = resolveOpenclawStateRoot();
-  const openclawConfigPath = path.join(stateRoot, "openclaw.json");
+  const shellcorpConfigPath = path.join(stateRoot, "shellcorp.json");
   try {
-    const raw = await readFile(openclawConfigPath, "utf-8");
+    const raw = await readFile(shellcorpConfigPath, "utf-8");
     const config = asRecord(JSON.parse(raw) as unknown);
-    const shellcorp = asRecord(config.shellcorp);
-    const convex = asRecord(shellcorp.convex);
+    const convex = asRecord(config.convex);
     return typeof convex.siteUrl === "string" ? convex.siteUrl.trim() : "";
   } catch {
     return "";

@@ -30,7 +30,10 @@ function npmCommand(): string {
 function resolveRepoRoot(): string {
   const override = process.env.SHELLCORP_REPO_ROOT?.trim();
   if (override) return path.resolve(override);
-  const cliDir = path.dirname(fileURLToPath(import.meta.url));
+  const cliDir =
+    typeof __dirname === "string" && __dirname.trim()
+      ? __dirname
+      : path.dirname(fileURLToPath(import.meta.url));
   return path.resolve(cliDir, "..");
 }
 

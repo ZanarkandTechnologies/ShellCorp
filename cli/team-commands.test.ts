@@ -2263,7 +2263,7 @@ describe("team CLI", () => {
     expect(queryPayloads.some((payload) => payload.teamId === "team-proj-delta")).toBe(true);
   });
 
-  it("resolves Convex site URL from persisted openclaw shellcorp config", async () => {
+  it("resolves Convex site URL from persisted shellcorp sidecar config", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;
     delete process.env.SHELLCORP_CONVEX_SITE_URL;
@@ -2282,19 +2282,11 @@ describe("team CLI", () => {
       "builder",
     ]);
 
-    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
-    const openclawConfig = JSON.parse(openclawRaw) as Record<string, unknown>;
     await writeFile(
-      path.join(stateDir, "openclaw.json"),
+      path.join(stateDir, "shellcorp.json"),
       `${JSON.stringify(
         {
-          ...openclawConfig,
-          shellcorp: {
-            ...(typeof openclawConfig.shellcorp === "object" && openclawConfig.shellcorp
-              ? (openclawConfig.shellcorp as Record<string, unknown>)
-              : {}),
-            convex: { siteUrl: "https://persisted.convex.site" },
-          },
+          convex: { siteUrl: "https://persisted.convex.site" },
         },
         null,
         2,

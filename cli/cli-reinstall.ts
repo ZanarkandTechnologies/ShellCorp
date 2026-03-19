@@ -32,7 +32,11 @@ export function setCliReinstallRunnerForTests(runner: ReinstallRunner | null): v
 }
 
 function resolveDefaultRepoRoot(): string {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const cliDir =
+    typeof __dirname === "string" && __dirname.trim()
+      ? __dirname
+      : path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(cliDir, "..");
 }
 
 function readRepoRoot(argv: readonly string[]): string {
@@ -71,6 +75,9 @@ async function main(): Promise<void> {
   process.exitCode = await runCliReinstall(process.argv.slice(2));
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+const currentModulePath =
+  typeof __filename === "string" && __filename.trim() ? __filename : fileURLToPath(import.meta.url);
+
+if (process.argv[1] && currentModulePath === path.resolve(process.argv[1])) {
   void main();
 }

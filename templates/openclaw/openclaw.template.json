@@ -1,5 +1,4 @@
 {
-  "version": 1,
   "tools": {
     "profile": "coding"
   },
@@ -82,12 +81,5 @@
         }
       }
     ]
-  },
-  "plugins": {
-    "load": {
-      "paths": [
-        "./extensions/notion"
-      ]
-    }
   }
 }

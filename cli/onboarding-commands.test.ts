@@ -20,7 +20,6 @@ async function setupRepoFixture(
     path.join(repoRoot, "templates", "openclaw", "openclaw.template.json"),
     `${JSON.stringify(
       {
-        version: 1,
         tools: { profile: "coding" },
         hooks: { internal: { enabled: true, entries: { "shellcorp-status": { enabled: true } } } },
         agents: {
@@ -130,7 +129,6 @@ async function seedOpenclawMainAgent(stateDir: string): Promise<void> {
     path.join(stateDir, "openclaw.json"),
     `${JSON.stringify(
       {
-        version: 1,
         agents: {
           list: [
             {
@@ -196,17 +194,23 @@ describe("onboarding CLI", () => {
 
     const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
     const openclaw = JSON.parse(openclawRaw) as {
-      shellcorp?: { convex?: { siteUrl?: string } };
+      version?: unknown;
+      shellcorp?: unknown;
       plugins?: {
         load?: { paths?: string[] };
-        entries?: { "notion-shell"?: { config?: { webhook?: { path?: string } } } };
+        entries?: { "notion-shell"?: unknown };
       };
     };
-    expect(openclaw.shellcorp?.convex?.siteUrl).toBe("https://demo.convex.cloud");
-    expect(openclaw.plugins?.load?.paths).toContain(path.join(repoRoot, "extensions", "notion"));
-    expect(openclaw.plugins?.entries?.["notion-shell"]?.config?.webhook?.path).toBe(
-      "/plugins/notion-shell/webhook",
+    expect(openclaw.version).toBeUndefined();
+    expect(openclaw.shellcorp).toBeUndefined();
+    expect(openclaw.plugins?.load?.paths ?? []).not.toContain(
+      path.join(repoRoot, "extensions", "notion"),
     );
+    expect(openclaw.plugins?.entries?.["notion-shell"]).toBeUndefined();
+
+    const shellcorpRaw = await readFile(path.join(stateDir, "shellcorp.json"), "utf-8");
+    const shellcorp = JSON.parse(shellcorpRaw) as { convex?: { siteUrl?: string } };
+    expect(shellcorp.convex?.siteUrl).toBe("https://demo.convex.cloud");
 
     const uiEnvRaw = await readFile(path.join(repoRoot, "ui", ".env.local"), "utf-8");
     expect(uiEnvRaw).toContain("VITE_GATEWAY_TOKEN=token-123");
@@ -216,7 +220,7 @@ describe("onboarding CLI", () => {
     expect(JSON.parse(approvalsRaw)).toEqual([]);
   });
 
-  it("preserves existing ui env keys and avoids duplicating plugin paths on rerun", async () => {
+  it("preserves existing ui env keys and removes stale onboarding-managed notion wiring", async () => {
     const { repoRoot, stateDir } = await setupRepoFixture();
     process.env.OPENCLAW_STATE_DIR = stateDir;
     process.env.SHELLCORP_REPO_ROOT = repoRoot;
@@ -227,7 +231,21 @@ describe("onboarding CLI", () => {
       `${JSON.stringify(
         {
           version: 1,
-          plugins: { load: { paths: ["./extensions/notion"] } },
+          plugins: {
+            load: { paths: ["./extensions/notion"] },
+            entries: {
+              "notion-shell": {
+                enabled: true,
+                config: {
+                  defaultAccountId: "default",
+                  webhook: {
+                    path: "/plugins/notion-shell/webhook",
+                    targetAgentId: "main",
+                  },
+                },
+              },
+            },
+          },
           agents: {
             list: [
               {
@@ -253,9 +271,13 @@ describe("onboarding CLI", () => {
 
     const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
     const openclaw = JSON.parse(openclawRaw) as {
-      plugins?: { load?: { paths?: string[] } };
+      plugins?: {
+        load?: { paths?: string[] };
+        entries?: { "notion-shell"?: unknown };
+      };
     };
-    expect(openclaw.plugins?.load?.paths).toEqual(["./extensions/notion"]);
+    expect(openclaw.plugins?.load?.paths ?? []).toEqual([]);
+    expect(openclaw.plugins?.entries?.["notion-shell"]).toBeUndefined();
 
     const uiEnvRaw = await readFile(path.join(repoRoot, "ui", ".env.local"), "utf-8");
     expect(uiEnvRaw).toContain("CUSTOM_FLAG=keepme");
@@ -284,8 +306,11 @@ describe("onboarding CLI", () => {
     const uiEnvRaw = await readFile(path.join(repoRoot, "ui", ".env.local"), "utf-8");
     const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
     const openclaw = JSON.parse(openclawRaw) as { shellcorp?: { convex?: { siteUrl?: string } } };
+    const shellcorpRaw = await readFile(path.join(stateDir, "shellcorp.json"), "utf-8");
+    const shellcorp = JSON.parse(shellcorpRaw) as { convex?: { siteUrl?: string } };
     expect(uiEnvRaw).toContain("VITE_CONVEX_URL=https://fresh-root.convex.site");
-    expect(openclaw.shellcorp?.convex?.siteUrl).toBe("https://fresh-root.convex.site");
+    expect(openclaw.shellcorp).toBeUndefined();
+    expect(shellcorp.convex?.siteUrl).toBe("https://fresh-root.convex.site");
   });
 
   it("prefers CONVEX_SITE_URL for persisted shellcorp CLI config when both Convex URLs exist", async () => {
@@ -302,9 +327,9 @@ describe("onboarding CLI", () => {
 
     await runCommand(["onboarding", "--yes"]);
 
-    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
-    const openclaw = JSON.parse(openclawRaw) as { shellcorp?: { convex?: { siteUrl?: string } } };
-    expect(openclaw.shellcorp?.convex?.siteUrl).toBe("http://127.0.0.1:3211");
+    const shellcorpRaw = await readFile(path.join(stateDir, "shellcorp.json"), "utf-8");
+    const shellcorp = JSON.parse(shellcorpRaw) as { convex?: { siteUrl?: string } };
+    expect(shellcorp.convex?.siteUrl).toBe("http://127.0.0.1:3211");
   });
 
   it("preserves persisted shellcorp convex site url when repo env is absent", async () => {
@@ -319,7 +344,6 @@ describe("onboarding CLI", () => {
       `${JSON.stringify(
         {
           version: 1,
-          shellcorp: { convex: { siteUrl: "https://persisted.convex.site" } },
           agents: {
             list: [
               {
@@ -336,14 +360,28 @@ describe("onboarding CLI", () => {
       )}\n`,
       "utf-8",
     );
+    await writeFile(
+      path.join(stateDir, "shellcorp.json"),
+      `${JSON.stringify(
+        {
+          convex: { siteUrl: "https://persisted.convex.site" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
 
     await runCommand(["onboarding", "--yes"]);
 
     const uiEnvRaw = await readFile(path.join(repoRoot, "ui", ".env.local"), "utf-8");
     const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
-    const openclaw = JSON.parse(openclawRaw) as { shellcorp?: { convex?: { siteUrl?: string } } };
+    const openclaw = JSON.parse(openclawRaw) as { shellcorp?: unknown };
+    const shellcorpRaw = await readFile(path.join(stateDir, "shellcorp.json"), "utf-8");
+    const shellcorp = JSON.parse(shellcorpRaw) as { convex?: { siteUrl?: string } };
     expect(uiEnvRaw).toContain("VITE_CONVEX_URL=https://persisted.convex.site");
-    expect(openclaw.shellcorp?.convex?.siteUrl).toBe("https://persisted.convex.site");
+    expect(openclaw.shellcorp).toBeUndefined();
+    expect(shellcorp.convex?.siteUrl).toBe("https://persisted.convex.site");
   });
 
   it("reports structured json output with doctor status", async () => {
@@ -412,6 +450,64 @@ describe("onboarding CLI", () => {
       payload.nextSteps?.some((step) => step.includes("Review the generated OpenClaw config")),
     ).toBe(true);
     expect(openclaw.agents?.list?.some((entry) => entry.id === "main")).toBe(true);
+  });
+
+  it("does not rewrite openclaw.json on rerun when only stale notion wiring was absent", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(["onboarding", "--yes", "--json"]);
+    logSpy.mockClear();
+
+    await runCommand(["onboarding", "--yes", "--json"]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      sidecars?: Record<string, string>;
+    };
+    expect(payload.sidecars?.["openclaw.json"]).toBe("unchanged");
+  });
+
+  it("removes invalid shellcorp-managed root keys from openclaw.json and migrates convex settings", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await mkdir(stateDir, { recursive: true });
+    await writeFile(path.join(repoRoot, ".env.local"), "NOTION_API_KEY=secret_test\n", "utf-8");
+
+    await writeFile(
+      path.join(stateDir, "openclaw.json"),
+      `${JSON.stringify(
+        {
+          version: 1,
+          shellcorp: { convex: { siteUrl: "https://persisted.convex.site" } },
+          agents: {
+            list: [
+              {
+                id: "main",
+                name: "CEO Agent",
+                workspace: path.join(stateDir, "workspace-main"),
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
+
+    await runCommand(["onboarding", "--yes", "--json"]);
+
+    const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
+    const openclaw = JSON.parse(openclawRaw) as { version?: unknown; shellcorp?: unknown };
+    const shellcorpRaw = await readFile(path.join(stateDir, "shellcorp.json"), "utf-8");
+    const shellcorp = JSON.parse(shellcorpRaw) as { convex?: { siteUrl?: string } };
+    expect(openclaw.version).toBeUndefined();
+    expect(openclaw.shellcorp).toBeUndefined();
+    expect(shellcorp.convex?.siteUrl).toBe("https://persisted.convex.site");
   });
 
   it("skips CLI install in --yes mode unless explicitly requested", async () => {
