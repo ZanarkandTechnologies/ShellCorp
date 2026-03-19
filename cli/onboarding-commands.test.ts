@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCliInstallExecFileRunnerForTests } from "./cli-install.js";
 import { registerOnboardingCommands } from "./onboarding-commands.js";
+import * as uiCommands from "./ui-commands.js";
 
 async function setupRepoFixture(
   input: { withPackageJson?: boolean } = {},
@@ -155,6 +156,7 @@ async function runCommand(args: string[]): Promise<void> {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   setCliInstallExecFileRunnerForTests(null);
   delete process.env.OPENCLAW_STATE_DIR;
   delete process.env.SHELLCORP_REPO_ROOT;
@@ -407,6 +409,57 @@ describe("onboarding CLI", () => {
     expect(payload.doctor?.teamData?.ok).toBe(true);
     expect(payload.doctor?.officeObjects?.ok).toBe(true);
     expect(payload.uiEnv?.VITE_CONVEX_URL).toBe("https://demo.convex.cloud");
+  });
+
+  it("reports Convex as unreachable when the configured runtime is offline", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+    await writeFile(path.join(repoRoot, ".env.local"), "CONVEX_URL=http://127.0.0.1:3210\n", "utf-8");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("connect ECONNREFUSED");
+      }),
+    );
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(["onboarding", "--yes", "--json"]);
+
+    const payload = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0] ?? "{}")) as {
+      runtime?: { convex?: { configured?: boolean; reachable?: boolean; url?: string } };
+      nextSteps?: string[];
+    };
+    expect(payload.runtime?.convex?.configured).toBe(true);
+    expect(payload.runtime?.convex?.reachable).toBe(false);
+    expect(payload.runtime?.convex?.url).toBe("http://127.0.0.1:3210");
+    expect(
+      payload.nextSteps?.some((step) => step.includes("Start the Convex backend at")),
+    ).toBe(true);
+  });
+
+  it("skips auto-launch when Convex is configured but unreachable", async () => {
+    const { repoRoot, stateDir } = await setupRepoFixture();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = repoRoot;
+    await seedOpenclawMainAgent(stateDir);
+    await writeFile(path.join(repoRoot, ".env.local"), "CONVEX_URL=http://127.0.0.1:3210\n", "utf-8");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("connect ECONNREFUSED");
+      }),
+    );
+    const launchSpy = vi.spyOn(uiCommands, "startUiDevServer").mockResolvedValue();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(["onboarding", "--yes", "--launch-ui"]);
+
+    expect(launchSpy).not.toHaveBeenCalled();
+    expect(
+      logSpy.mock.calls.some((call) => String(call[0] ?? "").includes("Skipping UI launch because Convex is unreachable")),
+    ).toBe(true);
   });
 
   it("auto-patches a missing main agent and still reports openclaw.json as updated", async () => {

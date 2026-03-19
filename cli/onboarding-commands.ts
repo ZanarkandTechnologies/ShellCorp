@@ -72,6 +72,13 @@ type OnboardingResult = {
   uiEnvPath: string;
   uiEnvStatus: FileStatus;
   uiEnv: Record<string, string>;
+  runtime: {
+    convex: {
+      url: string;
+      configured: boolean;
+      reachable: boolean;
+    };
+  };
   cliInstall: {
     attempted: boolean;
     ok: boolean;
@@ -396,6 +403,31 @@ async function ensureJsonSidecar<T>(filePath: string, payload: T): Promise<FileS
   return "created";
 }
 
+async function isRuntimeUrlReachable(url: string): Promise<boolean> {
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return false;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2_500);
+  try {
+    const response = await fetch(parsed, {
+      method: "GET",
+      redirect: "manual",
+      signal: controller.signal,
+    });
+    return response.status >= 100;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function removeOnboardingManagedNotionPlugin(config: JsonObject): JsonObject {
   const repoRoot = resolveRepoRoot();
   const plugins = asObject(config.plugins);
@@ -557,6 +589,7 @@ function chooseUiEnvValues(inputValues: {
 
 function buildNextSteps(inputValues: {
   uiEnv: Record<string, string>;
+  runtime: OnboardingResult["runtime"];
   cliInstall: OnboardingResult["cliInstall"];
   openclawChanged: boolean;
   repoRoot: string;
@@ -569,11 +602,17 @@ function buildNextSteps(inputValues: {
     "Use the in-app onboarding flow to finish connector setup and learn the office controls.",
     "Ask the CEO agent to create planning tickets on the board, move one into review, and approve it as your first office workflow.",
   ];
-  if (!inputValues.uiEnv.VITE_CONVEX_URL?.trim()) {
+  if (!inputValues.runtime.convex.configured) {
     steps.splice(
       1,
       0,
       "Run `npx convex dev` (or use your existing Convex deployment), then rerun `shellcorp onboarding --convex-url <url>` to wire the UI.",
+    );
+  } else if (!inputValues.runtime.convex.reachable) {
+    steps.splice(
+      1,
+      0,
+      `Start the Convex backend at \`${inputValues.runtime.convex.url}\` before opening the UI, then rerun \`shellcorp onboarding\` to verify the connection.`,
     );
   }
   if (inputValues.openclawChanged) {
@@ -810,6 +849,13 @@ export function registerOnboardingCommands(program: Command): void {
         currentShellcorpConfig: nextShellcorpConfig,
         opts,
       });
+      const runtime: OnboardingResult["runtime"] = {
+        convex: {
+          url: nextUiEnvValues.VITE_CONVEX_URL?.trim() ?? "",
+          configured: Boolean(nextUiEnvValues.VITE_CONVEX_URL?.trim()),
+          reachable: await isRuntimeUrlReachable(nextUiEnvValues.VITE_CONVEX_URL?.trim() ?? ""),
+        },
+      };
       await mkdir(uiRoot, { recursive: true });
       const nextUiEnv = {
         ...currentUiEnv,
@@ -828,9 +874,11 @@ export function registerOnboardingCommands(program: Command): void {
       }
       if (!opts.json) {
         printStepDone(
-          cliInstall.ok
-            ? `UI env is ready. Start the UI with ${UI_ALIAS_COMMAND} or ${UI_START_COMMAND}.`
-            : `UI env is ready. Start the UI with ${UI_START_COMMAND}, or run ${CLI_INSTALL_COMMAND} first for ${UI_ALIAS_COMMAND}.`,
+          runtime.convex.configured && !runtime.convex.reachable
+            ? `UI env is ready, but Convex is unreachable at \`${runtime.convex.url}\`. Start Convex before opening the UI.`
+            : cliInstall.ok
+              ? `UI env is ready. Start the UI with ${UI_ALIAS_COMMAND} or ${UI_START_COMMAND}.`
+              : `UI env is ready. Start the UI with ${UI_START_COMMAND}, or run ${CLI_INSTALL_COMMAND} first for ${UI_ALIAS_COMMAND}.`,
         );
         await pauseBetweenSteps(stepPausesEnabled);
       }
@@ -851,6 +899,7 @@ export function registerOnboardingCommands(program: Command): void {
         uiEnvPath,
         uiEnvStatus,
         uiEnv: nextUiEnvValues,
+        runtime,
         cliInstall,
         doctor: {
           teamData: { ok: teamIssues.length === 0, issues: teamIssues },
@@ -858,6 +907,7 @@ export function registerOnboardingCommands(program: Command): void {
         },
         nextSteps: buildNextSteps({
           uiEnv: nextUiEnvValues,
+          runtime,
           cliInstall,
           openclawChanged: openclawStatus !== "unchanged",
           repoRoot,
@@ -880,7 +930,17 @@ export function registerOnboardingCommands(program: Command): void {
               defaultValue: true,
               skipPrompt: false,
             }))));
-      if (shouldLaunchUi) {
+      if (shouldLaunchUi && result.runtime.convex.configured && !result.runtime.convex.reachable) {
+        if (!opts.json) {
+          console.log(
+            cliYellow(
+              `Skipping UI launch because Convex is unreachable at \`${result.runtime.convex.url}\`. Start Convex first, then rerun ${UI_ALIAS_COMMAND} or ${UI_START_COMMAND}.`,
+            ),
+          );
+          console.log("");
+          printStepDone("UI launch skipped until Convex is running.");
+        }
+      } else if (shouldLaunchUi) {
         if (!opts.json) {
           console.log(
             cliDim(
@@ -934,6 +994,21 @@ export function registerOnboardingCommands(program: Command): void {
           )}`,
         );
         console.log(`- ${cliKeyValue("ui/.env.local:", result.uiEnvStatus, "ok")}`);
+        console.log(
+          `- ${cliKeyValue(
+            "convex runtime:",
+            result.runtime.convex.configured
+              ? result.runtime.convex.reachable
+                ? "reachable"
+                : "unreachable"
+              : "not configured",
+            result.runtime.convex.configured
+              ? result.runtime.convex.reachable
+                ? "ok"
+                : "warn"
+              : "info",
+          )}`,
+        );
         console.log(
           `- ${cliKeyValue(
             "doctor team-data:",

@@ -123,8 +123,9 @@ What `shellcorp onboarding` does:
 - generates `ui/.env.local` with safe `VITE_*` values
 - copies Convex URL from the repo-root `.env.local` when available
 - persists the Convex site URL into ShellCorp runtime config so the CLI can reuse it without manual exports
+- verifies whether the configured Convex runtime is actually reachable before it recommends or auto-launches the UI
 - runs doctor checks and prints the next steps
-- offers to launch the UI immediately so you can continue onboarding in-app
+- offers to launch the UI immediately only when the required runtime is ready, so onboarding does not hand off to a broken app
 
 After that:
 
