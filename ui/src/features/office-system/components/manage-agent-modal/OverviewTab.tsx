@@ -21,7 +21,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import type { AgentsListResult, AgentIdentityResult } from "@/lib/openclaw-types";
+import type { AgentIdentityResult, AgentsListResult } from "@/lib/openclaw-types";
 import type { EmployeeData } from "@/lib/types";
 import type { AgentConfigDraft, AgentUsageOverview } from "./_types";
 import { EmployeePreviewCard } from "./EmployeePreviewCard";
@@ -58,6 +58,9 @@ export function OverviewPanel(props: OverviewPanelProps): JSX.Element {
     hairColorOverride: props.draft.appearanceHairColor || null,
     petType: props.draft.appearancePetType ?? "none",
   };
+  const heartbeatOverride = props.draft.heartbeatEveryOverride.trim();
+  const heartbeatDefault = props.draft.heartbeatDefaultEvery.trim();
+  const effectiveHeartbeatCadence = heartbeatOverride || heartbeatDefault || "Not configured";
 
   return (
     <div className="space-y-4 rounded-md border p-4">
@@ -143,8 +146,8 @@ export function OverviewPanel(props: OverviewPanelProps): JSX.Element {
                   onChange={(event) =>
                     props.setDraft({
                       ...props.draft,
-                      appearanceClothesStyle:
-                        event.target.value as AgentConfigDraft["appearanceClothesStyle"],
+                      appearanceClothesStyle: event.target
+                        .value as AgentConfigDraft["appearanceClothesStyle"],
                     })
                   }
                 >
@@ -185,8 +188,8 @@ export function OverviewPanel(props: OverviewPanelProps): JSX.Element {
                   onChange={(event) =>
                     props.setDraft({
                       ...props.draft,
-                      appearancePetType:
-                        event.target.value as AgentConfigDraft["appearancePetType"],
+                      appearancePetType: event.target
+                        .value as AgentConfigDraft["appearancePetType"],
                     })
                   }
                 >
@@ -201,10 +204,75 @@ export function OverviewPanel(props: OverviewPanelProps): JSX.Element {
             </div>
           </div>
 
-          <div className="rounded-md border bg-muted/20 p-4">
-            <div className="space-y-4">
+          <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-base font-medium">Heartbeat</p>
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to use the shared default.
+                </p>
+              </div>
+              <Badge variant={heartbeatOverride ? "destructive" : "secondary"}>
+                {heartbeatOverride ? "override active" : "using default"}
+              </Badge>
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              <label
+                htmlFor="manage-agent-heartbeat-every"
+                className="rounded-md border border-destructive/30 bg-background/60 p-2 space-y-1"
+              >
+                <span className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                  Cadence
+                </span>
+                <Input
+                  id="manage-agent-heartbeat-every"
+                  value={props.draft.heartbeatEveryOverride}
+                  onChange={(event) =>
+                    props.setDraft({
+                      ...props.draft,
+                      heartbeatEveryOverride: event.target.value,
+                    })
+                  }
+                  placeholder={heartbeatDefault || "10m"}
+                  className="border-destructive/30 bg-background/80"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Current cadence:{" "}
+                  <span className="font-medium text-foreground">{effectiveHeartbeatCadence}</span>
+                  {heartbeatOverride
+                    ? ` · default ${heartbeatDefault || "unset"}`
+                    : " · shared default"}
+                </p>
+              </label>
+
+              <div className="rounded-md border border-destructive/30 bg-background/60 p-2">
+                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                  Reasoning
+                </p>
+                <p className="mt-1 font-medium">
+                  {props.draft.heartbeatIncludeReasoning ? "Enabled" : "Disabled"}
+                </p>
+              </div>
+
+              <div className="rounded-md border border-destructive/30 bg-background/60 p-2">
+                <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Target</p>
+                <p className="mt-1 font-medium">
+                  {props.draft.heartbeatTarget || "No target configured"}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground">
+              Prompt stays in <code>HEARTBEAT.md</code> or Files.
+              {props.draft.heartbeatPrompt.trim() ? " Shared prompt detected." : ""}
+            </p>
+          </div>
+
+          <div className="rounded-md border bg-muted/20 p-3">
+            <div className="space-y-3">
               {display.usageMeters.map((meter) => (
-                <div key={meter.label} className="space-y-2">
+                <div key={meter.label} className="space-y-1.5">
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span>{meter.label}</span>
                     <span className="font-medium">{meter.valueText}</span>
@@ -215,32 +283,28 @@ export function OverviewPanel(props: OverviewPanelProps): JSX.Element {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-md border bg-muted/20 p-3 text-sm">
-              <p className="text-muted-foreground">Latest Session Cost</p>
-              <p className="text-lg font-semibold">
-                {props.usageOverview?.latestSession
-                  ? usdFormatter.format(
-                      props.usageOverview.latestSession.sessionTotals.estimatedCostUsd,
-                    )
-                  : "Unavailable"}
+          <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+            <div className="rounded-md border bg-muted/20 p-2.5 text-sm">
+              <p className="text-muted-foreground">AI Burn 7d</p>
+              <p className="mt-1 text-lg font-semibold">
+                {usdFormatter.format(props.usageOverview?.cost7dUsd ?? 0)}
               </p>
             </div>
-            <div className="rounded-md border bg-muted/20 p-3 text-sm">
+            <div className="rounded-md border bg-muted/20 p-2.5 text-sm">
               <p className="text-muted-foreground">AI Burn 24h</p>
-              <p className="text-lg font-semibold">
+              <p className="mt-1 text-lg font-semibold">
                 {usdFormatter.format(props.usageOverview?.cost24hUsd ?? 0)}
               </p>
             </div>
-            <div className="rounded-md border bg-muted/20 p-3 text-sm">
-              <p className="text-muted-foreground">Tracked Total Cost</p>
-              <p className="text-lg font-semibold">
+            <div className="rounded-md border bg-muted/20 p-2.5 text-sm">
+              <p className="text-muted-foreground">Total Cost</p>
+              <p className="mt-1 text-lg font-semibold">
                 {usdFormatter.format(props.usageOverview?.totalTrackedCostUsd ?? 0)}
               </p>
             </div>
-            <div className="rounded-md border bg-muted/20 p-3 text-sm">
-              <p className="text-muted-foreground">Tracked Tokens</p>
-              <p className="text-lg font-semibold">
+            <div className="rounded-md border bg-muted/20 p-2.5 text-sm">
+              <p className="text-muted-foreground">Tokens</p>
+              <p className="mt-1 text-lg font-semibold">
                 {tokenFormatter.format(props.usageOverview?.totalTokens ?? 0)}
               </p>
             </div>

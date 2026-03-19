@@ -98,17 +98,15 @@ describe("manage agent config draft helpers", () => {
         },
       },
       agents: {
-        list: [
-          { id: "agent-alpha" },
-          { id: "agent-beta", skills: ["keep-me"] },
-        ],
+        list: [{ id: "agent-alpha" }, { id: "agent-beta", skills: ["keep-me"] }],
       },
     } satisfies Record<string, unknown>;
 
-    const nextDraft = toggleSidebarSkill(resolveAgentConfigDraft(currentConfig, "agent-alpha"), "1password", [
+    const nextDraft = toggleSidebarSkill(
+      resolveAgentConfigDraft(currentConfig, "agent-alpha"),
       "1password",
-      "apple-notes",
-    ]);
+      ["1password", "apple-notes"],
+    );
     const nextConfig = buildNextAgentConfig(currentConfig, "agent-alpha", nextDraft);
 
     expect(resolveAgentConfigDraft(nextConfig, "agent-alpha")).toEqual({
@@ -128,5 +126,82 @@ describe("manage agent config draft helpers", () => {
         },
       },
     });
+  });
+
+  it("reads inherited heartbeat defaults and only writes the per-agent cadence override", () => {
+    const currentConfig = {
+      agents: {
+        defaults: {
+          heartbeat: {
+            every: "10m",
+            includeReasoning: true,
+            target: "last",
+            prompt: "Read HEARTBEAT.md and follow it exactly.",
+          },
+        },
+        list: [
+          {
+            id: "agent-alpha",
+            heartbeat: {
+              every: "1m",
+            },
+          },
+          {
+            id: "agent-beta",
+          },
+        ],
+      },
+    } satisfies Record<string, unknown>;
+
+    expect(resolveAgentConfigDraft(currentConfig, "agent-alpha")).toEqual({
+      ...EMPTY_AGENT_CONFIG_DRAFT,
+      heartbeatEveryOverride: "1m",
+      heartbeatDefaultEvery: "10m",
+      heartbeatIncludeReasoning: true,
+      heartbeatTarget: "last",
+      heartbeatPrompt: "Read HEARTBEAT.md and follow it exactly.",
+    });
+
+    expect(resolveAgentConfigDraft(currentConfig, "agent-beta")).toEqual({
+      ...EMPTY_AGENT_CONFIG_DRAFT,
+      heartbeatDefaultEvery: "10m",
+      heartbeatIncludeReasoning: true,
+      heartbeatTarget: "last",
+      heartbeatPrompt: "Read HEARTBEAT.md and follow it exactly.",
+    });
+
+    const nextConfig = buildNextAgentConfig(currentConfig, "agent-alpha", {
+      ...resolveAgentConfigDraft(currentConfig, "agent-alpha"),
+      heartbeatEveryOverride: "",
+    });
+
+    expect(resolveAgentConfigDraft(nextConfig, "agent-alpha")).toEqual({
+      ...EMPTY_AGENT_CONFIG_DRAFT,
+      heartbeatDefaultEvery: "10m",
+      heartbeatIncludeReasoning: true,
+      heartbeatTarget: "last",
+      heartbeatPrompt: "Read HEARTBEAT.md and follow it exactly.",
+    });
+    expect(nextConfig).toMatchObject({
+      agents: {
+        defaults: {
+          heartbeat: {
+            every: "10m",
+            includeReasoning: true,
+            target: "last",
+            prompt: "Read HEARTBEAT.md and follow it exactly.",
+          },
+        },
+      },
+    });
+    expect(
+      (
+        (
+          (nextConfig.agents as Record<string, unknown>).list as Array<Record<string, unknown>>
+        ).find((entry) => entry.id === "agent-alpha")?.heartbeat as
+          | Record<string, unknown>
+          | undefined
+      )?.every,
+    ).toBeUndefined();
   });
 });

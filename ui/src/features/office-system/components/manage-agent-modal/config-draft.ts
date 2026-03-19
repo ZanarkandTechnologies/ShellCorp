@@ -28,6 +28,11 @@ export function cloneAgentConfigDraft(value: AgentConfigDraft): AgentConfigDraft
 export const EMPTY_AGENT_CONFIG_DRAFT: AgentConfigDraft = {
   primaryModel: "",
   fallbackModels: "",
+  heartbeatEveryOverride: "",
+  heartbeatDefaultEvery: "",
+  heartbeatIncludeReasoning: false,
+  heartbeatTarget: "",
+  heartbeatPrompt: "",
   toolsProfile: "",
   toolsAllow: [],
   toolsDeny: [],
@@ -47,6 +52,10 @@ export function resolveAgentConfigDraft(
       ? (config.agents as Record<string, unknown>)
       : {};
   const list = Array.isArray(agentsNode.list) ? agentsNode.list : [];
+  const defaultsNode =
+    agentsNode.defaults && typeof agentsNode.defaults === "object"
+      ? (agentsNode.defaults as Record<string, unknown>)
+      : {};
   const entry = list.find((item) => {
     if (!item || typeof item !== "object") return false;
     const row = item as Record<string, unknown>;
@@ -66,6 +75,14 @@ export function resolveAgentConfigDraft(
         .join(", ");
     }
   }
+  const defaultsHeartbeatNode =
+    defaultsNode.heartbeat && typeof defaultsNode.heartbeat === "object"
+      ? (defaultsNode.heartbeat as Record<string, unknown>)
+      : {};
+  const entryHeartbeatNode =
+    entry?.heartbeat && typeof entry.heartbeat === "object"
+      ? (entry.heartbeat as Record<string, unknown>)
+      : {};
   const toolsNode =
     entry?.tools && typeof entry.tools === "object" ? (entry.tools as Record<string, unknown>) : {};
   const toolsAllow = Array.isArray(toolsNode.alsoAllow)
@@ -115,6 +132,15 @@ export function resolveAgentConfigDraft(
   return {
     primaryModel,
     fallbackModels,
+    heartbeatEveryOverride:
+      typeof entryHeartbeatNode.every === "string" ? entryHeartbeatNode.every : "",
+    heartbeatDefaultEvery:
+      typeof defaultsHeartbeatNode.every === "string" ? defaultsHeartbeatNode.every : "",
+    heartbeatIncludeReasoning: defaultsHeartbeatNode.includeReasoning === true,
+    heartbeatTarget:
+      typeof defaultsHeartbeatNode.target === "string" ? defaultsHeartbeatNode.target : "",
+    heartbeatPrompt:
+      typeof defaultsHeartbeatNode.prompt === "string" ? defaultsHeartbeatNode.prompt : "",
     toolsProfile: typeof toolsNode.profile === "string" ? toolsNode.profile : "",
     toolsAllow,
     toolsDeny,
@@ -160,6 +186,16 @@ export function buildNextAgentConfig(
   } else {
     baseEntry.model = primaryModel;
   }
+
+  const heartbeatNode =
+    baseEntry.heartbeat && typeof baseEntry.heartbeat === "object"
+      ? (cloneConfig(baseEntry.heartbeat) as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+  const heartbeatEveryOverride = draft.heartbeatEveryOverride.trim();
+  if (heartbeatEveryOverride) heartbeatNode.every = heartbeatEveryOverride;
+  else delete heartbeatNode.every;
+  if (Object.keys(heartbeatNode).length > 0) baseEntry.heartbeat = heartbeatNode;
+  else delete baseEntry.heartbeat;
 
   const toolsNode =
     baseEntry.tools && typeof baseEntry.tools === "object"

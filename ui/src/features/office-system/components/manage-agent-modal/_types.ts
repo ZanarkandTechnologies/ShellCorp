@@ -6,6 +6,11 @@ export type SkillsMode = "all" | "selected" | "none";
 export type AgentConfigDraft = {
   primaryModel: string;
   fallbackModels: string;
+  heartbeatEveryOverride: string;
+  heartbeatDefaultEvery: string;
+  heartbeatIncludeReasoning: boolean;
+  heartbeatTarget: string;
+  heartbeatPrompt: string;
   toolsProfile: string;
   toolsAllow: string[];
   toolsDeny: string[];
