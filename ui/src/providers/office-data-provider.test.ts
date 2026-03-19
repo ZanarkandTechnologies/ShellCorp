@@ -12,7 +12,7 @@ import {
   buildOfficeObjectSignature,
   stabilizeOfficeData,
 } from "./office-data-stability";
-import { toOfficeData } from "./office-data-provider";
+import { toOfficeData } from "./office-data-mapper";
 
 function createOfficeSettings(): OfficeSettingsModel {
   return {
