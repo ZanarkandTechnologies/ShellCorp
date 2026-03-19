@@ -299,12 +299,22 @@ function fallbackData(): OfficeDataContextType {
   };
 }
 
+function resolveRuntimeTeamId(
+  agentId: string,
+  companyAgentProjectId: string | undefined,
+  projectToTeamId: Map<string, string>,
+): string {
+  if (agentId === "main") return "team-management";
+  if (!companyAgentProjectId) return "team-management";
+  return projectToTeamId.get(companyAgentProjectId) ?? "team-management";
+}
+
 function areStringArraysEqual(current: string[], next: string[]): boolean {
   if (current.length !== next.length) return false;
   return current.every((value, index) => value === next[index]);
 }
 
-function toOfficeData(
+export function toOfficeData(
   unified: UnifiedOfficeModel,
   officeSettings: OfficeDataContextType["officeSettings"],
   pendingApprovals: PendingApprovalModel[] = [],
@@ -445,17 +455,6 @@ function toOfficeData(
         },
       });
     }
-  } else {
-    const teamId = "team-openclaw";
-    teams.push({
-      _id: teamId,
-      companyId,
-      name: "OpenClaw Ops",
-      description: "Agents discovered from OpenClaw state.",
-      deskCount: Math.max(agents.length, 1),
-      clusterPosition: [0, 0, 8],
-      employees: agents.map((agent) => `employee-${agent.agentId}`),
-    });
   }
 
   const desks: DeskLayoutData[] = teams.flatMap((team) =>
@@ -568,11 +567,7 @@ function toOfficeData(
     const runtimeAgent = runtimeById.get(agent.agentId);
     const isRuntimeRunning = Boolean(runtimeAgent);
     const isMainAgent = agent.agentId === "main";
-    const teamId = isMainAgent
-      ? "team-management"
-      : companyAgent?.projectId
-        ? (projectToTeamId.get(companyAgent.projectId) ?? "team-openclaw")
-        : "team-openclaw";
+    const teamId = resolveRuntimeTeamId(agent.agentId, companyAgent?.projectId, projectToTeamId);
     const team = teams.find((item) => item._id === teamId);
     const heartbeat = companyModel.heartbeatProfiles.find(
       (item) => item.id === companyAgent?.heartbeatProfileId,
@@ -646,7 +641,7 @@ function toOfficeData(
       teamId,
       builtInRole: companyAgent?.role ?? "worker",
       name: agent.displayName,
-      team: team?.name ?? "OpenClaw Ops",
+      team: team?.name ?? "Management",
       initialPosition,
       activityTargetPosition:
         skillTargetObject && skillOccupantIndex >= 0

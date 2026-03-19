@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import type { OfficeSettingsModel } from "@/lib/openclaw-types";
+import type {
+  AgentCardModel,
+  CompanyModel,
+  OfficeSettingsModel,
+  UnifiedOfficeModel,
+} from "@/lib/openclaw-types";
 import type { EmployeeData, OfficeObject } from "@/lib/types";
 import {
   buildEmployeeSignature,
   buildOfficeObjectSignature,
   stabilizeOfficeData,
 } from "./office-data-stability";
+import { toOfficeData } from "./office-data-provider";
 
 function createOfficeSettings(): OfficeSettingsModel {
   return {
@@ -71,6 +77,88 @@ function createValue(params?: { employees?: EmployeeData[]; officeObjects?: Offi
   };
 }
 
+function createRuntimeAgent(overrides: Partial<AgentCardModel> = {}): AgentCardModel {
+  return {
+    agentId: "main",
+    displayName: "Main Agent",
+    workspacePath: "/tmp/main",
+    agentDir: "/tmp/main/agent",
+    sandboxMode: "workspace-write",
+    toolPolicy: { allow: [], deny: [] },
+    sessionCount: 0,
+    ...overrides,
+  };
+}
+
+function createCompanyModel(overrides: Partial<CompanyModel> = {}): CompanyModel {
+  return {
+    version: 1,
+    departments: [],
+    projects: [],
+    agents: [
+      {
+        agentId: "main",
+        role: "ceo",
+        heartbeatProfileId: "hb-ceo",
+        isCeo: true,
+        lifecycleState: "active",
+      },
+    ],
+    roleSlots: [],
+    tasks: [],
+    federationPolicies: [],
+    providerIndexProfiles: [],
+    heartbeatProfiles: [
+      {
+        id: "hb-ceo",
+        role: "ceo",
+        cadenceMinutes: 15,
+        teamDescription: "Executive oversight",
+        productDetails: "Company control surface",
+        goal: "Keep the company aligned",
+      },
+    ],
+    channelBindings: [],
+    heartbeatRuntime: {
+      enabled: true,
+      pluginId: "shellcorp-heartbeat",
+      serviceId: "company-heartbeat-loop",
+      cadenceMinutes: 10,
+      notes: "Run heartbeat execution through OpenClaw.",
+    },
+    officeObjects: [],
+    ...overrides,
+  };
+}
+
+function createUnifiedOfficeModel(overrides: Partial<UnifiedOfficeModel> = {}): UnifiedOfficeModel {
+  return {
+    company: createCompanyModel(),
+    runtimeAgents: [createRuntimeAgent()],
+    configuredAgents: [createRuntimeAgent()],
+    officeObjects: [],
+    memory: [],
+    skills: [],
+    workload: [],
+    warnings: [],
+    diagnostics: {
+      configAgentCount: 1,
+      runtimeAgentCount: 1,
+      sidecarAgentCount: 1,
+      missingRuntimeAgentIds: [],
+      unmappedRuntimeAgentIds: [],
+      invalidOfficeObjects: [],
+      duplicateOfficeObjectIds: [],
+      officeObjectCount: 0,
+      clampedClusterCount: 0,
+      outOfBoundsClusterObjectIds: [],
+      ceoAnchorMode: "fallback",
+      source: "localStorage",
+    },
+    ...overrides,
+  };
+}
+
 describe("office-data-provider stabilization", () => {
   it("treats activity target changes as employee changes", () => {
     const base = [createEmployee()];
@@ -119,5 +207,88 @@ describe("office-data-provider stabilization", () => {
 
     const stabilized = stabilizeOfficeData(currentValue, nextValue);
     expect(stabilized.officeObjects).toBe(nextValue.officeObjects);
+  });
+});
+
+describe("office-data-provider team synthesis", () => {
+  it("does not synthesize an OpenClaw Ops cluster when all projects are archived", () => {
+    const company = createCompanyModel({
+      projects: [
+        {
+          id: "proj-shellcorp-dev-team",
+          departmentId: "dept-products",
+          name: "ShellCorp Dev Team",
+          githubUrl: "",
+          status: "archived",
+          goal: "Internal product loop",
+          kpis: [],
+          accountEvents: [],
+          ledger: [],
+          experiments: [],
+          metricEvents: [],
+          resources: [],
+          resourceEvents: [],
+        },
+      ],
+      agents: [
+        {
+          agentId: "main",
+          role: "ceo",
+          heartbeatProfileId: "hb-ceo",
+          isCeo: true,
+          lifecycleState: "active",
+        },
+        {
+          agentId: "shellcorp-dev-team-pm",
+          role: "pm",
+          projectId: "proj-shellcorp-dev-team",
+          heartbeatProfileId: "hb-ceo",
+          lifecycleState: "retired",
+        },
+      ],
+    });
+    const unified = createUnifiedOfficeModel({
+      company,
+      runtimeAgents: [
+        createRuntimeAgent(),
+        createRuntimeAgent({
+          agentId: "shellcorp-dev-team-pm",
+          displayName: "ShellCorp PM",
+          workspacePath: "/tmp/shellcorp-dev-team-pm",
+          agentDir: "/tmp/shellcorp-dev-team-pm/agent",
+        }),
+      ],
+      configuredAgents: [
+        createRuntimeAgent(),
+        createRuntimeAgent({
+          agentId: "shellcorp-dev-team-pm",
+          displayName: "ShellCorp PM",
+          workspacePath: "/tmp/shellcorp-dev-team-pm",
+          agentDir: "/tmp/shellcorp-dev-team-pm/agent",
+        }),
+      ],
+    });
+
+    const result = toOfficeData(unified, createOfficeSettings());
+
+    expect(result.teams.map((team) => team._id)).toEqual(["team-management"]);
+    expect(result.officeObjects.every((object) => object.metadata?.teamId !== "team-openclaw")).toBe(
+      true,
+    );
+    expect(result.employees.every((employee) => employee.team !== "OpenClaw Ops")).toBe(true);
+  });
+
+  it("keeps the explicit OpenClaw Ops fallback when no agents are discovered", () => {
+    const unified = createUnifiedOfficeModel({
+      runtimeAgents: [],
+      configuredAgents: [],
+    });
+
+    const result = toOfficeData(unified, createOfficeSettings());
+
+    expect(result.teams.map((team) => team._id)).toContain("team-openclaw");
+    expect(result.officeObjects.some((object) => object.metadata?.teamId === "team-openclaw")).toBe(
+      true,
+    );
   });
 });
