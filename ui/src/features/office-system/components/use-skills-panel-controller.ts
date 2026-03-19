@@ -139,6 +139,7 @@ export function useSkillsPanelController(): ControllerResult {
   const [errorText, setErrorText] = useState("");
   const [manifestDraft, setManifestDraft] = useState<SkillManifest | null>(null);
   const [rawManifest, setRawManifest] = useState("");
+  const [rawManifestLoadedSkillId, setRawManifestLoadedSkillId] = useState<string | null>(null);
   const [editorMode, setEditorMode] = useState<"structured" | "raw">("structured");
   const [saveStatus, setSaveStatus] = useState("");
   const [runtimeStatusText, setRuntimeStatusText] = useState("");
@@ -210,11 +211,12 @@ export function useSkillsPanelController(): ControllerResult {
         const nextDetail = runtimeStatus ? { ...detail, runtimeStatus } : detail;
         setSelectedDetail(nextDetail);
         setManifestDraft(toManifestDraft(nextDetail));
-        const configFile = await adapter
-          .getSkillStudioFile(skillId, "skill.config.yaml")
-          .catch(() => null);
-        setRawManifest(configFile?.content ?? stringifySkillManifest(nextDetail.manifest));
+        setRawManifest(stringifySkillManifest(nextDetail.manifest));
+        setRawManifestLoadedSkillId(null);
         setSelectedFilePath(nextDetail.fileEntries[0]?.path ?? null);
+        setSelectedFile(null);
+        setFileDraft("");
+        setFileSaveStatus("");
         setSelectedDemoId(nextDetail.demoCases[0]?.id ?? null);
         setLastDemoRun(null);
         setSaveStatus("");
@@ -233,7 +235,11 @@ export function useSkillsPanelController(): ControllerResult {
           setSelectedDetail(fallback);
           setManifestDraft(toManifestDraft(fallback));
           setRawManifest(stringifySkillManifest(fallback.manifest));
+          setRawManifestLoadedSkillId(null);
           setSelectedFilePath(null);
+          setSelectedFile(null);
+          setFileDraft("");
+          setFileSaveStatus("");
           setSelectedDemoId(null);
           setLastDemoRun(null);
           setSaveStatus("");
@@ -250,11 +256,39 @@ export function useSkillsPanelController(): ControllerResult {
   }, [adapter, focusAgentId, globalInventory, isOpen, selectedSkillId, skills, skillsReport]);
 
   useEffect(() => {
+    if (
+      !selectedDetail ||
+      !selectedDetail.hasManifest ||
+      activeTab !== "controls" ||
+      editorMode !== "raw" ||
+      rawManifestLoadedSkillId === selectedDetail.skillId
+    ) {
+      return;
+    }
+    let cancelled = false;
+    async function loadRawManifest(): Promise<void> {
+      const configFile = await adapter
+        .getSkillStudioFile(selectedDetail.skillId, "skill.config.yaml")
+        .catch(() => null);
+      if (cancelled) return;
+      if (configFile?.content) {
+        setRawManifest(configFile.content);
+      }
+      setRawManifestLoadedSkillId(selectedDetail.skillId);
+    }
+    void loadRawManifest();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, adapter, editorMode, rawManifestLoadedSkillId, selectedDetail]);
+
+  useEffect(() => {
     if (!selectedDetail || !selectedFilePath) {
       setSelectedFile(null);
       setFileDraft("");
       return;
     }
+    if (activeTab !== "files") return;
     let cancelled = false;
     const skillId = selectedDetail.skillId;
     const filePath = selectedFilePath;
@@ -270,7 +304,7 @@ export function useSkillsPanelController(): ControllerResult {
     return () => {
       cancelled = true;
     };
-  }, [adapter, selectedDetail, selectedFilePath]);
+  }, [activeTab, adapter, selectedDetail, selectedFilePath]);
 
   const runtimeSearch = search.trim().toLowerCase();
   const selectedDemo = useMemo(

@@ -77,6 +77,13 @@ function describeGlobalSkillRow(row: GlobalSkillRow): string {
   return "Global skill entry available for instance-level enable and disable.";
 }
 
+function describeWorkspaceSkill(sourcePath: string): string {
+  if (sourcePath.includes(".openclaw")) {
+    return "Installed in this agent workspace.";
+  }
+  return "Workspace-owned runtime skill.";
+}
+
 export function SkillsPanelSidebar({
   focusAgentId,
   runtimeStatusText,
@@ -127,7 +134,7 @@ export function SkillsPanelSidebar({
         </Button>
       </div>
 
-      <ScrollArea className="mt-4 min-h-0 flex-1 [&>[data-slot=scroll-area-viewport]]:pr-3">
+      <ScrollArea className="mt-4 min-h-0 min-w-0 flex-1 overflow-x-hidden [&>[data-slot=scroll-area-viewport]]:pr-3">
         <>
           {focusAgentId ? (
             <>
@@ -148,13 +155,13 @@ export function SkillsPanelSidebar({
                     />
                   </button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="w-full space-y-2 pt-2">
+                <CollapsibleContent className="min-w-0 w-full space-y-2 pt-2">
                   {filteredWorkspaceSkills.map((entry) => (
                     <div
                       key={`workspace-sidebar-${entry.skillId}`}
-                      className={`w-full overflow-hidden rounded-md border px-3 py-3 text-left transition ${selectedSkillId === entry.skillId ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                      className={`min-w-0 w-full max-w-full overflow-hidden rounded-md border px-3 py-3 text-left transition ${selectedSkillId === entry.skillId ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
                     >
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 flex-col gap-2">
                         <button
                           type="button"
                           onClick={() => onSelectSkill(entry.skillId)}
@@ -162,11 +169,12 @@ export function SkillsPanelSidebar({
                         >
                           <p className="min-w-0 truncate text-sm font-medium">{entry.skillId}</p>
                         </button>
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <Badge variant="secondary">workspace</Badge>
                           <Button
                             size="sm"
                             variant="destructive"
+                            className="max-w-full"
                             disabled={isMutatingWorkspace}
                             onClick={() => onToggleWorkspaceSkill(entry.skillId, false)}
                           >
@@ -174,8 +182,8 @@ export function SkillsPanelSidebar({
                           </Button>
                         </div>
                       </div>
-                      <p className="mt-2 truncate text-[11px] text-muted-foreground">
-                        {entry.sourcePath}
+                      <p className="mt-2 min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-muted-foreground">
+                        {describeWorkspaceSkill(entry.sourcePath)}
                       </p>
                     </div>
                   ))}
@@ -196,14 +204,14 @@ export function SkillsPanelSidebar({
                     <SectionHeader title="Global" count={globalInheritedSkills.length} open={openGlobal} />
                   </button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="w-full space-y-2 pt-2">
+                <CollapsibleContent className="min-w-0 w-full space-y-2 pt-2">
                   {globalInheritedSkills.map((entry) => {
                     const skillId = entry.skillKey || entry.name;
                     const equippedForAgent = isAgentSkillEquipped(skillId);
                     return (
                       <div
                         key={`inherited-sidebar-${skillId}`}
-                        className={`w-full overflow-hidden rounded-md border px-3 py-3 text-left transition ${selectedSkillId === skillId ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                        className={`min-w-0 w-full max-w-full overflow-hidden rounded-md border px-3 py-3 text-left transition ${selectedSkillId === skillId ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
                       >
                         <button
                           type="button"
@@ -215,8 +223,8 @@ export function SkillsPanelSidebar({
                             {entry.description || "Inherited runtime skill"}
                           </p>
                         </button>
-                        <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
-                          <span className="text-[11px] text-muted-foreground">
+                        <div className="mt-2 flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <span className="min-w-0 text-[11px] text-muted-foreground">
                             {equippedForAgent
                               ? "Enabled for this agent"
                               : "Disabled for this agent"}
@@ -224,6 +232,7 @@ export function SkillsPanelSidebar({
                           <Button
                             size="sm"
                             variant={equippedForAgent ? "destructive" : "default"}
+                            className="max-w-full"
                             disabled={isSavingGlobalConfig}
                             onClick={() => onToggleAgentSkill(skillId)}
                           >
@@ -258,14 +267,14 @@ export function SkillsPanelSidebar({
                     />
                   </button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="w-full space-y-2 pt-2">
+                <CollapsibleContent className="min-w-0 w-full space-y-2 pt-2">
                   {bundledInheritedSkills.map((entry) => {
                     const skillId = entry.skillKey || entry.name;
                     const equippedForAgent = isAgentSkillEquipped(skillId);
                     return (
                       <div
                         key={`bundled-sidebar-${skillId}`}
-                        className={`w-full overflow-hidden rounded-md border px-3 py-3 text-left transition ${selectedSkillId === skillId ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                        className={`min-w-0 w-full max-w-full overflow-hidden rounded-md border px-3 py-3 text-left transition ${selectedSkillId === skillId ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
                       >
                         <button
                           type="button"
@@ -277,8 +286,8 @@ export function SkillsPanelSidebar({
                             {entry.description || "Bundled OpenClaw skill"}
                           </p>
                         </button>
-                        <div className="mt-2 flex min-w-0 items-center justify-between gap-2">
-                          <span className="text-[11px] text-muted-foreground">
+                        <div className="mt-2 flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <span className="min-w-0 text-[11px] text-muted-foreground">
                             {equippedForAgent
                               ? "Enabled for this agent"
                               : "Disabled for this agent"}
@@ -286,6 +295,7 @@ export function SkillsPanelSidebar({
                           <Button
                             size="sm"
                             variant={equippedForAgent ? "destructive" : "default"}
+                            className="max-w-full"
                             disabled={isSavingGlobalConfig}
                             onClick={() => onToggleAgentSkill(skillId)}
                           >

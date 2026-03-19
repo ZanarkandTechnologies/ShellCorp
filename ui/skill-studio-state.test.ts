@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readSkillStudioFile, saveSkillStudioFile } from "./skill-studio-state";
+import { getSkillStudioDetail, readSkillStudioFile, saveSkillStudioFile } from "./skill-studio-state";
 
 const tempRoots: string[] = [];
 
@@ -20,6 +20,24 @@ afterEach(async () => {
 });
 
 describe("skill-studio-state file saves", () => {
+  it("loads nested skill packages by leaf skill id", async () => {
+    const repoRoot = await createTempDir("skill-studio-repo-");
+    const skillsRoot = path.join(repoRoot, "skills");
+    const skillDir = path.join(skillsRoot, "agents", "create-team");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(path.join(skillDir, "SKILL.md"), "# Create Team\n", "utf8");
+    await writeFile(
+      path.join(skillDir, "skill.config.yaml"),
+      "interface:\n  displayName: Create Team\n",
+      "utf8",
+    );
+
+    const detail = await getSkillStudioDetail(skillsRoot, repoRoot, "create-team");
+
+    expect(detail?.skillId).toBe("create-team");
+    expect(detail?.packageKey).toBe("agents/create-team");
+  });
+
   it("marks repo references as read-only", async () => {
     const repoRoot = await createTempDir("skill-studio-repo-");
     const skillsRoot = path.join(repoRoot, "skills");

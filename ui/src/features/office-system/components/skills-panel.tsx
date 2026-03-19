@@ -116,16 +116,16 @@ export function SkillsPanel(): ReactElement {
           className="grid min-h-0 flex-1 overflow-hidden"
           style={{ gridTemplateColumns: `${SKILL_STUDIO_SIDEBAR_WIDTH}px minmax(0, 1fr)` }}
         >
-          <div className="flex min-h-0 flex-col border-r p-4">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r p-4">
             <div className="flex items-center gap-2">
               <Input
-                className="flex-1"
+                className="min-w-0 flex-1"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search skills"
               />
               <Select value={flagFilter} onValueChange={setFlagFilter}>
-                <SelectTrigger className="w-[104px]">
+                <SelectTrigger className="w-[104px] shrink-0">
                   <SelectValue placeholder="Filter" />
                 </SelectTrigger>
                 <SelectContent style={selectOverlayStyle}>

@@ -113,10 +113,56 @@ async function walkFiles(rootDir: string): Promise<string[]> {
   return files.sort();
 }
 
+async function hasSkillPackageFile(skillDir: string): Promise<boolean> {
+  for (const fileName of PACKAGE_FILE_NAMES) {
+    const candidate = path.join(skillDir, fileName);
+    const candidateStats = await stat(candidate).catch(() => null);
+    if (candidateStats?.isFile()) return true;
+  }
+  return false;
+}
+
 async function findSkillPackages(skillsRoot: string): Promise<string[]> {
   const files = await walkFiles(skillsRoot);
   const skillFiles = files.filter((filePath) => PACKAGE_FILE_NAMES.includes(path.basename(filePath) as (typeof PACKAGE_FILE_NAMES)[number]));
   return skillFiles.map((filePath) => path.dirname(filePath)).sort();
+}
+
+async function findSingleSkillPackageDir(
+  skillsRoot: string,
+  skillId: string,
+): Promise<string | null> {
+  const normalizedTarget = normalizeSkillLookup(skillId);
+  const directCandidates = [
+    path.resolve(skillsRoot, skillId),
+    path.resolve(skillsRoot, normalizedTarget),
+  ];
+
+  for (const candidate of directCandidates) {
+    if (!isWithin(skillsRoot, candidate)) continue;
+    const candidateStats = await stat(candidate).catch(() => null);
+    if (candidateStats?.isDirectory() && (await hasSkillPackageFile(candidate))) {
+      return candidate;
+    }
+  }
+
+  const stack = [skillsRoot];
+  while (stack.length > 0) {
+    const currentDir = stack.pop() ?? "";
+    const entries = await readdir(currentDir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === "node_modules" || entry.name.startsWith(".")) {
+        continue;
+      }
+      const entryPath = path.join(currentDir, entry.name);
+      if (normalizeSkillLookup(entry.name) === normalizedTarget && (await hasSkillPackageFile(entryPath))) {
+        return entryPath;
+      }
+      stack.push(entryPath);
+    }
+  }
+
+  return null;
 }
 
 function resolveExplicitReferencePaths(skillDir: string, repoRoot: string, manifest: SkillManifest): string[] {
@@ -187,17 +233,6 @@ function normalizeSkillLookup(value: string): string {
   return value.trim().toLowerCase().replace(/[_\s]+/g, "-");
 }
 
-function findSkillRecord(records: SkillPackageRecord[], skillId: string): SkillPackageRecord | null {
-  const normalizedTarget = normalizeSkillLookup(skillId);
-  return (
-    records.find((entry) => entry.skillId === skillId) ??
-    records.find((entry) => entry.packageKey === skillId) ??
-    records.find((entry) => normalizeSkillLookup(entry.skillId) === normalizedTarget) ??
-    records.find((entry) => normalizeSkillLookup(entry.packageKey) === normalizedTarget) ??
-    null
-  );
-}
-
 async function readSkillPackageRecord(
   skillDir: string,
   skillsRoot: string,
@@ -243,6 +278,25 @@ async function readAllSkillPackages(skillsRoot: string, repoRoot: string): Promi
   return Promise.all(skillDirs.map((skillDir) => readSkillPackageRecord(skillDir, skillsRoot, repoRoot)));
 }
 
+async function readSkillPackageForId(
+  skillsRoot: string,
+  repoRoot: string,
+  skillId: string,
+): Promise<SkillPackageRecord | null> {
+  const skillDir = await findSingleSkillPackageDir(skillsRoot, skillId);
+  if (!skillDir) return null;
+  const record = await readSkillPackageRecord(skillDir, skillsRoot, repoRoot);
+  if (
+    record.skillId === skillId ||
+    record.packageKey === skillId ||
+    normalizeSkillLookup(record.skillId) === normalizeSkillLookup(skillId) ||
+    normalizeSkillLookup(record.packageKey) === normalizeSkillLookup(skillId)
+  ) {
+    return record;
+  }
+  return null;
+}
+
 export async function listSkillStudioCatalog(
   skillsRoot: string,
   repoRoot: string,
@@ -283,8 +337,7 @@ export async function getSkillStudioDetail(
   runtimeStatuses: SkillStatusEntry[] = [],
   focusAgentId?: string,
 ): Promise<SkillStudioDetail | null> {
-  const records = await readAllSkillPackages(skillsRoot, repoRoot);
-  const record = findSkillRecord(records, skillId);
+  const record = await readSkillPackageForId(skillsRoot, repoRoot, skillId);
   if (!record) return null;
   return {
     skillId: record.skillId,
@@ -326,8 +379,7 @@ export async function readSkillStudioFile(
   skillId: string,
   requestedPath: string,
 ): Promise<SkillStudioFileContent | null> {
-  const records = await readAllSkillPackages(skillsRoot, repoRoot);
-  const record = findSkillRecord(records, skillId);
+  const record = await readSkillPackageForId(skillsRoot, repoRoot, skillId);
   if (!record) return null;
   const filePath = resolveSkillFilePath(record, repoRoot, requestedPath);
   const entry = record.fileEntries.find((file) => file.path === requestedPath);
@@ -359,8 +411,7 @@ export async function saveSkillStudioFile(
   requestedPath: string,
   content: string,
 ): Promise<SkillStudioFileContent | null> {
-  const records = await readAllSkillPackages(skillsRoot, repoRoot);
-  const record = findSkillRecord(records, skillId);
+  const record = await readSkillPackageForId(skillsRoot, repoRoot, skillId);
   if (!record) return null;
   const entry = record.fileEntries.find((file) => file.path === requestedPath);
   if (!entry || !entry.isText || requestedPath.startsWith("ref:")) return null;
@@ -384,8 +435,7 @@ export async function runSkillStudioDemo(
   skillId: string,
   caseId: string,
 ): Promise<SkillDemoRunResult | null> {
-  const records = await readAllSkillPackages(skillsRoot, repoRoot);
-  const record = findSkillRecord(records, skillId);
+  const record = await readSkillPackageForId(skillsRoot, repoRoot, skillId);
   if (!record) return null;
   const selectedCase = record.demoCases.find((entry) => entry.id === caseId);
   if (!selectedCase) return null;
@@ -418,8 +468,7 @@ export async function saveSkillStudioManifest(
   skillId: string,
   input: { manifest?: SkillManifest; rawYaml?: string },
 ): Promise<SkillStudioDetail | null> {
-  const records = await readAllSkillPackages(skillsRoot, repoRoot);
-  const record = findSkillRecord(records, skillId);
+  const record = await readSkillPackageForId(skillsRoot, repoRoot, skillId);
   if (!record) return null;
   const nextRaw = input.rawYaml ?? stringifySkillManifest(input.manifest ?? record.manifest);
   const reparsed = deriveSkillManifest(nextRaw, record.skillMarkdown, record.displayName);
