@@ -1,39 +1,18 @@
 [
   {
-    "id": "team-shellcorp",
-    "identifier": "team-proj-shellcorp",
-    "meshType": "team-cluster",
+    "id": "ceo-wall-front",
+    "identifier": "ceo-wall-front",
+    "meshType": "glass-wall",
     "position": [
-      -12,
       0,
-      -5
+      0,
+      -3.5
     ],
     "rotation": [
       0,
       0,
       0
-    ],
-    "metadata": {
-      "teamId": "team-proj-shellcorp"
-    }
-  },
-  {
-    "id": "team-growth",
-    "identifier": "team-proj-growth",
-    "meshType": "team-cluster",
-    "position": [
-      0,
-      0,
-      5
-    ],
-    "rotation": [
-      0,
-      0,
-      0
-    ],
-    "metadata": {
-      "teamId": "team-proj-growth"
-    }
+    ]
   },
   {
     "id": "ceo-wall-left",
@@ -42,7 +21,7 @@
     "position": [
       -2,
       0,
-      15
+      -1.5
     ],
     "rotation": [
       0,
@@ -57,7 +36,7 @@
     "position": [
       2,
       0,
-      15
+      -1.5
     ],
     "rotation": [
       0,
@@ -66,13 +45,13 @@
     ]
   },
   {
-    "id": "ceo-wall-front",
-    "identifier": "ceo-wall-front",
-    "meshType": "glass-wall",
+    "id": "plant-entry-right",
+    "identifier": "plant-entry-right",
+    "meshType": "plant",
     "position": [
+      3.5,
       0,
-      0,
-      13
+      -1
     ],
     "rotation": [
       0,
@@ -81,13 +60,13 @@
     ]
   },
   {
-    "id": "bookshelf-back",
-    "identifier": "bookshelf-back",
-    "meshType": "bookshelf",
+    "id": "plant-entry-left",
+    "identifier": "plant-entry-left",
+    "meshType": "plant",
     "position": [
+      -3.5,
       0,
-      0,
-      -15
+      -1
     ],
     "rotation": [
       0,
@@ -96,13 +75,49 @@
     ]
   },
   {
-    "id": "pantry-back-left",
-    "identifier": "pantry-back-left",
+    "id": "plant-back-left",
+    "identifier": "plant-back-left",
+    "meshType": "plant",
+    "position": [
+      -4,
+      0,
+      -12
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "id": "plant-center-left",
+    "identifier": "plant-center-left",
+    "meshType": "plant",
+    "position": [
+      -4,
+      0,
+      -8
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "metadata": {
+      "displayName": "Cactus",
+      "uiBinding": {
+        "kind": "none"
+      }
+    }
+  },
+  {
+    "id": "pantry-main",
+    "identifier": "pantry-main",
     "meshType": "pantry",
     "position": [
-      -12,
+      1,
       0,
-      -14
+      -13
     ],
     "rotation": [
       0,
@@ -111,48 +126,52 @@
     ]
   },
   {
-    "id": "couch-back-right",
-    "identifier": "couch-back-right",
+    "id": "couch-main",
+    "identifier": "couch-main",
     "meshType": "couch",
     "position": [
-      12,
+      8,
       0,
-      -14
+      -8
     ],
     "rotation": [
       0,
-      3.1415926535,
+      4.71238898038469,
       0
     ]
   },
   {
-    "id": "plant-nw",
-    "identifier": "plant-nw",
-    "meshType": "plant",
+    "id": "world-monitor-console",
+    "identifier": "world-monitor-console",
+    "meshType": "bookshelf",
     "position": [
-      -14,
+      7,
       0,
-      -14
+      -11
     ],
     "rotation": [
       0,
       0,
       0
-    ]
-  },
-  {
-    "id": "plant-ne",
-    "identifier": "plant-ne",
-    "meshType": "plant",
-    "position": [
-      14,
-      0,
-      -14
     ],
-    "rotation": [
-      0,
-      0,
-      0
-    ]
+    "metadata": {
+      "displayName": "World Monitor",
+      "uiBinding": {
+        "kind": "embed",
+        "title": "World Monitor",
+        "url": "http://localhost:3002/?lat=20.0000&lon=0.0000&zoom=1.00&view=global&timeRange=7d&layers=conflicts%2Cbases%2Chotspots%2Cnuclear%2Csanctions%2Cweather%2Ceconomic%2Cwaterways%2Coutages%2Cmilitary%2Cnatural%2CiranAttacks",
+        "openMode": "panel",
+        "aspectRatio": "wide"
+      },
+      "skillBinding": {
+        "skillId": "world-monitor",
+        "label": "World Monitor",
+        "effectMode": "random",
+        "effectPool": [
+          "ghost",
+          "blink"
+        ]
+      }
+    }
   }
 ]

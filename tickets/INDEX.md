@@ -10,7 +10,7 @@ None.
 
 ## Building
 
-None.
+- `TKT-002` - minimal office seed and init command (`tickets/building/TKT-002-minimal-office-seed-and-init-command.md`)
 
 ## Done
 

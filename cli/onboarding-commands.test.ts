@@ -41,6 +41,12 @@ async function setupRepoFixture(
     `${JSON.stringify(
       {
         version: 1,
+        ui: {
+          onboarding: {
+            enabled: true,
+            completed: false,
+          },
+        },
         departments: [
           { id: "dept-ceo", name: "CEO Office", description: "", goal: "" },
           { id: "dept-products", name: "Product Studio", description: "", goal: "" },
@@ -77,8 +83,60 @@ async function setupRepoFixture(
     "utf-8",
   );
   await writeFile(
+    path.join(repoRoot, "templates", "sidecar", "office.template.json"),
+    `${JSON.stringify(
+      {
+        officeFootprint: { width: 15, depth: 17 },
+        officeLayout: {
+          version: 1,
+          tileSize: 1,
+          tiles: ["-1:-1", "0:-1", "1:-1", "-1:0", "0:0", "1:0", "-1:1", "0:1", "1:1"],
+        },
+        decor: {
+          floorPatternId: "sandstone_tiles",
+          wallColorId: "clay_rose",
+          backgroundId: "estuary_glow",
+        },
+        viewProfile: "fixed_2_5d",
+        orbitControlsEnabled: true,
+        cameraOrientation: "south_west",
+      },
+      null,
+      2,
+    )}\n`,
+    "utf-8",
+  );
+  await writeFile(
     path.join(repoRoot, "templates", "sidecar", "office-objects.template.json"),
-    "[]\n",
+    `${JSON.stringify(
+      [
+        {
+          id: "world-monitor-console",
+          identifier: "world-monitor-console",
+          meshType: "bookshelf",
+          position: [1, 0, 0],
+          rotation: [0, 0, 0],
+          metadata: {
+            displayName: "World Monitor",
+            uiBinding: {
+              kind: "embed",
+              title: "World Monitor",
+              url: "http://localhost:3002/?view=global",
+              openMode: "panel",
+              aspectRatio: "wide",
+            },
+            skillBinding: {
+              skillId: "world-monitor",
+              label: "World Monitor",
+              effectMode: "random",
+              effectPool: ["ghost", "blink"],
+            },
+          },
+        },
+      ],
+      null,
+      2,
+    )}\n`,
     "utf-8",
   );
   await writeFile(
@@ -191,8 +249,12 @@ describe("onboarding CLI", () => {
     await runCommand(["onboarding", "--yes", "--style", "cozy", "--gateway-token", "token-123"]);
 
     const companyRaw = await readFile(path.join(stateDir, "company.json"), "utf-8");
-    const company = JSON.parse(companyRaw) as { officeStylePreset?: string };
+    const company = JSON.parse(companyRaw) as {
+      officeStylePreset?: string;
+      ui?: { onboarding?: { enabled?: boolean; completed?: boolean } };
+    };
     expect(company.officeStylePreset).toBe("cozy");
+    expect(company.ui?.onboarding).toEqual({ enabled: true, completed: false });
 
     const openclawRaw = await readFile(path.join(stateDir, "openclaw.json"), "utf-8");
     const openclaw = JSON.parse(openclawRaw) as {
@@ -217,6 +279,40 @@ describe("onboarding CLI", () => {
     const uiEnvRaw = await readFile(path.join(repoRoot, "ui", ".env.local"), "utf-8");
     expect(uiEnvRaw).toContain("VITE_GATEWAY_TOKEN=token-123");
     expect(uiEnvRaw).toContain("VITE_CONVEX_URL=https://demo.convex.cloud");
+
+    const officeRaw = await readFile(path.join(stateDir, "office.json"), "utf-8");
+    const office = JSON.parse(officeRaw) as {
+      decor?: { wallColorId?: string; backgroundId?: string };
+      officeLayout?: { tiles?: string[] };
+      viewProfile?: string;
+    };
+    expect(office.decor?.wallColorId).toBe("clay_rose");
+    expect(office.decor?.backgroundId).toBe("estuary_glow");
+    expect(office.officeLayout?.tiles).toEqual([
+      "-1:-1",
+      "0:-1",
+      "1:-1",
+      "-1:0",
+      "0:0",
+      "1:0",
+      "-1:1",
+      "0:1",
+      "1:1",
+    ]);
+    expect(office.viewProfile).toBe("fixed_2_5d");
+
+    const officeObjectsRaw = await readFile(path.join(stateDir, "office-objects.json"), "utf-8");
+    const officeObjects = JSON.parse(officeObjectsRaw) as Array<{
+      id: string;
+      metadata?: {
+        displayName?: string;
+        skillBinding?: { skillId?: string };
+      };
+    }>;
+    expect(officeObjects).toHaveLength(1);
+    expect(officeObjects[0]?.id).toBe("world-monitor-console");
+    expect(officeObjects[0]?.metadata?.displayName).toBe("World Monitor");
+    expect(officeObjects[0]?.metadata?.skillBinding?.skillId).toBe("world-monitor");
 
     const approvalsRaw = await readFile(path.join(stateDir, "pending-approvals.json"), "utf-8");
     expect(JSON.parse(approvalsRaw)).toEqual([]);

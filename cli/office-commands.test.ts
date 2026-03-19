@@ -124,6 +124,45 @@ describe("office CLI", () => {
     expect(JSON.parse(raw)).toEqual([]);
   });
 
+  it("applies the starter office template through office init", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = "/home/kenjipcx/Zanarkand/ShellCorp";
+
+    await runCommand(["office", "init", "--force"]);
+
+    const settingsRaw = await readFile(path.join(stateDir, "office.json"), "utf-8");
+    const settings = JSON.parse(settingsRaw) as {
+      decor?: { wallColorId?: string; backgroundId?: string };
+      viewProfile?: string;
+      cameraOrientation?: string;
+    };
+    expect(settings.decor?.wallColorId).toBe("clay_rose");
+    expect(settings.decor?.backgroundId).toBe("estuary_glow");
+    expect(settings.viewProfile).toBe("fixed_2_5d");
+    expect(settings.cameraOrientation).toBe("south_west");
+
+    const objectsRaw = await readFile(path.join(stateDir, "office-objects.json"), "utf-8");
+    const objects = JSON.parse(objectsRaw) as Array<{
+      id: string;
+      metadata?: { displayName?: string; skillBinding?: { skillId?: string } };
+    }>;
+    expect(objects.some((entry) => entry.id === "world-monitor-console")).toBe(true);
+    expect(
+      objects.some((entry) => entry.metadata?.skillBinding?.skillId === "world-monitor"),
+    ).toBe(true);
+  });
+
+  it("guards office init when starter office data already exists", async () => {
+    const stateDir = await setupStateDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    process.env.SHELLCORP_REPO_ROOT = "/home/kenjipcx/Zanarkand/ShellCorp";
+
+    await runCommand(["office", "add", "plant", "--id", "plant-a", "--position", "-10,0,-10"]);
+
+    await expect(runCommand(["office", "init"])).rejects.toThrow("starter_office_exists:use_force");
+  });
+
   it("sets and reads office theme", async () => {
     const stateDir = await setupStateDir();
     process.env.OPENCLAW_STATE_DIR = stateDir;

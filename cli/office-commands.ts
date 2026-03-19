@@ -34,6 +34,7 @@ import {
   type OfficeWallColorId,
   resolveOpenclawHome,
 } from "./sidecar-store.js";
+import { readStarterOfficeTemplates } from "./starter-office.js";
 
 const MESH_TYPES = new Set([
   "team-cluster",
@@ -585,6 +586,40 @@ ${input.prompt}
 export function registerOfficeCommands(program: Command): void {
   const store = createSidecarStore();
   const office = program.command("office").description("Manage office layout and personalization");
+
+  office
+    .command("init")
+    .description("Apply the canonical starter office template")
+    .option("--force", "Overwrite existing office.json and office-objects.json", false)
+    .option("--json", "Output JSON", false)
+    .action(async (opts: { force?: boolean; json?: boolean }) => {
+      const starterOffice = await readStarterOfficeTemplates();
+      const currentObjects = await store.readOfficeObjects();
+      const currentSettings = await store.readOfficeSettings();
+      const hasExistingObjects = currentObjects.length > 0;
+      const hasExistingSettings =
+        currentSettings.officeLayout.tiles.length !== 35 * 35 ||
+        currentSettings.decor.floorPatternId !== "sandstone_tiles" ||
+        currentSettings.decor.wallColorId !== "gallery_cream" ||
+        currentSettings.decor.backgroundId !== "shell_haze" ||
+        currentSettings.viewProfile !== "free_orbit_3d" ||
+        currentSettings.cameraOrientation !== "south_east";
+      if ((hasExistingObjects || hasExistingSettings) && opts.force !== true) {
+        fail("starter_office_exists:use_force");
+      }
+      await store.writeOfficeSettings(starterOffice.officeSettings);
+      await store.writeOfficeObjects(starterOffice.officeObjects);
+      formatOutput(
+        opts.json ? "json" : "text",
+        {
+          ok: true,
+          forced: opts.force === true,
+          officeSettings: starterOffice.officeSettings,
+          officeObjects: starterOffice.officeObjects,
+        },
+        `Applied starter office (${starterOffice.officeObjects.length} objects)`,
+      );
+    });
 
   office
     .command("print")

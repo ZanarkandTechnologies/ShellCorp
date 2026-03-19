@@ -1,17 +1,23 @@
 {
   "version": 1,
+  "ui": {
+    "onboarding": {
+      "enabled": true,
+      "completed": false
+    }
+  },
   "departments": [
     {
       "id": "dept-ceo",
       "name": "CEO Office",
-      "description": "Executive control and company direction.",
-      "goal": "Maximize profitable outcomes."
+      "description": "Personal command center and executive oversight.",
+      "goal": "Keep the company aligned and profitable."
     },
     {
       "id": "dept-products",
       "name": "Product Studio",
-      "description": "Delivery teams for product projects.",
-      "goal": "Ship features that move core KPIs."
+      "description": "Project teams that execute product goals.",
+      "goal": "Ship and grow profitable products."
     }
   ],
   "projects": [
@@ -21,9 +27,10 @@
       "name": "ShellCorp",
       "githubUrl": "https://github.com/your-org/shellcorp",
       "status": "active",
-      "goal": "Operate an OpenClaw-native AI office.",
+      "goal": "Build an OpenClaw-native AI office control center.",
       "kpis": [
         "weekly_shipped_tickets",
+        "customer_response_time_minutes",
         "closed_vs_open_ticket_ratio"
       ],
       "businessConfig": {
@@ -133,30 +140,43 @@
       "lifecycleState": "active"
     },
     {
-      "agentId": "shellcorp-executor",
-      "role": "biz_executor",
+      "agentId": "shellcorp-builder",
+      "role": "builder",
       "projectId": "proj-shellcorp",
-      "heartbeatProfileId": "hb-biz-executor",
+      "heartbeatProfileId": "hb-builder",
+      "lifecycleState": "active"
+    },
+    {
+      "agentId": "shellcorp-growth",
+      "role": "growth_marketer",
+      "projectId": "proj-shellcorp",
+      "heartbeatProfileId": "hb-growth",
       "lifecycleState": "active"
     },
     {
       "agentId": "shellcorp-pm",
-      "role": "biz_pm",
+      "role": "pm",
       "projectId": "proj-shellcorp",
-      "heartbeatProfileId": "hb-biz-pm",
+      "heartbeatProfileId": "hb-pm",
       "lifecycleState": "active"
     }
   ],
   "roleSlots": [
     {
       "projectId": "proj-shellcorp",
-      "role": "biz_executor",
+      "role": "builder",
       "desiredCount": 1,
       "spawnPolicy": "queue_pressure"
     },
     {
       "projectId": "proj-shellcorp",
-      "role": "biz_pm",
+      "role": "growth_marketer",
+      "desiredCount": 1,
+      "spawnPolicy": "queue_pressure"
+    },
+    {
+      "projectId": "proj-shellcorp",
+      "role": "pm",
       "desiredCount": 1,
       "spawnPolicy": "queue_pressure"
     }
@@ -165,10 +185,18 @@
     {
       "id": "task-shellcorp-001",
       "projectId": "proj-shellcorp",
-      "title": "Ship project topology MVP.",
+      "title": "Ship project and agent topology MVP.",
       "status": "in_progress",
-      "ownerAgentId": "shellcorp-executor",
+      "ownerAgentId": "shellcorp-builder",
       "priority": "high"
+    },
+    {
+      "id": "task-shellcorp-002",
+      "projectId": "proj-shellcorp",
+      "title": "Define customer-facing support response templates.",
+      "status": "todo",
+      "ownerAgentId": "shellcorp-pm",
+      "priority": "medium"
     }
   ],
   "heartbeatProfiles": [
@@ -176,25 +204,33 @@
       "id": "hb-ceo",
       "role": "ceo",
       "cadenceMinutes": 15,
-      "teamDescription": "Executive command center.",
-      "productDetails": "Cross-project strategy and arbitration.",
-      "goal": "Keep all projects aligned to business goals."
+      "teamDescription": "Executive oversight and company direction.",
+      "productDetails": "All projects and cross-team strategy.",
+      "goal": "Make decisions that maximize long-term profitability."
     },
     {
-      "id": "hb-biz-executor",
-      "role": "biz_executor",
-      "cadenceMinutes": 5,
-      "teamDescription": "Business execution loop.",
-      "productDetails": "Create and distribute growth assets.",
-      "goal": "Execute highest-value tasks and report metrics."
+      "id": "hb-builder",
+      "role": "builder",
+      "cadenceMinutes": 10,
+      "teamDescription": "Engineering execution for a single project.",
+      "productDetails": "Build and fix product capabilities from ticket queue.",
+      "goal": "Reduce open engineering tickets while preserving quality."
     },
     {
-      "id": "hb-biz-pm",
-      "role": "biz_pm",
-      "cadenceMinutes": 5,
-      "teamDescription": "Business PM loop.",
-      "productDetails": "Manage kanban, costs, and profitability.",
-      "goal": "Keep business net-positive and experiments healthy."
+      "id": "hb-growth",
+      "role": "growth_marketer",
+      "cadenceMinutes": 20,
+      "teamDescription": "Growth and distribution strategy.",
+      "productDetails": "Traffic, conversion, and funnel optimization.",
+      "goal": "Increase qualified demand and retained users."
+    },
+    {
+      "id": "hb-pm",
+      "role": "pm",
+      "cadenceMinutes": 10,
+      "teamDescription": "Project management and customer comms.",
+      "productDetails": "Roadmap, stakeholder updates, and support channels.",
+      "goal": "Keep roadmap and customers aligned with delivery."
     }
   ],
   "channelBindings": [
@@ -202,8 +238,47 @@
       "platform": "slack",
       "externalChannelId": "C_CUSTOMER_SUPPORT",
       "projectId": "proj-shellcorp",
-      "agentRole": "biz_pm",
+      "agentRole": "pm",
       "routingMode": "default_pm"
+    },
+    {
+      "platform": "discord",
+      "externalChannelId": "123456789012345678",
+      "projectId": "proj-shellcorp",
+      "agentRole": "pm",
+      "routingMode": "default_pm"
+    }
+  ],
+  "officeObjects": [
+    {
+      "id": "plant-nw",
+      "meshType": "plant",
+      "position": [-14, 0, -14],
+      "rotation": [0, 0, 0]
+    },
+    {
+      "id": "plant-ne",
+      "meshType": "plant",
+      "position": [14, 0, -14],
+      "rotation": [0, 0, 0]
+    },
+    {
+      "id": "bookshelf-back",
+      "meshType": "bookshelf",
+      "position": [0, 0, -15],
+      "rotation": [0, 0, 0]
+    },
+    {
+      "id": "pantry-back-left",
+      "meshType": "pantry",
+      "position": [-12, 0, -14],
+      "rotation": [0, 0, 0]
+    },
+    {
+      "id": "couch-back-right",
+      "meshType": "couch",
+      "position": [12, 0, -14],
+      "rotation": [0, 3.1415926535, 0]
     }
   ],
   "heartbeatRuntime": {
@@ -211,22 +286,6 @@
     "pluginId": "shellcorp-heartbeat",
     "serviceId": "company-heartbeat-loop",
     "cadenceMinutes": 10,
-    "notes": "Run heartbeat loop via OpenClaw plugin runtime."
-  },
-  "officeObjects": [
-    {
-      "id": "plant-nw",
-      "meshType": "plant",
-      "position": [
-        -14,
-        0,
-        -14
-      ],
-      "rotation": [
-        0,
-        0,
-        0
-      ]
-    }
-  ]
+    "notes": "Run heartbeat execution inside OpenClaw plugin service/hooks so all sessions route through gateway."
+  }
 }

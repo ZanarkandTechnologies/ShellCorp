@@ -45,6 +45,7 @@ import {
   cliYellow,
 } from "./cli-utils.js";
 import { findInvalidOfficeObjects } from "./office-commands.js";
+import { readStarterOfficeTemplates } from "./starter-office.js";
 import {
   type CompanyModel,
   createSidecarStore,
@@ -729,9 +730,7 @@ export function registerOnboardingCommands(program: Command): void {
       const companyTemplate = await readJsonTemplate<CompanyModel>(
         path.join(templatesRoot, "sidecar", "company.template.json"),
       );
-      const officeObjectsTemplate = await readJsonTemplate<unknown[]>(
-        path.join(templatesRoot, "sidecar", "office-objects.template.json"),
-      );
+      const starterOffice = await readStarterOfficeTemplates();
       const pendingApprovalsTemplate = await readJsonTemplate<unknown[]>(
         path.join(templatesRoot, "sidecar", "pending-approvals.template.json"),
       );
@@ -748,9 +747,10 @@ export function registerOnboardingCommands(program: Command): void {
       }
       const sidecars: Record<string, FileStatus> = {
         "company.json": await ensureJsonSidecar(store.companyPath, companyTemplate),
+        "office.json": await ensureJsonSidecar(store.officeSettingsPath, starterOffice.officeSettings),
         "office-objects.json": await ensureJsonSidecar(
           store.officeObjectsPath,
-          officeObjectsTemplate,
+          starterOffice.officeObjects,
         ),
         "pending-approvals.json": await ensureJsonSidecar(
           pendingApprovalsPath,
@@ -975,6 +975,7 @@ export function registerOnboardingCommands(program: Command): void {
         console.log(`- ${cliKeyValue("state dir:", result.stateDir, "info")}`);
         console.log(`- ${cliKeyValue("office style:", result.officeStylePreset, "info")}`);
         console.log(`- ${cliKeyValue("company.json:", result.sidecars["company.json"], "ok")}`);
+        console.log(`- ${cliKeyValue("office.json:", result.sidecars["office.json"], "ok")}`);
         console.log(
           `- ${cliKeyValue("office-objects.json:", result.sidecars["office-objects.json"], "ok")}`,
         );
