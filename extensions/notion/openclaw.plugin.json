@@ -10,6 +10,23 @@
       "defaultAccountId": {
         "type": "string",
         "default": "default"
+      },
+      "webhook": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "default": "/plugins/notion-shell/webhook"
+          },
+          "targetAgentId": {
+            "type": "string",
+            "default": "main"
+          },
+          "verificationToken": {
+            "type": "string"
+          }
+        }
       }
     }
   },
@@ -17,6 +34,14 @@
     "defaultAccountId": {
       "label": "Default Notion Account ID",
       "placeholder": "default"
+    },
+    "webhook.path": {
+      "label": "Webhook Path",
+      "placeholder": "/plugins/notion-shell/webhook"
+    },
+    "webhook.targetAgentId": {
+      "label": "Target Agent ID",
+      "placeholder": "main"
     }
   }
 }

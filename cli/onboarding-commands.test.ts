@@ -264,13 +264,48 @@ describe("onboarding CLI", () => {
         load?: { paths?: string[] };
         entries?: { "notion-shell"?: unknown };
       };
+      hooks?: {
+        path?: string;
+        token?: string;
+        allowRequestSessionKey?: boolean;
+        allowedSessionKeyPrefixes?: string[];
+        allowedAgentIds?: string[];
+      };
+      channels?: {
+        notion?: {
+          accounts?: {
+            default?: {
+              apiKey?: string;
+              requireWakeWord?: boolean;
+              wakeWords?: string[];
+            };
+          };
+        };
+      };
     };
     expect(openclaw.version).toBeUndefined();
     expect(openclaw.shellcorp).toBeUndefined();
-    expect(openclaw.plugins?.load?.paths ?? []).not.toContain(
+    expect(openclaw.plugins?.load?.paths ?? []).toContain(
       path.join(repoRoot, "extensions", "notion"),
     );
-    expect(openclaw.plugins?.entries?.["notion-shell"]).toBeUndefined();
+    expect(openclaw.plugins?.entries?.["notion-shell"]).toMatchObject({
+      enabled: true,
+      config: {
+        defaultAccountId: "default",
+        webhook: {
+          path: "/plugins/notion-shell/webhook",
+          targetAgentId: "main",
+        },
+      },
+    });
+    expect(openclaw.hooks?.path).toBe("/hooks");
+    expect(openclaw.hooks?.token).toBeTruthy();
+    expect(openclaw.hooks?.allowRequestSessionKey).toBe(true);
+    expect(openclaw.hooks?.allowedSessionKeyPrefixes).toContain("hook:notion:");
+    expect(openclaw.hooks?.allowedAgentIds).toContain("main");
+    expect(openclaw.channels?.notion?.accounts?.default?.apiKey).toBe("secret_test");
+    expect(openclaw.channels?.notion?.accounts?.default?.requireWakeWord).toBe(true);
+    expect(openclaw.channels?.notion?.accounts?.default?.wakeWords).toEqual(["@shell"]);
 
     const shellcorpRaw = await readFile(path.join(stateDir, "shellcorp.json"), "utf-8");
     const shellcorp = JSON.parse(shellcorpRaw) as { convex?: { siteUrl?: string } };
@@ -318,7 +353,7 @@ describe("onboarding CLI", () => {
     expect(JSON.parse(approvalsRaw)).toEqual([]);
   });
 
-  it("preserves existing ui env keys and removes stale onboarding-managed notion wiring", async () => {
+  it("preserves existing ui env keys and keeps existing notion bridge wiring", async () => {
     const { repoRoot, stateDir } = await setupRepoFixture();
     process.env.OPENCLAW_STATE_DIR = stateDir;
     process.env.SHELLCORP_REPO_ROOT = repoRoot;
@@ -374,8 +409,17 @@ describe("onboarding CLI", () => {
         entries?: { "notion-shell"?: unknown };
       };
     };
-    expect(openclaw.plugins?.load?.paths ?? []).toEqual([]);
-    expect(openclaw.plugins?.entries?.["notion-shell"]).toBeUndefined();
+    expect(openclaw.plugins?.load?.paths ?? []).toEqual(["./extensions/notion"]);
+    expect(openclaw.plugins?.entries?.["notion-shell"]).toMatchObject({
+      enabled: true,
+      config: {
+        defaultAccountId: "default",
+        webhook: {
+          path: "/plugins/notion-shell/webhook",
+          targetAgentId: "main",
+        },
+      },
+    });
 
     const uiEnvRaw = await readFile(path.join(repoRoot, "ui", ".env.local"), "utf-8");
     expect(uiEnvRaw).toContain("CUSTOM_FLAG=keepme");
@@ -512,7 +556,11 @@ describe("onboarding CLI", () => {
     process.env.OPENCLAW_STATE_DIR = stateDir;
     process.env.SHELLCORP_REPO_ROOT = repoRoot;
     await seedOpenclawMainAgent(stateDir);
-    await writeFile(path.join(repoRoot, ".env.local"), "CONVEX_URL=http://127.0.0.1:3210\n", "utf-8");
+    await writeFile(
+      path.join(repoRoot, ".env.local"),
+      "CONVEX_URL=http://127.0.0.1:3210\n",
+      "utf-8",
+    );
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -530,9 +578,9 @@ describe("onboarding CLI", () => {
     expect(payload.runtime?.convex?.configured).toBe(true);
     expect(payload.runtime?.convex?.reachable).toBe(false);
     expect(payload.runtime?.convex?.url).toBe("http://127.0.0.1:3210");
-    expect(
-      payload.nextSteps?.some((step) => step.includes("Start the Convex backend at")),
-    ).toBe(true);
+    expect(payload.nextSteps?.some((step) => step.includes("Start the Convex backend at"))).toBe(
+      true,
+    );
   });
 
   it("skips auto-launch when Convex is configured but unreachable", async () => {
@@ -540,7 +588,11 @@ describe("onboarding CLI", () => {
     process.env.OPENCLAW_STATE_DIR = stateDir;
     process.env.SHELLCORP_REPO_ROOT = repoRoot;
     await seedOpenclawMainAgent(stateDir);
-    await writeFile(path.join(repoRoot, ".env.local"), "CONVEX_URL=http://127.0.0.1:3210\n", "utf-8");
+    await writeFile(
+      path.join(repoRoot, ".env.local"),
+      "CONVEX_URL=http://127.0.0.1:3210\n",
+      "utf-8",
+    );
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -554,7 +606,9 @@ describe("onboarding CLI", () => {
 
     expect(launchSpy).not.toHaveBeenCalled();
     expect(
-      logSpy.mock.calls.some((call) => String(call[0] ?? "").includes("Skipping UI launch because Convex is unreachable")),
+      logSpy.mock.calls.some((call) =>
+        String(call[0] ?? "").includes("Skipping UI launch because Convex is unreachable"),
+      ),
     ).toBe(true);
   });
 
@@ -601,7 +655,7 @@ describe("onboarding CLI", () => {
     expect(openclaw.agents?.list?.some((entry) => entry.id === "main")).toBe(true);
   });
 
-  it("does not rewrite openclaw.json on rerun when only stale notion wiring was absent", async () => {
+  it("does not rewrite openclaw.json on rerun once notion bridge wiring is present", async () => {
     const { repoRoot, stateDir } = await setupRepoFixture();
     process.env.OPENCLAW_STATE_DIR = stateDir;
     process.env.SHELLCORP_REPO_ROOT = repoRoot;

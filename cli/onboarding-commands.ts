@@ -7,7 +7,7 @@
  * KEY CONCEPTS:
  * - Required sidecars live in `~/.openclaw`.
  * - UI-safe env vars live in `ui/.env.local` even when backend env lives at repo root.
- * - Onboarding is idempotent and only mutates ShellCorp-owned config by default.
+ * - Onboarding is idempotent and bootstraps the first-party Notion comment bridge.
  *
  * USAGE:
  * - shellcorp onboarding
@@ -20,8 +20,10 @@
  * - MEM-0164
  * - MEM-0178
  * - MEM-0213
+ * - MEM-0225
  */
 
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -45,7 +47,6 @@ import {
   cliYellow,
 } from "./cli-utils.js";
 import { findInvalidOfficeObjects } from "./office-commands.js";
-import { readStarterOfficeTemplates } from "./starter-office.js";
 import {
   type CompanyModel,
   createSidecarStore,
@@ -54,6 +55,7 @@ import {
   resolveOpenclawHome,
   type ShellcorpConfigModel,
 } from "./sidecar-store.js";
+import { readStarterOfficeTemplates } from "./starter-office.js";
 import { runDoctor } from "./team-commands/_shared.js";
 import { startUiDevServer } from "./ui-commands.js";
 
@@ -122,6 +124,11 @@ const DEFAULT_UI_ENV: Record<string, string> = {
   VITE_STATE_URL: "http://127.0.0.1:5173",
   VITE_CONVEX_URL: "",
 };
+const DEFAULT_NOTION_WEBHOOK_PATH = "/plugins/notion-shell/webhook";
+const DEFAULT_OPENCLAW_HOOKS_PATH = "/hooks";
+const DEFAULT_NOTION_WAKE_WORD = "@shell";
+const DEFAULT_NOTION_ACCOUNT_ID = "default";
+const DEFAULT_NOTION_TARGET_AGENT_ID = "main";
 const CONTROLLED_UI_ENV_KEYS = [
   "VITE_GATEWAY_URL",
   "VITE_GATEWAY_TOKEN",
@@ -429,7 +436,14 @@ async function isRuntimeUrlReachable(url: string): Promise<boolean> {
   }
 }
 
-function removeOnboardingManagedNotionPlugin(config: JsonObject): JsonObject {
+function generateHookToken(): string {
+  return randomBytes(24).toString("hex");
+}
+
+function ensureNotionCommentBridgeDefaults(
+  config: JsonObject,
+  rootEnv: Record<string, string>,
+): JsonObject {
   const repoRoot = resolveRepoRoot();
   const plugins = asObject(config.plugins);
   const load = asObject(plugins.load);
@@ -439,14 +453,54 @@ function removeOnboardingManagedNotionPlugin(config: JsonObject): JsonObject {
     .filter((entry): entry is string => typeof entry === "string")
     .map((entry) => entry.trim())
     .filter(Boolean)
-    .filter((entry) => {
-      const comparable = normalizeComparablePath(entry, repoRoot);
-      return (
-        comparable !== normalizeComparablePath("./extensions/notion", repoRoot) &&
-        comparable !== normalizeComparablePath(notionPluginPath, repoRoot)
-      );
-    });
-  const { ["notion-shell"]: _removedNotionEntry, ...remainingEntries } = entries;
+    .filter(
+      (entry, index, values) =>
+        values.findIndex(
+          (candidate) =>
+            normalizeComparablePath(candidate, repoRoot) ===
+            normalizeComparablePath(entry, repoRoot),
+        ) === index,
+    );
+  if (
+    !nextPaths.some(
+      (entry) =>
+        normalizeComparablePath(entry, repoRoot) ===
+        normalizeComparablePath(notionPluginPath, repoRoot),
+    )
+  ) {
+    nextPaths.push(notionPluginPath);
+  }
+
+  const notionEntry = asObject(entries["notion-shell"]);
+  const notionConfig = asObject(notionEntry.config);
+  const notionWebhook = asObject(notionConfig.webhook);
+  const targetAgentId =
+    (typeof notionWebhook.targetAgentId === "string" && notionWebhook.targetAgentId.trim()) ||
+    DEFAULT_NOTION_TARGET_AGENT_ID;
+
+  const hooks = asObject(config.hooks);
+  const currentAllowedAgentIds = asArray(hooks.allowedAgentIds).filter(
+    (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+  );
+  const currentAllowedSessionKeyPrefixes = asArray(hooks.allowedSessionKeyPrefixes).filter(
+    (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+  );
+  const hookPathRaw = typeof hooks.path === "string" ? hooks.path.trim() : "";
+  const hookPath =
+    hookPathRaw && hookPathRaw !== "/"
+      ? hookPathRaw.replace(/\/+$/, "")
+      : DEFAULT_OPENCLAW_HOOKS_PATH;
+
+  const channels = asObject(config.channels);
+  const notionChannels = asObject(channels.notion);
+  const accounts = asObject(notionChannels.accounts);
+  const defaultAccount = asObject(accounts[DEFAULT_NOTION_ACCOUNT_ID]);
+  const notionApiKey =
+    (typeof defaultAccount.apiKey === "string" && defaultAccount.apiKey.trim()) ||
+    process.env.NOTION_API_KEY?.trim() ||
+    rootEnv.NOTION_API_KEY?.trim() ||
+    undefined;
+
   return {
     ...config,
     plugins: {
@@ -455,7 +509,72 @@ function removeOnboardingManagedNotionPlugin(config: JsonObject): JsonObject {
         ...load,
         paths: nextPaths,
       },
-      entries: remainingEntries,
+      entries: {
+        ...entries,
+        "notion-shell": {
+          ...notionEntry,
+          enabled: typeof notionEntry.enabled === "boolean" ? notionEntry.enabled : true,
+          config: {
+            ...notionConfig,
+            defaultAccountId:
+              typeof notionConfig.defaultAccountId === "string" &&
+              notionConfig.defaultAccountId.trim()
+                ? notionConfig.defaultAccountId.trim()
+                : DEFAULT_NOTION_ACCOUNT_ID,
+            webhook: {
+              ...notionWebhook,
+              path:
+                typeof notionWebhook.path === "string" && notionWebhook.path.trim()
+                  ? notionWebhook.path.trim()
+                  : DEFAULT_NOTION_WEBHOOK_PATH,
+              targetAgentId,
+              verificationToken:
+                typeof notionWebhook.verificationToken === "string" &&
+                notionWebhook.verificationToken.trim()
+                  ? notionWebhook.verificationToken.trim()
+                  : undefined,
+            },
+          },
+        },
+      },
+    },
+    hooks: {
+      ...hooks,
+      enabled: typeof hooks.enabled === "boolean" ? hooks.enabled : true,
+      path: hookPath,
+      token:
+        typeof hooks.token === "string" && hooks.token.trim()
+          ? hooks.token.trim()
+          : generateHookToken(),
+      allowRequestSessionKey:
+        typeof hooks.allowRequestSessionKey === "boolean" ? hooks.allowRequestSessionKey : true,
+      allowedSessionKeyPrefixes: currentAllowedSessionKeyPrefixes.includes("hook:notion:")
+        ? currentAllowedSessionKeyPrefixes
+        : [...currentAllowedSessionKeyPrefixes, "hook:notion:"],
+      allowedAgentIds: currentAllowedAgentIds.includes(targetAgentId)
+        ? currentAllowedAgentIds
+        : [...currentAllowedAgentIds, targetAgentId],
+    },
+    channels: {
+      ...channels,
+      notion: {
+        ...notionChannels,
+        accounts: {
+          ...accounts,
+          [DEFAULT_NOTION_ACCOUNT_ID]: {
+            ...defaultAccount,
+            ...(notionApiKey ? { apiKey: notionApiKey } : {}),
+            requireWakeWord:
+              typeof defaultAccount.requireWakeWord === "boolean"
+                ? defaultAccount.requireWakeWord
+                : true,
+            wakeWords:
+              Array.isArray(defaultAccount.wakeWords) && defaultAccount.wakeWords.length > 0
+                ? defaultAccount.wakeWords
+                : [DEFAULT_NOTION_WAKE_WORD],
+          },
+        },
+      },
     },
   };
 }
@@ -601,6 +720,7 @@ function buildNextSteps(inputValues: {
       ? `Use ${UI_ALIAS_COMMAND} or ${UI_START_COMMAND} from the repo root to open the ShellCorp UI.`
       : `Run ${CLI_INSTALL_COMMAND} from the repo root for the global \`shellcorp\` alias, or use ${UI_START_COMMAND} directly.`,
     "Use the in-app onboarding flow to finish connector setup and learn the office controls.",
+    "Expose `/plugins/notion-shell/webhook` on your Gateway host, verify that exact URL in Notion, then post a page comment with `@shell ...` to test the bridge.",
     "Ask the CEO agent to create planning tickets on the board, move one into review, and approve it as your first office workflow.",
   ];
   if (!inputValues.runtime.convex.configured) {
@@ -747,7 +867,10 @@ export function registerOnboardingCommands(program: Command): void {
       }
       const sidecars: Record<string, FileStatus> = {
         "company.json": await ensureJsonSidecar(store.companyPath, companyTemplate),
-        "office.json": await ensureJsonSidecar(store.officeSettingsPath, starterOffice.officeSettings),
+        "office.json": await ensureJsonSidecar(
+          store.officeSettingsPath,
+          starterOffice.officeSettings,
+        ),
         "office-objects.json": await ensureJsonSidecar(
           store.officeObjectsPath,
           starterOffice.officeObjects,
@@ -769,7 +892,7 @@ export function registerOnboardingCommands(program: Command): void {
         Object.keys(existingOpenclaw).length === 0 ? openclawTemplate : existingOpenclaw;
       nextOpenclaw = removeInvalidOpenclawRootKeys(nextOpenclaw);
       nextOpenclaw = ensureShellcorpDefaults(nextOpenclaw);
-      let nextShellcorpConfig = applyShellcorpConvexSiteUrl(
+      const nextShellcorpConfig = applyShellcorpConvexSiteUrl(
         existingShellcorpConfig,
         chooseShellcorpConvexSiteUrl({
           rootEnv,
@@ -778,7 +901,7 @@ export function registerOnboardingCommands(program: Command): void {
           opts,
         }),
       );
-      nextOpenclaw = removeOnboardingManagedNotionPlugin(nextOpenclaw);
+      nextOpenclaw = ensureNotionCommentBridgeDefaults(nextOpenclaw, rootEnv);
       const openclawBefore = openclawBeforeRaw;
       const openclawAfter = JSON.stringify(nextOpenclaw);
       const shellcorpConfigAfter = JSON.stringify(nextShellcorpConfig);
@@ -791,7 +914,10 @@ export function registerOnboardingCommands(program: Command): void {
         await store.writeOpenclawConfig(nextOpenclaw);
         openclawStatus = "updated";
       }
-      if (Object.keys(existingShellcorpConfig).length === 0 && Object.keys(nextShellcorpConfig).length > 0) {
+      if (
+        Object.keys(existingShellcorpConfig).length === 0 &&
+        Object.keys(nextShellcorpConfig).length > 0
+      ) {
         await store.writeShellcorpConfig(nextShellcorpConfig);
         shellcorpConfigStatus = "created";
       } else if (shellcorpConfigBeforeRaw !== shellcorpConfigAfter) {
